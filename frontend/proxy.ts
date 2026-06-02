@@ -3,11 +3,11 @@ import type { NextRequest } from 'next/server';
 
 const PUBLIC_PATHS = ['/', '/login', '/roast'];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isPublic = PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith('/roast/'));
   if (isPublic) return NextResponse.next();
-  // Auth check is done client-side; middleware just passes through
+  // Auth check is done client-side; proxy just passes through
   return NextResponse.next();
 }
 
