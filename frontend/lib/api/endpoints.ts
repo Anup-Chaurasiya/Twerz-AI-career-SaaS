@@ -41,6 +41,8 @@ export const jobsApi = {
     client.post<{ job_id: number; status: string }>(`/jobs/${id}/generate-resume`),
   generatePdf: (id: number) =>
     client.post<{ job_id: number; status: string }>(`/jobs/${id}/generate-pdf`),
+  updateCustomResume: (id: number, customResumeData: ResumeInfo) =>
+    client.put<{ success: boolean; job: Partial<Job> }>(`/jobs/${id}/custom-resume`, customResumeData),
   downloadPdf: async (id: number): Promise<Blob> => {
     const response = await client.get(`/jobs/${id}/pdf`, { responseType: 'blob' });
     return response.data;

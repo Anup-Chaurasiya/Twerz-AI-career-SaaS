@@ -38,8 +38,8 @@ export default function RoastsListPage() {
 
   const handleFile = async (file: File) => {
     if (!file) return;
-    if (file.type !== 'application/pdf' && !file.name.endsWith('.docx')) {
-      setError('Only PDF and DOCX files are supported.');
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      setError('Only PDF files are supported.');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -90,7 +90,7 @@ export default function RoastsListPage() {
           onClick={() => !uploading && fileInputRef.current?.click()}
           style={{ borderColor: dragOver ? 'var(--orange)' : 'rgba(251,65,0,0.2)', background: dragOver ? 'rgba(251,65,0,0.06)' : 'rgba(251,65,0,0.02)' }}
         >
-          <input type="file" ref={fileInputRef} onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} style={{ display: 'none' }} accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+          <input type="file" ref={fileInputRef} onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} style={{ display: 'none' }} accept=".pdf,application/pdf" />
           {uploading ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <div className="spinner spinner-lg" style={{ marginBottom: 16, borderTopColor: 'var(--orange)' }} />
@@ -101,7 +101,7 @@ export default function RoastsListPage() {
             <>
               <div style={{ fontSize: 40, marginBottom: 16 }}>🔥</div>
               <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--orange)' }}>Click to upload and roast</div>
-              <div style={{ fontSize: 13, color: 'var(--text-dim)', marginTop: 8 }}>Supports PDF and DOCX (Max 5MB)</div>
+              <div style={{ fontSize: 13, color: 'var(--text-dim)', marginTop: 8 }}>PDF only (Max 5MB)</div>
             </>
           )}
         </div>

@@ -102,6 +102,11 @@ async def list_roasts(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """List user's roasts with pagination.
+    
+    Returns empty state information to help frontend show
+    appropriate guidance for users who haven't tried the roast feature yet.
+    """
     offset = (page - 1) * limit
     roasts, total = await service.get_roasts(db, current_user.id, offset=offset, limit=limit)
     return {
@@ -120,6 +125,7 @@ async def list_roasts(
         "page": page,
         "pages": math.ceil(total / limit) if total > 0 else 1,
         "limit": limit,
+        "is_empty": total == 0,  # Frontend can use this for empty state
     }
 
 

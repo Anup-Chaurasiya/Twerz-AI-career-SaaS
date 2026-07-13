@@ -29,8 +29,14 @@ GCS_UPLOAD_BACKOFF = 2.0  # seconds, exponential
 
 
 async def _background_gcs_upload(pdf_bytes: bytes, user_id: str, job_id: int) -> None:
-    """Upload PDF to GCS in background with retry. Updates job.pdf_gcs_path on success."""
+    """Upload PDF to GCS in background with retry. Updates job.pdf_gcs_path on success.
+    
+    If all retries fail, marks gcs_upload_failed=True in DB so the system knows
+    to fall back to local storage. This is critical for Cloud Run where local
+    files disappear on container restart.
+    """
     from app.database.session import async_session_factory
+    import sentry_sdk
 
     gcs_path = f"resumes/{user_id}/{job_id}.pdf"
     gcs = GCSClient()
@@ -40,12 +46,13 @@ async def _background_gcs_upload(pdf_bytes: bytes, user_id: str, job_id: int) ->
             # GCS client is sync — run in thread to avoid blocking the event loop
             await asyncio.to_thread(gcs.upload_pdf, pdf_bytes, gcs_path)
 
-            # Update DB with GCS path
+            # Update DB with GCS path and clear any previous failure flag
             async with async_session_factory() as db:
                 result = await db.execute(select(Job).where(Job.id == job_id))
                 job = result.scalar_one_or_none()
                 if job:
                     job.pdf_gcs_path = gcs_path
+                    job.gcs_upload_failed = False
                     await db.commit()
 
             # Clean up local temp file
@@ -59,7 +66,31 @@ async def _background_gcs_upload(pdf_bytes: bytes, user_id: str, job_id: int) ->
             if attempt < GCS_UPLOAD_RETRIES - 1:
                 await asyncio.sleep(GCS_UPLOAD_BACKOFF * (2 ** attempt))
 
-    logger.error(f"All GCS upload attempts failed for job {job_id}. PDF available locally.")
+    # All retries failed — mark failure in DB and capture to Sentry
+    logger.error(f"All GCS upload attempts failed for job {job_id}. PDF available locally only.")
+    try:
+        # Capture to Sentry with full context
+        with sentry_sdk.push_scope() as scope:
+            scope.set_context("gcs_upload", {
+                "job_id": job_id,
+                "user_id": user_id,
+                "gcs_path": gcs_path,
+                "retries": GCS_UPLOAD_RETRIES,
+            })
+            sentry_sdk.capture_message(
+                f"GCS upload failed after {GCS_UPLOAD_RETRIES} attempts for job {job_id}",
+                level="error"
+            )
+    except Exception:
+        pass  # Don't fail if Sentry isn't configured
+    
+    # Mark failure in DB so download endpoint knows to use signed URLs or local file
+    async with async_session_factory() as db:
+        result = await db.execute(select(Job).where(Job.id == job_id))
+        job = result.scalar_one_or_none()
+        if job:
+            job.gcs_upload_failed = True
+            await db.commit()
 
 
 class JobService:
@@ -210,6 +241,14 @@ class JobService:
         except Exception as e:
             total_ms = int((time.monotonic() - t_start) * 1000)
             logger.exception(f"[job:{job_id}] Phase 2 FAILED after {total_ms}ms: {e}")
+            
+            # Extract error log if it's a LaTeX compilation error
+            from app.exceptions import LaTeXCompilationError
+            pdf_error_log = None
+            if isinstance(e, LaTeXCompilationError) and hasattr(e, 'full_log') and e.full_log:
+                pdf_error_log = e.full_log
+                logger.error(f"[job:{job_id}] LaTeX compilation failed with error log ({len(pdf_error_log)} chars)")
+            
             await db.rollback()
             if not recompile:
                 # Only set FAILED for initial PDF generation, not chat-triggered recompiles.
@@ -219,6 +258,9 @@ class JobService:
                     job = result.scalar_one_or_none()
                     if job:
                         job.status = JobStatus.FAILED
+                        # Store the PDF error log for admin debugging
+                        if pdf_error_log:
+                            job.pdf_error_log = pdf_error_log
                         await db.commit()
                 except Exception:
                     logger.exception(f"Failed to mark job {job_id} as FAILED")

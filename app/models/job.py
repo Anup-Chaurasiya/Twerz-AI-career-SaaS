@@ -1,5 +1,5 @@
 import enum
-from sqlalchemy import Integer, String, Text, Enum, ForeignKey
+from sqlalchemy import Integer, String, Text, Enum, ForeignKey, Boolean
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
@@ -24,6 +24,8 @@ class Job(TimestampMixin, Base):
     custom_resume_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     resume_latex_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     pdf_gcs_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pdf_error_log: Mapped[str | None] = mapped_column(Text, nullable=True)
+    gcs_upload_failed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     status: Mapped[JobStatus] = mapped_column(
         Enum(JobStatus), default=JobStatus.PENDING, nullable=False
     )

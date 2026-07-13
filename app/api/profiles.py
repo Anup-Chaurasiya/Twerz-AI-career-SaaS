@@ -63,6 +63,11 @@ async def list_profiles(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """List user's profiles with pagination.
+    
+    Returns empty state information to help frontend show
+    appropriate onboarding guidance for new users.
+    """
     offset = (page - 1) * limit
     profiles, total = await service.get_profiles(db, current_user.id, offset=offset, limit=limit)
     return {
@@ -81,6 +86,7 @@ async def list_profiles(
         "page": page,
         "pages": math.ceil(total / limit) if total > 0 else 1,
         "limit": limit,
+        "is_empty": total == 0,  # Frontend can use this for empty state
     }
 
 

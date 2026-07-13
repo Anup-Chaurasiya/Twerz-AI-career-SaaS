@@ -43,6 +43,28 @@ class GCSClient:
         blob = bucket.blob(gcs_path)
         return blob.download_as_bytes()
 
+    def generate_signed_url(self, gcs_path: str, expiration_seconds: int = 3600) -> str:
+        """Generate a signed URL for downloading a PDF from GCS.
+        
+        Args:
+            gcs_path: Relative path in the bucket (e.g., "resumes/user_id/job_id.pdf")
+            expiration_seconds: Time until URL expires (default: 1 hour)
+        
+        Returns:
+            Signed URL string that allows temporary public access
+        """
+        bucket = self.client.bucket(self.bucket_name)
+        blob = bucket.blob(gcs_path)
+        
+        # Generate signed URL valid for the specified duration
+        url = blob.generate_signed_url(
+            version="v4",
+            expiration=expiration_seconds,
+            method="GET",
+        )
+        logger.info(f"Generated signed URL for gs://{self.bucket_name}/{gcs_path} (expires in {expiration_seconds}s)")
+        return url
+
     def delete_pdf(self, gcs_path: str) -> None:
         """Delete a PDF from GCS."""
         bucket = self.client.bucket(self.bucket_name)

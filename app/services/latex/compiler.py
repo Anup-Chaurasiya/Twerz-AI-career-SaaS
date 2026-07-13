@@ -11,7 +11,7 @@ from logging import getLogger
 logger = getLogger(__name__)
 
 RESUME_CLS_PATH = Path(__file__).parent.parent.parent.parent / "resume.cls"
-PDFLATEX_TIMEOUT = 90  # seconds per pass
+PDFLATEX_TIMEOUT = 60  # seconds per pass (increased for long resumes)
 PDFLATEX_PASSES = 2  # two passes for hyperref bookmarks/cross-references
 
 
@@ -71,9 +71,18 @@ async def compile_latex(latex_code: str) -> bytes:
     """Compile LaTeX code to PDF bytes.
 
     Runs pdflatex twice for proper cross-references and hyperref bookmarks.
+    Stores error log in jobs.pdf_error_log on failure via exception.
     Raises LaTeXCompilationError on failure.
     """
+    from app.services.latex.sanitizer import validate_latex_content
+    
     settings = get_settings()
+    
+    # Pre-validation before compilation
+    is_valid, validation_error = validate_latex_content(latex_code)
+    if not is_valid:
+        logger.error(f"LaTeX validation failed: {validation_error}")
+        raise LaTeXCompilationError(f"Resume content has formatting issues: {validation_error}")
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
@@ -97,26 +106,28 @@ async def compile_latex(latex_code: str) -> bytes:
 
         pdf_path = tmp_path / "resume.pdf"
         log_path = tmp_path / "resume.log"
+        full_error_log = None
 
         # Run pdflatex twice (cross-references + hyperref bookmarks)
         for pass_num in range(1, PDFLATEX_PASSES + 1):
             returncode, stdout, stderr = await _run_pdflatex(tmp_path, env, pass_num)
 
             if returncode != 0:
+                # Read full log file for storage
+                if log_path.exists():
+                    full_error_log = log_path.read_text(encoding="utf-8", errors="replace")
+                    error_detail = _extract_errors(full_error_log)
+                else:
+                    stdout_str = stdout.decode("utf-8", errors="replace")
+                    full_error_log = stdout_str
+                    error_detail = _extract_errors(stdout_str)
+                
                 # Check if PDF was still produced despite errors (common with nonstopmode warnings)
                 if pdf_path.exists() and pdf_path.stat().st_size > 0:
                     logger.warning(f"pdflatex pass {pass_num} returned {returncode} but PDF exists, continuing")
                 else:
-                    # Read log file for better error diagnostics
-                    if log_path.exists():
-                        log_text = log_path.read_text(encoding="utf-8", errors="replace")
-                        error_detail = _extract_errors(log_text)
-                    else:
-                        stdout_str = stdout.decode("utf-8", errors="replace")
-                        error_detail = _extract_errors(stdout_str)
-
                     logger.error(f"LaTeX compilation failed on pass {pass_num}:\n{error_detail}")
-                    raise LaTeXCompilationError(f"LaTeX compilation failed:\n{error_detail}")
+                    raise LaTeXCompilationError(f"LaTeX compilation failed:\n{error_detail}", full_log=full_error_log)
 
         if not pdf_path.exists():
             raise LaTeXCompilationError("PDF file not found after compilation")

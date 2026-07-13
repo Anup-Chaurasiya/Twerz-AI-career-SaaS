@@ -12,7 +12,16 @@ export default function LandingPage() {
     document.body.classList.add('public-page');
     document.body.style.overflow = 'auto';
     document.body.style.height = 'auto';
-    const onScroll = () => setScrolled(window.scrollY > 10);
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(() => {
+        const shouldBeScrolled = window.scrollY > 10;
+        setScrolled((current) => current === shouldBeScrolled ? current : shouldBeScrolled);
+        ticking = false;
+      });
+    };
     window.addEventListener('scroll', onScroll);
     return () => {
       document.body.classList.remove('public-page');
@@ -35,14 +44,15 @@ export default function LandingPage() {
     { q: 'What is an ATS?', a: 'An Applicant Tracking System (ATS) is software used by employers to filter resumes before a human ever sees them. Up to 75% of resumes are rejected by ATS before reaching a recruiter.' },
     { q: 'How does ATS Beater work?', a: 'Upload your base resume, paste a job description, and our AI analyzes the job requirements to generate a perfectly tailored, ATS-optimized resume in LaTeX-precision PDF format.' },
     { q: 'Is my resume data safe?', a: 'Yes. Your resume data is encrypted and stored securely. We never share your data with third parties. You can delete your data at any time.' },
-    { q: 'How many free credits do I get?', a: 'You get free daily credits to try the platform. Purchase credit packs or time passes for unlimited access.' },
-    { q: 'What file formats are supported?', a: 'We accept PDF and DOCX resume files. The output is always a clean, professionally formatted PDF.' },
+    { q: 'How many free credits do I get?', a: 'You get 3 free resume tailors every day. They reset at midnight UTC, and no credit card is needed to start.' },
+    { q: 'What file formats are supported?', a: 'We accept PDF resume files today. DOC support is coming soon. The output is always a clean, professionally formatted PDF.' },
+    { q: 'How many applications can I make with 1 credit?', a: 'Each credit gives you one tailored resume + cover letter for one job. Your 3 daily free credits reset every day at midnight.' },
   ];
 
   const features = [
     { icon: '🎯', title: 'Keyword Matching', desc: 'AI extracts exact keywords from job descriptions and weaves them naturally into your resume.' },
     { icon: '🤖', title: 'AI Chat Editing', desc: 'Chat with our AI to refine any section of your resume in real-time with streaming responses.' },
-    { icon: '📄', title: 'LaTeX PDF Output', desc: 'Professional, pixel-perfect PDF generated from LaTeX — no flimsy Word templates.' },
+    { icon: '📄', title: 'LaTeX PDF Output', desc: 'Professional, pixel-perfect PDF generated from LaTeX — no flimsy document templates.' },
     { icon: '🔥', title: 'Resume Roast', desc: 'Get a brutally honest AI review of your resume with ATS compatibility scores.' },
     { icon: '⚡', title: 'Instant Generation', desc: 'Get your tailored resume in under 60 seconds. Apply faster than the competition.' },
     { icon: '🌍', title: 'Multi-language', desc: 'Generate resumes in English, Norwegian, French, German, Spanish, Italian, and Russian.' },
@@ -144,7 +154,7 @@ export default function LandingPage() {
           <h2 style={{ fontSize: 'clamp(32px, 5vw, 48px)', fontWeight: 800, lineHeight: 1.1, letterSpacing: '-1.5px', marginBottom: 20 }}>Three Steps to Your Dream Job</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, marginTop: 56, background: 'rgba(1,169,219,0.06)', borderRadius: 16, overflow: 'hidden' }}>
             {[
-              { n: '01', icon: '📤', color: 'var(--orange)', title: 'Upload Your Resume', desc: 'Upload your existing PDF or DOCX resume. Our AI extracts all your experience, skills, and achievements.' },
+              { n: '01', icon: '📤', color: 'var(--orange)', title: 'Upload Your Resume', desc: 'Upload your existing PDF resume. Our AI extracts all your experience, skills, and achievements.' },
               { n: '02', icon: '🤖', color: 'var(--teal)', title: 'Paste Job Description', desc: 'Copy any job posting and paste it in. Our AI identifies the key requirements, keywords, and ATS filters.' },
               { n: '03', icon: '📄', color: 'var(--green)', title: 'Download Perfect PDF', desc: 'Get a beautifully formatted, LaTeX-generated PDF that sails through ATS and impresses human reviewers.' },
             ].map((step) => (
@@ -185,17 +195,22 @@ export default function LandingPage() {
             <div style={{ width: 24, height: 1, background: 'var(--teal)' }} /> Pricing
           </div>
           <h2 style={{ fontSize: 'clamp(32px, 5vw, 48px)', fontWeight: 800, lineHeight: 1.1, letterSpacing: '-1.5px', marginBottom: 20 }}>Simple, Transparent Pricing</h2>
+          <div style={{ background: 'rgba(1,169,219,0.06)', border: '1px solid rgba(1,169,219,0.15)', borderRadius: 12, padding: '16px 24px', marginBottom: 32, textAlign: 'center' }}>
+            <p style={{ fontSize: 15, color: 'var(--teal)', fontWeight: 600 }}>🎁 <strong>3 free resume tailors per day</strong> — no credit card needed</p>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24, marginTop: 56 }}>
             {[
-              { name: 'STARTER', price: '₹99', per: 'per pack', credits: '10 credits', features: ['10 AI resume tailorings', '2 resume roasts', 'Chat editing', 'PDF download'], featured: false },
-              { name: 'PRO', price: '₹499', per: 'per month', credits: 'Unlimited', features: ['Unlimited resume tailoring', 'Unlimited roasts', 'Priority AI', 'All languages', 'Chat editing'], featured: true, badge: 'Most Popular' },
-              { name: 'TEAM', price: '₹1999', per: 'per month', credits: 'Unlimited', features: ['Everything in Pro', 'Multi-tenant support', 'Admin dashboard', 'Custom branding', 'Priority support'], featured: false },
+              { name: 'DAY PASS', price: '₹49', per: '10 credits', credits: '≈ 10 applications', features: ['10 AI resume tailorings', 'Chat editing', 'PDF download', 'LaTeX formatting'], featured: false, bestFor: 'Trying Vera for the first time' },
+              { name: 'SPRINT', price: '₹99', per: '30 credits', credits: '≈ 30 applications', features: ['30 AI resume tailorings', 'Unlimited roasts', 'Chat editing', 'Priority processing', 'All languages'], featured: true, badge: 'Most Popular', bestFor: 'Active job hunting (2–3 weeks)' },
+              { name: 'JOB HUNT', price: '₹199', per: '75 credits', credits: '≈ 75 applications', features: ['75 AI resume tailorings', 'Unlimited roasts', 'Chat editing', 'Priority AI', 'All languages', 'Extended support'], featured: false, bestFor: 'Intensive search campaigns' },
             ].map((plan) => (
               <div key={plan.name} style={{ background: plan.featured ? 'linear-gradient(135deg, rgba(251,65,0,0.06), rgba(22,43,69,0.8))' : 'rgba(22,43,69,0.6)', border: `1px solid ${plan.featured ? 'rgba(251,65,0,0.3)' : 'var(--card-border)'}`, borderRadius: 16, padding: '36px 28px', position: 'relative', transition: 'all 0.3s ease' }}>
                 {plan.badge && <div style={{ position: 'absolute', top: -12, right: 20, background: 'linear-gradient(135deg, var(--orange), #D13600)', color: '#fff', padding: '4px 14px', borderRadius: 100, fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>{plan.badge}</div>}
                 <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 600, color: 'var(--text-dim)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16 }}>{plan.name}</div>
                 <div style={{ fontSize: 44, fontWeight: 900, letterSpacing: -2, lineHeight: 1, marginBottom: 4 }}>{plan.price}</div>
-                <div style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 24 }}>{plan.per} · {plan.credits}</div>
+                <div style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 8 }}>{plan.per}</div>
+                <div style={{ fontSize: 12, color: 'var(--teal)', marginBottom: 20, fontWeight: 600 }}>Best for: {plan.bestFor}</div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 24, paddingBottom: 20, borderBottom: '1px solid rgba(1,169,219,0.08)' }}>{plan.credits}</div>
                 <ul style={{ listStyle: 'none', marginBottom: 28 }}>
                   {plan.features.map((f) => (
                     <li key={f} style={{ fontSize: 14, color: 'var(--text-secondary)', padding: '8px 0', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
@@ -209,7 +224,7 @@ export default function LandingPage() {
             ))}
           </div>
           <div style={{ background: 'rgba(1,169,219,0.04)', border: '1px solid rgba(1,169,219,0.12)', borderRadius: 12, padding: '24px 32px', marginTop: 32, textAlign: 'center' }}>
-            <p style={{ fontSize: 15, color: 'var(--text-secondary)' }}>Get <strong style={{ color: 'var(--teal)' }}>free daily credits</strong> just by signing up. No credit card required.</p>
+            <p style={{ fontSize: 15, color: 'var(--text-secondary)' }}>Get <strong style={{ color: 'var(--teal)' }}>3 free credits every day</strong> just by signing up. No credit card required.</p>
           </div>
         </div>
       </section>

@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { profilesApi } from '@/lib/api/endpoints';
 import { Profile, ResumeInfo } from '@/types';
 import { getStatusColor, groupSkillsByCategory, formatDateRange, getExperienceList, getEducationList } from '@/lib/utils';
-import { useCreditStore } from '@/lib/stores/creditStore';
 
 export default function ProfileDetailPage() {
   const { id } = useParams();
@@ -19,7 +18,7 @@ export default function ProfileDetailPage() {
   const [saving, setSaving] = useState(false);
   
   const [enhancing, setEnhancing] = useState(false);
-  const fetchBalance = useCreditStore((s) => s.fetchBalance);
+  const [enhancePreview, setEnhancePreview] = useState<{ before: ResumeInfo; after: ResumeInfo } | null>(null);
   
   const [showConfirm, setShowConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -62,15 +61,34 @@ export default function ProfileDetailPage() {
   const handleEnhance = async () => {
     setEnhancing(true); setError('');
     try {
+      const before = profile?.resume_info || {};
       const res = await profilesApi.enhance(Number(id));
       setProfile(res.data);
       setEditData(res.data.resume_info || {});
-      await fetchBalance();
+      setEnhancePreview({ before, after: res.data.resume_info || {} });
     } catch (err: any) {
-      if (err.response?.status === 429) setError('Not enough credits.');
+      if (err.response?.status === 429) {
+        setError("You've enhanced this profile 3 times today. Come back tomorrow for more.");
+      }
       else setError(err.response?.data?.detail || 'Failed to enhance profile.');
     } finally {
       setEnhancing(false);
+    }
+  };
+
+  const handleKeepOriginal = async () => {
+    if (!enhancePreview) return;
+    setSaving(true);
+    setError('');
+    try {
+      const res = await profilesApi.update(Number(id), enhancePreview.before);
+      setProfile(res.data);
+      setEditData(res.data.resume_info || {});
+      setEnhancePreview(null);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to restore original profile.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -149,7 +167,7 @@ export default function ProfileDetailPage() {
           </div>
           <div style={{ display: 'flex', gap: 12 }}>
             <button className="btn-secondary" onClick={handleEnhance} disabled={enhancing || profile.status !== 'READY'} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {enhancing ? <><div className="spinner" style={{ width: 14, height: 14, borderTopColor: 'var(--teal)' }} /> Enhancing...</> : '✨ Enhance AI'}
+              {enhancing ? <><div className="spinner" style={{ width: 14, height: 14, borderTopColor: 'var(--teal)' }} /> Enhancing...</> : '✨ Enhance Profile'}
             </button>
             <button className="btn-ghost" onClick={() => isEditing ? handleSave() : setIsEditing(true)} disabled={saving || profile.status !== 'READY'} style={{ color: isEditing ? 'var(--green)' : '' }}>
               {saving ? 'Saving...' : isEditing ? 'Save Changes' : '✏️ Edit'}
@@ -158,6 +176,31 @@ export default function ProfileDetailPage() {
           </div>
         </div>
       </div>
+
+      {enhancePreview && (
+        <div className="widget-card fade-slide-in" style={{ marginBottom: 24, borderColor: 'rgba(245,158,11,0.28)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
+            <div>
+              <div className="section-label">AI Enhancement Preview</div>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>AI rewrote your profile to sound more professional. This is free, up to 3 times per day.</p>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn-ghost" onClick={handleKeepOriginal} disabled={saving}>Keep Original</button>
+              <button className="btn-primary" onClick={() => setEnhancePreview(null)} disabled={saving} style={{ padding: '8px 16px', fontSize: 11 }}>Accept Changes</button>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+            <div>
+              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Before</div>
+              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 260, overflow: 'auto', padding: 12, borderRadius: 6, background: 'rgba(15,27,46,0.7)', border: '1px solid rgba(255,255,255,0.06)', color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.5 }}>{JSON.stringify(enhancePreview.before, null, 2)}</pre>
+            </div>
+            <div>
+              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>After</div>
+              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 260, overflow: 'auto', padding: 12, borderRadius: 6, background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.16)', color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.5 }}>{JSON.stringify(enhancePreview.after, null, 2)}</pre>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="fade-slide-in stagger-1" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 24 }}>
         {/* Summary */}

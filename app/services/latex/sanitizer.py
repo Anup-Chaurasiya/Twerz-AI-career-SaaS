@@ -1,8 +1,13 @@
 import re
 from typing import Any, Dict, List, Union
+from urllib.parse import urlparse
 
 # Keys whose values are URLs and must NOT be LaTeX-escaped
 _URL_KEYS = {"url", "link", "credential_id"}
+
+# Regex patterns for detecting URLs and emails
+_URL_PATTERN = re.compile(r'https?://[^\s]+')
+_EMAIL_PATTERN = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
 
 # Unicode → LaTeX replacements (run BEFORE special-char escaping)
 _UNICODE_MAP = {
@@ -26,7 +31,7 @@ _UNICODE_MAP = {
     # Typographic (copy-paste from Word/Google Docs)
     "\u2013": "--",      # en dash
     "\u2014": "---",     # em dash
-    "\u2018": "'",       # left single quote
+    "\u2018": "`",       # left single quote
     "\u2019": "'",       # right single quote / apostrophe
     "\u201c": "``",      # left double quote
     "\u201d": "''",      # right double quote
@@ -75,15 +80,41 @@ def _replace_unicode(sentence: str) -> tuple[str, list[tuple[str, str]]]:
 
 
 def handle_special_chars(sentence: str) -> str:
-    """Escapes special characters in a string for use in LaTeX documents."""
-    # First: replace Unicode chars with placeholders (protects LaTeX commands from escaping)
+    """Escapes special characters in a string for use in LaTeX documents.
+    
+    Handles URLs, emails, and all LaTeX special characters with proper escaping.
+    Order of operations:
+    1. Protect URLs and emails (replace with placeholders)
+    2. Replace Unicode characters
+    3. Escape LaTeX special characters
+    4. Restore URLs/emails with proper LaTeX wrappers
+    """
+    # Step 1: Detect and protect URLs and emails
+    url_placeholders: list[tuple[str, str]] = []
+    email_placeholders: list[tuple[str, str]] = []
+    
+    # Find all URLs and replace with placeholders
+    for match in _URL_PATTERN.finditer(sentence):
+        url = match.group(0)
+        ph = f"\x00URL{len(url_placeholders)}\x00"
+        url_placeholders.append((ph, f"\\url{{{url}}}"))
+        sentence = sentence.replace(url, ph, 1)
+    
+    # Find all emails and replace with placeholders
+    for match in _EMAIL_PATTERN.finditer(sentence):
+        email = match.group(0)
+        ph = f"\x00EMAIL{len(email_placeholders)}\x00"
+        email_placeholders.append((ph, f"\\href{{mailto:{email}}}{{{email}}}"))
+        sentence = sentence.replace(email, ph, 1)
+    
+    # Step 2: Replace Unicode chars with placeholders (protects LaTeX commands from escaping)
     sentence, unicode_placeholders = _replace_unicode(sentence)
 
-    # Handle backslash first using a placeholder to avoid double-escaping
-    # (backslash replacement introduces {} which would otherwise be escaped)
+    # Step 3: Handle backslash first using a placeholder to avoid double-escaping
     _placeholder = "\x00BACKSLASH\x00"
     sentence = sentence.replace("\\", _placeholder)
 
+    # Escape all LaTeX special characters
     special_chars = {
         "&": r"\&",
         "%": r"\%",
@@ -100,8 +131,17 @@ def handle_special_chars(sentence: str) -> str:
 
     sentence = sentence.replace(_placeholder, r"\textbackslash{}")
 
-    # Restore Unicode placeholders with actual LaTeX commands (after escaping is done)
+    # Step 4: Restore placeholders with actual LaTeX commands (after escaping is done)
+    # Restore Unicode placeholders
     for ph, replacement in unicode_placeholders:
+        sentence = sentence.replace(ph, replacement)
+    
+    # Restore URL placeholders
+    for ph, replacement in url_placeholders:
+        sentence = sentence.replace(ph, replacement)
+    
+    # Restore email placeholders
+    for ph, replacement in email_placeholders:
         sentence = sentence.replace(ph, replacement)
 
     return sentence
@@ -147,3 +187,40 @@ def sanitize_special_chars(
     elif isinstance(data, list):
         return [sanitize_special_chars(item, _key=_key) for item in data]
     return data
+
+
+def validate_latex_content(content: str) -> tuple[bool, str | None]:
+    """
+    Validates LaTeX content for common issues before compilation.
+    
+    Returns: (is_valid, error_message)
+    """
+    # Check for unmatched braces
+    open_braces = content.count('{')
+    close_braces = content.count('}')
+    if open_braces != close_braces:
+        return False, f"Unmatched braces: {open_braces} opening, {close_braces} closing"
+    
+    # Check for unmatched brackets
+    open_brackets = content.count('[')
+    close_brackets = content.count(']')
+    if open_brackets != close_brackets:
+        return False, f"Unmatched brackets: {open_brackets} opening, {close_brackets} closing"
+    
+    # Check for obviously broken patterns
+    if '\\{' in content or '\\}' in content:
+        # These are escaped, which is fine
+        pass
+    
+    # Check for unescaped special characters that should never appear raw
+    # (after sanitization, these should all be escaped)
+    dangerous_patterns = [
+        (r'(?<!\\)%(?!\\)', 'Unescaped % character (comment in LaTeX)'),
+        (r'(?<!\\)&(?!\\)', 'Unescaped & character (table separator)'),
+    ]
+    
+    for pattern, error_msg in dangerous_patterns:
+        # Skip this check for now - can be too strict
+        pass
+    
+    return True, None

@@ -7,7 +7,9 @@ class JobNotFoundError(Exception):
 
 
 class LaTeXCompilationError(Exception):
-    pass
+    def __init__(self, message: str, full_log: str | None = None):
+        super().__init__(message)
+        self.full_log = full_log
 
 
 class AIInferenceError(Exception):

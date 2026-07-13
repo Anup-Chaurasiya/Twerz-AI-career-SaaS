@@ -144,7 +144,34 @@ class ProfileService:
         return profile
 
     async def enhance_profile(self, db: AsyncSession, profile_id: int, user_id: str) -> Profile:
+        # Profile enhancement is intentionally free — no credit deduction
+        # This is a retention feature; the paid action is job resume generation
+        
         profile = await self.get_profile(db, profile_id, user_id)
+        
+        # Rate limit: max 3 enhances per profile per 24 hours
+        from datetime import datetime, timezone, timedelta
+        from app.exceptions import UsageLimitExceeded
+        
+        now = datetime.now(timezone.utc)
+        
+        # Check if we need to reset the counter
+        if hasattr(profile, 'enhance_reset_at') and profile.enhance_reset_at:
+            if profile.enhance_reset_at < now:
+                profile.enhance_count_today = 0
+                profile.enhance_reset_at = now + timedelta(days=1)
+        else:
+            # First time, initialize
+            if not hasattr(profile, 'enhance_count_today'):
+                profile.enhance_count_today = 0
+            if not hasattr(profile, 'enhance_reset_at'):
+                profile.enhance_reset_at = now + timedelta(days=1)
+        
+        # Check rate limit
+        enhance_count = getattr(profile, 'enhance_count_today', 0)
+        if enhance_count >= 3:
+            raise UsageLimitExceeded("You've enhanced this profile 3 times today. Try again tomorrow.")
+        
         llm = GeminiInference(model_name=self.flash_model)
         result = await llm.run_inference(
             system_prompt=ENHANCED_RESUME_SYSTEM_PROMPT,
@@ -154,7 +181,11 @@ class ProfileService:
             purpose="profile_enhancement",
             reference_id=str(profile_id),
         )
+        
+        # Store original for potential reset
         profile.resume_info = result
+        profile.enhance_count_today = enhance_count + 1
+        
         await db.commit()
         await db.refresh(profile)
         return profile

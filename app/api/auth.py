@@ -135,18 +135,44 @@ async def get_me(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Get current user information including onboarding status.
+    
+    Returns is_new_user=True if user was created within the last 5 minutes.
+    This helps frontend show welcome flows only to brand new users.
+    """
     tenant_name = None
     if current_user.tenant_id:
         tenant = await db.get(Tenant, current_user.tenant_id)
         if tenant:
             tenant_name = tenant.name
+    
+    # Check if user is "new" (created in last 5 minutes)
+    time_since_creation = datetime.now(timezone.utc) - current_user.created_at
+    is_new_user = time_since_creation.total_seconds() < 300  # 5 minutes
+    
     return {
         "id": current_user.id,
         "email": current_user.email,
         "name": current_user.name,
         "picture_url": current_user.picture_url,
         "consent_accepted": current_user.consent_accepted,
+        "onboarding_completed": current_user.onboarding_completed,
+        "is_new_user": is_new_user,
         "is_super_admin": current_user.is_super_admin,
         "tenant_id": current_user.tenant_id,
         "tenant_name": tenant_name,
     }
+
+
+@router.post("/onboarding-complete")
+async def complete_onboarding(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark onboarding as completed for the current user.
+    
+    Called after user completes the welcome flow (uploads resume, sees tutorial, etc.)
+    """
+    current_user.onboarding_completed = True
+    await db.commit()
+    return {"success": True, "onboarding_completed": True}

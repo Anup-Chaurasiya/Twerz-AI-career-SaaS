@@ -1,4 +1,6 @@
+import asyncio
 import math
+from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query
@@ -9,7 +11,7 @@ from app.background import create_tracked_task
 from app.models.job import JobStatus
 from app.models.user import User
 from app.dependencies import get_current_user
-from app.services.job.service import JobService
+from app.services.job.service import JobService, PDF_DIR
 from app.services.credit.service import CreditService
 from app.schemas.job import JobCreate
 from logging import getLogger
@@ -47,6 +49,11 @@ async def list_jobs(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """List user's jobs with pagination.
+    
+    Returns empty state information to help frontend show
+    appropriate guidance for users with no job applications yet.
+    """
     offset = (page - 1) * limit
     jobs, total = await service.get_jobs(db, current_user.id, offset=offset, limit=limit)
     return {
@@ -66,6 +73,7 @@ async def list_jobs(
         "page": page,
         "pages": math.ceil(total / limit) if total > 0 else 1,
         "limit": limit,
+        "is_empty": total == 0,  # Frontend can use this for empty state
     }
 
 
@@ -143,12 +151,29 @@ async def generate_pdf(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Generate or recompile PDF from existing resume data.
+    
+    This endpoint is FREE when custom_resume_data already exists (recompilation).
+    Only the initial resume generation (via /generate-resume) costs a credit.
+    
+    Use cases:
+    - Recompile after chat edits to resume content
+    - Recompile after direct manual JSON edits
+    - Retry PDF generation if it failed (LaTeX error, GCS upload failure, etc.)
+    """
     job = await service.get_job(db, job_id, current_user.id)
 
-    # Guard: only allow PDF generation from RESUME_GENERATED or FAILED states
-    if job.status.value not in ("RESUME_GENERATED", "FAILED"):
+    # Guard: only allow PDF generation from RESUME_GENERATED or READY states
+    # Note: READY state recompile is for when user edits via chat or manual JSON
+    if job.status.value not in ("RESUME_GENERATED", "READY", "FAILED"):
         raise ValueError(
-            f"Job is {job.status.value} — PDF generation requires RESUME_GENERATED state"
+            f"Job is {job.status.value} — PDF generation requires RESUME_GENERATED or READY state"
+        )
+    
+    # Verify custom_resume_data exists (should always be true if status is RESUME_GENERATED or READY)
+    if not job.custom_resume_data:
+        raise ValueError(
+            "No resume data found. Please generate the resume first via POST /jobs/{job_id}/generate-resume"
         )
 
     from app.database.session import async_session_factory
@@ -157,7 +182,9 @@ async def generate_pdf(
 
     async def _generate():
         async with async_session_factory() as bg_db:
-            await service.generate_pdf(bg_db, job_id, user_id)
+            # recompile=True prevents setting status to FAILED on error
+            # (preserves previous PDF and READY status)
+            await service.generate_pdf(bg_db, job_id, user_id, recompile=True)
 
     create_tracked_task(_generate())
     return {"job_id": job_id, "status": "GENERATING_PDF"}
@@ -176,6 +203,8 @@ async def get_job(
         "job_description": job.job_description,
         "custom_resume_data": job.custom_resume_data,
         "status": job.status.value,
+        "gcs_upload_failed": job.gcs_upload_failed,
+        "pdf_error_log": job.pdf_error_log,
         "created_at": job.created_at.isoformat(),
         "updated_at": job.updated_at.isoformat(),
     }
@@ -198,20 +227,121 @@ async def download_pdf(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Download a job's PDF resume.
+    
+    Priority order:
+    1. If PDF is in GCS → redirect to signed URL (1 hour expiry)
+    2. If PDF exists locally → stream it directly
+    3. If neither available → return 404 with recompile option
+    
+    Signed URLs are preferred for GCS-stored PDFs because:
+    - They survive Cloud Run container restarts
+    - They offload bandwidth from our servers
+    - They provide temporary secure access without auth
+    """
+    from app.services.storage.gcs import GCSClient
+    from fastapi.responses import RedirectResponse
+    from app.exceptions import NotFoundError
+    
     job = await service.get_job(db, job_id, current_user.id)
-    pdf_bytes = await service.get_pdf(db, job_id, current_user.id)
-    filename = _pdf_filename(job)
-    # RFC 5987: filename* for Unicode, filename for ASCII fallback
-    ascii_filename = filename.encode("ascii", "replace").decode("ascii")
-    encoded_filename = quote(filename)
-    disposition = "inline" if inline else "attachment"
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": (
-                f'{disposition}; filename="{ascii_filename}"; '
-                f"filename*=UTF-8''{encoded_filename}"
+    
+    # Priority 1: Try GCS with signed URL (best for production)
+    if job.pdf_gcs_path and not job.gcs_upload_failed:
+        # Path should be relative like "resumes/user_id/job_id.pdf"
+        if not job.pdf_gcs_path.startswith("/"):
+            try:
+                gcs = GCSClient()
+                # Generate 1-hour signed URL
+                signed_url = await asyncio.to_thread(
+                    gcs.generate_signed_url, job.pdf_gcs_path, expiration_seconds=3600
+                )
+                logger.info(f"[job:{job_id}] Redirecting to signed GCS URL (expires in 1h)")
+                return RedirectResponse(url=signed_url)
+            except Exception as e:
+                logger.warning(f"[job:{job_id}] Failed to generate signed URL, falling back to local: {e}")
+    
+    # Priority 2: Try local file (fallback for dev or if GCS failed)
+    local_candidates = []
+    if job.pdf_gcs_path and job.pdf_gcs_path.startswith("/"):
+        local_candidates.append(Path(job.pdf_gcs_path))
+    # Also check known temp path
+    local_candidates.append(PDF_DIR / f"{current_user.id}_{job_id}.pdf")
+    
+    for local_path in local_candidates:
+        if await asyncio.to_thread(local_path.exists):
+            pdf_bytes = await asyncio.to_thread(local_path.read_bytes)
+            filename = _pdf_filename(job)
+            ascii_filename = filename.encode("ascii", "replace").decode("ascii")
+            encoded_filename = quote(filename)
+            disposition = "inline" if inline else "attachment"
+            logger.info(f"[job:{job_id}] Serving PDF from local file: {local_path}")
+            return Response(
+                content=pdf_bytes,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": (
+                        f'{disposition}; filename="{ascii_filename}"; '
+                        f"filename*=UTF-8''{encoded_filename}"
+                    )
+                },
             )
-        },
+    
+    # Priority 3: PDF not available anywhere
+    # This can happen if Cloud Run container restarted and GCS upload failed
+    can_recompile = job.status.value in ("RESUME_GENERATED", "READY") and job.custom_resume_data
+    
+    raise NotFoundError(
+        "PDF not available. This can happen if our servers restarted. "
+        + ("You can recompile your PDF for free." if can_recompile else "Please regenerate your resume.")
     )
+
+
+@router.put("/{job_id}/custom-resume")
+async def update_custom_resume(
+    job_id: int,
+    custom_resume_data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Direct edit endpoint for custom_resume_data.
+    Allows users to manually edit the tailored resume JSON.
+    """
+    from app.schemas.custom_resume import CustomResumeInfo
+    from app.exceptions import BadRequestError, ForbiddenError
+    from pydantic import ValidationError
+    
+    # Get job and verify ownership
+    job = await service.get_job(db, job_id, current_user.id)
+    
+    # Only allow editing in RESUME_GENERATED or READY states
+    if job.status.value not in ("RESUME_GENERATED", "READY"):
+        raise BadRequestError(
+            f"Cannot edit while resume is being generated. Current status: {job.status.value}"
+        )
+    
+    # Validate the custom resume data against schema
+    try:
+        validated_data = CustomResumeInfo(**custom_resume_data)
+    except ValidationError as e:
+        raise BadRequestError(f"Invalid resume data: {e.errors()}")
+    
+    # Update the job
+    job.custom_resume_data = validated_data.model_dump()
+    
+    # PDF is now outdated, set status back to RESUME_GENERATED
+    if job.status == JobStatus.READY:
+        job.status = JobStatus.RESUME_GENERATED
+    
+    await db.commit()
+    await db.refresh(job)
+    
+    return {
+        "success": True,
+        "job": {
+            "id": job.id,
+            "status": job.status.value,
+            "custom_resume_data": job.custom_resume_data,
+            "updated_at": job.updated_at.isoformat(),
+        }
+    }

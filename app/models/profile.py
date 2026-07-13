@@ -1,5 +1,6 @@
 import enum
-from sqlalchemy import Integer, String, Boolean, Enum, ForeignKey
+from datetime import datetime
+from sqlalchemy import Integer, String, Boolean, Enum, ForeignKey, DateTime
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
@@ -22,6 +23,8 @@ class Profile(TimestampMixin, Base):
         Enum(ProfileStatus), default=ProfileStatus.PENDING, nullable=False
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    enhance_count_today: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    enhance_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user = relationship("User", back_populates="profiles")
     jobs = relationship("Job", back_populates="profile")

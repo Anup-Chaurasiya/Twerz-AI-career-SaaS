@@ -15,6 +15,7 @@ class User(TimestampMixin, Base):
     picture_url: Mapped[str | None] = mapped_column(String, nullable=True)
     consent_accepted: Mapped[bool] = mapped_column(Boolean, default=False)
     consent_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    onboarding_completed: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
     is_super_admin: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
     tenant_id: Mapped[str | None] = mapped_column(
         String, ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True, index=True

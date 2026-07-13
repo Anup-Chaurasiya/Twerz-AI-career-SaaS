@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 ## What This Is
 
@@ -202,6 +202,55 @@ See `infra/deploy-cloudrun.sh` for Cloud Run deployment. Configure your own:
 - Razorpay keys (for payments)
 
 Environment variables are documented in `.env.example`.
-## TODOs
 
-- Wire GCS storage into PDF generation (currently PDFs are generated but not persisted)
+## Recent Updates (December 2024)
+
+### Phase 1: Critical Bug Fixes ✅
+- **Profile Enhancement Rate Limiting**: 3 free enhancements per profile per day (no credits required)
+- **Direct Resume Edit**: `PUT /jobs/{id}/custom-resume` endpoint for manual JSON editing
+- **LaTeX Error Logging**: Failed PDF compilations store full error logs in `jobs.pdf_error_log`
+- **LaTeX Sanitization**: Comprehensive special character handling (URLs, emails, Unicode, smart quotes)
+
+### Phase 2: Production Hardening ✅
+- **GCS PDF Storage**: ✅ IMPLEMENTED
+  - PDFs automatically uploaded to GCS: `resumes/{user_id}/{job_id}.pdf`
+  - Signed URLs with 1-hour expiration for downloads
+  - 3 retry attempts with exponential backoff
+  - `gcs_upload_failed` flag for tracking upload failures
+  - Priority: GCS signed URL → Local file → Regenerate from LaTeX
+- **Free PDF Recompilation**: Recompiling after chat/manual edits costs NO credits
+- **Error Log Storage**: LaTeX compilation errors stored in `jobs.pdf_error_log` for admin debugging
+- **60-second Timeout**: pdflatex timeout increased to handle long resumes
+
+### Phase 3: UX Enhancements ✅
+- **Onboarding Tracking**: `users.onboarding_completed` field for welcome flow state
+- **New User Detection**: `is_new_user` flag in `/auth/me` (true if created < 5 minutes ago)
+- **Empty State Support**: All list endpoints return `is_empty` flag for frontend guidance
+
+### Database Migrations Applied
+```bash
+j1k2l3m4n5o6 - Profile enhance rate limit fields
+k2l3m4n5o6p7 - PDF error log column
+l3m4n5o6p7q8 - GCS upload failed flag
+m4n5o6p7q8r9 - Onboarding completed flag
+```
+
+### API Endpoint Updates
+| Method | Path | Changes |
+|--------|------|---------|
+| GET | `/jobs/{id}/pdf` | Now returns signed GCS URLs (1hr expiry), falls back to local/regenerate |
+| POST | `/jobs/{id}/generate-pdf` | FREE recompilation when `custom_resume_data` exists |
+| PUT | `/jobs/{id}/custom-resume` | NEW: Direct JSON editing with Pydantic validation |
+| GET | `/jobs/{id}` | Returns `gcs_upload_failed` and `pdf_error_log` fields |
+| GET | `/auth/me` | Returns `onboarding_completed` and `is_new_user` |
+| POST | `/auth/onboarding-complete` | NEW: Mark onboarding as complete |
+| GET | `/profiles/` | Returns `is_empty` flag |
+| GET | `/jobs/` | Returns `is_empty` flag |
+| GET | `/roasts/` | Returns `is_empty` flag |
+
+### Key Implementation Details
+- **GCS Upload**: Happens in background after PDF generation, doesn't block user
+- **Signed URLs**: Generated on-demand, expire after 1 hour for security
+- **Error Logging**: Full pdflatex output captured in `LaTeXCompilationError.full_log`
+- **Rate Limiting**: Profile enhancement resets daily at midnight UTC
+- **Empty States**: Frontend can detect and show helpful onboarding UI
