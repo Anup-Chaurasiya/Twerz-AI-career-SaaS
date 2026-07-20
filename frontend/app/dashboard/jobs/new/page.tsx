@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { profilesApi, jobsApi } from '@/lib/api/endpoints';
 import { Profile } from '@/types';
-import { useCreditStore } from '@/lib/stores/creditStore';
 
 export default function NewJobPage() {
   const router = useRouter();
@@ -12,7 +11,6 @@ export default function NewJobPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const fetchBalance = useCreditStore((s) => s.fetchBalance);
 
   const [formData, setFormData] = useState({
     profileId: '',
@@ -51,7 +49,7 @@ export default function NewJobPage() {
           output_language: formData.language as any
         }
       });
-      await fetchBalance();
+      // Navigate to detail — free analyze-fit + generate gate happens there
       router.push(`/dashboard/jobs/${res.data.job_id}`);
     } catch (err: any) {
       if (err.response?.status === 429) setError('Not enough credits. Please upgrade your plan.');
@@ -69,7 +67,11 @@ export default function NewJobPage() {
 
       <div className="fade-slide-in" style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>New Job Application</h1>
-        <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Tailor your resume for a specific role.</p>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          Tailor your resume for a specific role. Tip: load the Chrome extension from the repo{" "}
+          <code style={{ fontFamily: 'JetBrains Mono', fontSize: 11 }}>extension/</code> folder to
+          capture LinkedIn / Naukri / Indeed JDs.
+        </p>
       </div>
 
       <div className="widget-card fade-slide-in stagger-1" style={{ maxWidth: 720 }}>

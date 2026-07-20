@@ -1,9 +1,9 @@
-"""Smoke tests for Gemini AI inference — plain text and structured output."""
+"""Smoke tests for multi-provider LLM inference — plain text and structured output."""
 import pytest
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
-from app.services.ai.inference import GeminiInference
+from app.services.ai.inference import LLMInference
 from app.config import get_settings
 
 
@@ -21,10 +21,10 @@ class PersonInfo(BaseModel):
 
 
 @pytest.mark.asyncio
-async def test_gemini_plain_text():
-    """Verify Gemini can return a plain text response."""
+async def test_llm_plain_text():
+    """Verify configured LLM can return a plain text response."""
     settings = get_settings()
-    llm = GeminiInference(model_name=settings.GEMINI_FLASH_MODEL)
+    llm = LLMInference(model_name=settings.LLM_FLASH_MODEL)
 
     result = await llm.run_inference(
         system_prompt="You are a helpful assistant. Reply briefly.",
@@ -37,10 +37,10 @@ async def test_gemini_plain_text():
 
 
 @pytest.mark.asyncio
-async def test_gemini_structured_output():
-    """Verify Gemini can return structured JSON output matching a Pydantic schema."""
+async def test_llm_structured_output():
+    """Verify LLM can return structured JSON output matching a Pydantic schema."""
     settings = get_settings()
-    llm = GeminiInference(model_name=settings.GEMINI_FLASH_MODEL)
+    llm = LLMInference(model_name=settings.LLM_FLASH_MODEL)
 
     result = await llm.run_inference(
         system_prompt="You generate structured data. Always respond in JSON matching the schema.",
@@ -56,10 +56,10 @@ async def test_gemini_structured_output():
 
 
 @pytest.mark.asyncio
-async def test_gemini_structured_output_complex():
-    """Verify Gemini handles a more complex schema with lists and optionals."""
+async def test_llm_structured_output_complex():
+    """Verify LLM handles a more complex schema with lists and optionals."""
     settings = get_settings()
-    llm = GeminiInference(model_name=settings.GEMINI_FLASH_MODEL)
+    llm = LLMInference(model_name=settings.LLM_FLASH_MODEL)
 
     result = await llm.run_inference(
         system_prompt="You extract person information from text. Respond as JSON.",

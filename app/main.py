@@ -15,6 +15,7 @@ from app.exceptions import (
     UsageLimitExceeded,
     AuthenticationError,
     ForbiddenError,
+    PaymentRequiredError,
     RoastNotFoundError,
     NotFoundError,
     BadRequestError,
@@ -39,13 +40,22 @@ def _configure_access_log_filters() -> None:
 
 # ── Startup: recover rows stuck by a previous hard kill ─────────────────────
 async def _recover_stuck_items():
-    from sqlalchemy import update
+    from sqlalchemy import select, update
     from app.database.session import async_session_factory
     from app.models.profile import Profile, ProfileStatus
     from app.models.job import Job, JobStatus
     from app.models.roast import Roast, RoastStatus
+    from app.services.credit.service import CreditService
 
     async with async_session_factory() as db:
+        # Capture GENERATING_RESUME jobs before flipping status (need user_id for refund).
+        stuck_resume = (
+            await db.execute(
+                select(Job).where(Job.status == JobStatus.GENERATING_RESUME)
+            )
+        ).scalars().all()
+        stuck_resume_ids = [(j.id, j.user_id) for j in stuck_resume]
+
         r1 = await db.execute(
             update(Profile)
             .where(Profile.status == ProfileStatus.PROCESSING)
@@ -62,6 +72,20 @@ async def _recover_stuck_items():
             .values(status=RoastStatus.FAILED)
         )
         await db.commit()
+
+        credit_service = CreditService()
+        for job_id, user_id in stuck_resume_ids:
+            try:
+                refunded = await credit_service.refund_stuck_generation_if_needed(
+                    db, user_id, job_id
+                )
+                if refunded:
+                    logger.info("Refunded credit for stuck job %s (user %s)", job_id, user_id)
+            except Exception:
+                logger.exception(
+                    "Failed to refund stuck job %s on startup — manual review needed",
+                    job_id,
+                )
 
     total = r1.rowcount + r2.rowcount + r3.rowcount
     if total:
@@ -176,6 +200,13 @@ def create_app() -> FastAPI:
     async def forbidden_error_handler(request: Request, exc: ForbiddenError):
         return JSONResponse(status_code=403, content={"detail": str(exc)})
 
+    @app.exception_handler(PaymentRequiredError)
+    async def payment_required_handler(request: Request, exc: PaymentRequiredError):
+        return JSONResponse(
+            status_code=402,
+            content={"detail": str(exc), "paywall": exc.paywall},
+        )
+
     @app.exception_handler(RoastNotFoundError)
     async def roast_not_found_handler(request: Request, exc: RoastNotFoundError):
         return JSONResponse(status_code=404, content={"detail": str(exc)})
@@ -257,6 +288,11 @@ body{{background:#0a0f1e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height
     app.include_router(roasts_router)
     app.include_router(chat_router)
     app.include_router(profile_chat_router)
+
+    from app.api.account import router as account_router
+    from app.api.extension import router as extension_router
+    app.include_router(account_router)
+    app.include_router(extension_router)
 
     # Legacy landing URL → Next.js frontend
     @app.get("/landing")

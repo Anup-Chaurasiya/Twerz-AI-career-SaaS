@@ -22,20 +22,24 @@ export async function generateMetadata({
   }
   const score = data.roast_data.score ?? '?';
   const headline = data.roast_data.headline ?? 'Resume Roast';
-  const title = `My Resume Got Roasted: ${score}/10`;
+  const title = `My Resume Got Roasted: ${score}/100`;
+  const description =
+    typeof data.roast_data.verdict === 'string' && data.roast_data.verdict
+      ? data.roast_data.verdict.slice(0, 160)
+      : headline;
   return {
     title: `${title} — ATS Beater`,
-    description: headline,
+    description,
     openGraph: {
       title,
-      description: headline,
+      description,
       images: [{ url: '/og-roast.png', width: 1200, height: 630 }],
       type: 'website',
     },
     twitter: {
       card: 'summary_large_image',
       title,
-      description: headline,
+      description,
       images: ['/og-roast.png'],
     },
   };

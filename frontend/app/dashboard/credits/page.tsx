@@ -5,6 +5,130 @@ import { CreditPack, TimePassTier, CreditTransaction } from '@/types';
 import { useCreditStore } from '@/lib/stores/creditStore';
 import { formatCurrency, formatDate, getStatusColor } from '@/lib/utils';
 
+function SubscriptionPlans() {
+  const [plans, setPlans] = useState<any[]>([]);
+  const [sub, setSub] = useState<any>(null);
+  const [processingId, setProcessingId] = useState<number | null>(null);
+  const { balance, fetchBalance } = useCreditStore();
+  const isDev = process.env.NODE_ENV === 'development';
+
+  useEffect(() => {
+    Promise.all([creditsApi.getSubscriptionPlans(), creditsApi.getMySubscription()])
+      .then(([p, m]) => {
+        setPlans(p.data.plans || []);
+        setSub(m.data);
+      })
+      .catch(() => {});
+  }, []);
+
+  const buyPro = async (planId: number) => {
+    setProcessingId(planId);
+    try {
+      const orderRes = await paymentsApi.createOrder('subscription', planId);
+      const options = {
+        key: orderRes.data.razorpay_key_id,
+        amount: orderRes.data.amount_paise,
+        currency: orderRes.data.currency,
+        name: 'ATS Beater',
+        description: 'Job Hunt Pro (30 days)',
+        order_id: orderRes.data.order_id,
+        handler: async (response: any) => {
+          try {
+            await paymentsApi.verifyPayment(
+              response.razorpay_order_id,
+              response.razorpay_payment_id,
+              response.razorpay_signature
+            );
+            await fetchBalance();
+            const m = await creditsApi.getMySubscription();
+            setSub(m.data);
+            alert('Job Hunt Pro activated!');
+          } catch {
+            alert('Payment verification failed.');
+          }
+        },
+        theme: { color: '#01A9DB' },
+      };
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on('payment.failed', () => alert('Payment failed or cancelled.'));
+      rzp.open();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to start checkout.');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  if (!plans.length && !sub?.active && !balance?.subscription?.active) {
+    return <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>Subscription plans will appear here after migration seed.</p>;
+  }
+
+  const activeSub = sub?.subscription || balance?.subscription;
+
+  return (
+    <div>
+      {(sub?.active || balance?.subscription?.active) && activeSub && (
+        <div className="widget-card" style={{ marginBottom: 16, borderColor: 'rgba(16,185,129,0.3)' }}>
+          <div>
+            Active: <strong>{activeSub.plan_name}</strong> until {formatDate(activeSub.expires_at)}
+          </div>
+          {activeSub.next_credit_grant_hint && activeSub.next_credit_grant_hint !== 'due_now' && (
+            <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 6 }}>
+              Next monthly credit grant around {formatDate(activeSub.next_credit_grant_hint)}
+            </div>
+          )}
+          {activeSub.credits_last_granted_at && (
+            <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
+              Last credit grant: {formatDate(activeSub.credits_last_granted_at)}
+            </div>
+          )}
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
+        {plans.map((p) => (
+          <div key={p.id} className="widget-card">
+            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--teal)', marginBottom: 8 }}>{p.name}</div>
+            <div style={{ fontSize: 28, fontWeight: 800 }}>{formatCurrency(p.price_paise)}<span style={{ fontSize: 12, color: 'var(--text-dim)' }}>/mo</span></div>
+            <ul style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '12px 0 16px', paddingLeft: 18, lineHeight: 1.6 }}>
+              <li>{p.monthly_credits} credits / month</li>
+              {p.includes_tracker && <li>Application tracker</li>}
+              {p.includes_interview_packets && <li>Interview packets</li>}
+              {p.includes_extension && <li>Browser extension capture</li>}
+            </ul>
+            <button
+              className="btn-primary"
+              style={{ width: '100%', fontSize: 12, justifyContent: 'center', marginBottom: isDev ? 8 : 0 }}
+              disabled={processingId === p.id}
+              onClick={() => buyPro(p.id)}
+            >
+              {processingId === p.id ? 'Processing…' : 'Subscribe with Razorpay'}
+            </button>
+            {isDev && (
+              <button
+                className="btn-secondary"
+                style={{ width: '100%', fontSize: 11, justifyContent: 'center' }}
+                onClick={async () => {
+                  try {
+                    await creditsApi.activateSubscriptionDev(p.id);
+                    await fetchBalance();
+                    const m = await creditsApi.getMySubscription();
+                    setSub(m.data);
+                    alert('Subscription activated (DEV).');
+                  } catch (err: any) {
+                    alert(err.response?.data?.detail || 'DEV activation failed');
+                  }
+                }}
+              >
+                Activate (DEV)
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function CreditsPage() {
   const { balance, fetchBalance } = useCreditStore();
   const [packs, setPacks] = useState<CreditPack[]>([]);
@@ -113,6 +237,11 @@ export default function CreditsPage() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="fade-slide-in stagger-3" style={{ marginBottom: 40 }}>
+        <div className="section-label" style={{ marginBottom: 16 }}>Job Hunt Pro (Subscription)</div>
+        <SubscriptionPlans />
       </div>
 
       <div className="fade-slide-in stagger-3" style={{ marginBottom: 40 }}>

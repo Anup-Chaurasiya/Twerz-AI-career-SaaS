@@ -1,7 +1,7 @@
 import asyncio
 import math
 from logging import getLogger
-from fastapi import APIRouter, Depends, UploadFile, File, Query
+from fastapi import APIRouter, Depends, UploadFile, File, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.session import get_db
 from app.background import create_tracked_task
@@ -83,10 +83,44 @@ async def upload_roast(
 @router.get("/shared/{share_id}")
 async def get_shared_roast(
     share_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Public endpoint — no auth required. Returns roast data only (no PII)."""
     roast = await service.get_roast_by_share_id(db, share_id)
+
+    # Analytics write path — never fail the response if insert fails
+    try:
+        from app.models.roast_view import RoastView
+        from app.services.roast.ua_parser import parse_user_agent
+
+        ua = request.headers.get("user-agent")
+        parsed = parse_user_agent(ua)
+        # Prefer first X-Forwarded-For hop when behind a proxy
+        forwarded = request.headers.get("x-forwarded-for")
+        ip = (forwarded.split(",")[0].strip() if forwarded else None) or (
+            request.client.host if request.client else None
+        )
+        db.add(
+            RoastView(
+                roast_id=roast.id,
+                share_id=roast.share_id,
+                ip_address=ip,
+                user_agent=ua,
+                referer=request.headers.get("referer"),
+                platform=parsed.get("platform"),
+                os=parsed.get("os"),
+                browser=parsed.get("browser"),
+            )
+        )
+        await db.commit()
+    except Exception:
+        logger.exception("Failed to record RoastView for share_id=%s", share_id)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+
     return {
         "share_id": roast.share_id,
         "roast_data": roast.roast_data,

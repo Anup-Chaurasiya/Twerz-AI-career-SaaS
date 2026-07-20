@@ -66,6 +66,9 @@ class CreditService:
         self._reset_daily_if_needed(uc)
         await db.flush()
 
+        # Idempotent monthly Pro credit grant (calendar-month rollover)
+        await self.maybe_grant_subscription_credits(db, user_id)
+
         active_pass = await self._get_active_time_pass(db, user_id)
         active_pass_info = None
         if active_pass:
@@ -75,12 +78,15 @@ class CreditService:
                 "expires_at": active_pass.expires_at.isoformat(),
             }
 
+        sub_info = await self._active_subscription_summary(db, user_id)
+
         return {
             "balance": uc.balance,
             "daily_free_remaining": max(0, settings.DAILY_FREE_CREDITS - uc.daily_free_used),
             "daily_free_total": settings.DAILY_FREE_CREDITS,
             "active_time_pass": active_pass_info,
             "has_unlimited": active_pass is not None,
+            "subscription": sub_info,
         }
 
     # ── Consumption ─────────────────────────────────────────────
@@ -167,6 +173,46 @@ class CreditService:
         )
         await db.commit()
 
+    async def refund_stuck_generation_if_needed(
+        self, db: AsyncSession, user_id: str, job_id: int
+    ) -> bool:
+        """Refund a credit spent on a job that was killed mid-GENERATING_RESUME.
+
+        Looks up the latest CONSUMPTION for this job; skips if already refunded or
+        time-pass (unlimited). Returns True if a refund was issued.
+        """
+        from sqlalchemy import select
+        from app.models.credit import CreditTransaction
+
+        ref = str(job_id)
+        result = await db.execute(
+            select(CreditTransaction)
+            .where(
+                CreditTransaction.user_id == user_id,
+                CreditTransaction.reference_id == ref,
+            )
+            .order_by(CreditTransaction.created_at.desc())
+        )
+        txns = list(result.scalars().all())
+        if any(t.type == TransactionType.REFUND for t in txns):
+            return False
+        consumption = next((t for t in txns if t.type == TransactionType.CONSUMPTION), None)
+        if not consumption:
+            return False
+        desc = (consumption.description or "").lower()
+        if "time pass" in desc:
+            source = "time_pass"
+        elif "daily free" in desc:
+            source = "daily_free"
+        else:
+            source = "purchased"
+        if source == "time_pass":
+            # Record reversal note only (no balance change) for audit trail.
+            await self.refund_credit(db, user_id, job_id, source)
+            return False
+        await self.refund_credit(db, user_id, job_id, source)
+        return True
+
     # ── Credit addition ─────────────────────────────────────────
 
     async def add_credits(
@@ -232,6 +278,174 @@ class CreditService:
         await db.flush()
         await db.refresh(utp)
         return utp
+
+    async def activate_subscription(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        plan_id: int,
+        *,
+        razorpay_order_id: str | None = None,
+        razorpay_payment_id: str | None = None,
+        grant_credits: bool = True,
+    ):
+        """Activate/extend Job Hunt Pro for 30 days. Stacks after current expiry."""
+        from app.models.subscription import SubscriptionPlan, UserSubscription
+
+        plan = await db.get(SubscriptionPlan, plan_id)
+        if not plan or not plan.is_active:
+            raise ValueError(f"Subscription plan {plan_id} not found or inactive")
+
+        # Idempotency via unique razorpay_order_id
+        if razorpay_order_id:
+            existing = await db.execute(
+                select(UserSubscription).where(
+                    UserSubscription.razorpay_order_id == razorpay_order_id
+                )
+            )
+            found = existing.scalar_one_or_none()
+            if found:
+                return found
+
+        now = datetime.now(timezone.utc)
+        # Stack: start at latest future expiry if still active/scheduled
+        latest = await db.execute(
+            select(UserSubscription)
+            .where(
+                UserSubscription.user_id == user_id,
+                UserSubscription.is_active == True,  # noqa: E712
+                UserSubscription.expires_at > now,
+            )
+            .order_by(UserSubscription.expires_at.desc())
+            .limit(1)
+        )
+        current = latest.scalar_one_or_none()
+        starts_at = current.expires_at if current else now
+        expires_at = starts_at + timedelta(days=30)
+
+        sub = UserSubscription(
+            user_id=user_id,
+            plan_id=plan.id,
+            starts_at=starts_at,
+            expires_at=expires_at,
+            razorpay_order_id=razorpay_order_id,
+            razorpay_subscription_id=razorpay_payment_id,
+            credits_last_granted_at=now if grant_credits else None,
+            is_active=True,
+        )
+        db.add(sub)
+
+        if grant_credits and plan.monthly_credits > 0:
+            await self.add_credits(
+                db,
+                user_id,
+                plan.monthly_credits,
+                TransactionType.CREDIT_PURCHASE,
+                razorpay_order_id=razorpay_order_id,
+                description=f"Subscription: {plan.name} ({plan.monthly_credits} credits)",
+            )
+        elif razorpay_order_id:
+            # Ensure verify idempotency has a ledger row even if plan grants 0 credits
+            await self._record_transaction(
+                db,
+                user_id,
+                0,
+                TransactionType.CREDIT_PURCHASE,
+                razorpay_order_id=razorpay_order_id,
+                description=f"Job Hunt Pro activated: {plan.name} (30 days)",
+            )
+
+        await db.flush()
+        await db.refresh(sub)
+        return sub
+
+    async def maybe_grant_subscription_credits(
+        self, db: AsyncSession, user_id: str
+    ) -> bool:
+        """If active Pro and calendar month rolled since last grant, grant once. Idempotent."""
+        from app.models.subscription import SubscriptionPlan, UserSubscription
+
+        now = datetime.now(timezone.utc)
+        result = await db.execute(
+            select(UserSubscription, SubscriptionPlan)
+            .join(SubscriptionPlan, UserSubscription.plan_id == SubscriptionPlan.id)
+            .where(
+                UserSubscription.user_id == user_id,
+                UserSubscription.is_active == True,  # noqa: E712
+                UserSubscription.expires_at > now,
+                UserSubscription.starts_at <= now,
+            )
+            .order_by(UserSubscription.expires_at.desc())
+            .limit(1)
+        )
+        row = result.first()
+        if not row:
+            return False
+        sub, plan = row
+        last = sub.credits_last_granted_at
+        if last is not None:
+            last_utc = last if last.tzinfo else last.replace(tzinfo=timezone.utc)
+            if (last_utc.year, last_utc.month) == (now.year, now.month):
+                return False
+
+        if plan.monthly_credits <= 0:
+            sub.credits_last_granted_at = now
+            await db.flush()
+            return False
+
+        await self.add_credits(
+            db,
+            user_id,
+            plan.monthly_credits,
+            TransactionType.CREDIT_PURCHASE,
+            description=f"Monthly Pro grant: {plan.name} ({plan.monthly_credits} credits)",
+        )
+        sub.credits_last_granted_at = now
+        await db.flush()
+        return True
+
+    async def _active_subscription_summary(
+        self, db: AsyncSession, user_id: str
+    ) -> dict | None:
+        from app.models.subscription import SubscriptionPlan, UserSubscription
+
+        now = datetime.now(timezone.utc)
+        result = await db.execute(
+            select(UserSubscription, SubscriptionPlan)
+            .join(SubscriptionPlan, UserSubscription.plan_id == SubscriptionPlan.id)
+            .where(
+                UserSubscription.user_id == user_id,
+                UserSubscription.is_active == True,  # noqa: E712
+                UserSubscription.expires_at > now,
+            )
+            .order_by(UserSubscription.expires_at.desc())
+            .limit(1)
+        )
+        row = result.first()
+        if not row:
+            return None
+        sub, plan = row
+        last = sub.credits_last_granted_at
+        next_grant_hint = None
+        if last is not None:
+            last_utc = last if last.tzinfo else last.replace(tzinfo=timezone.utc)
+            # Hint: first day of next calendar month
+            if last_utc.month == 12:
+                next_grant_hint = datetime(last_utc.year + 1, 1, 1, tzinfo=timezone.utc).isoformat()
+            else:
+                next_grant_hint = datetime(
+                    last_utc.year, last_utc.month + 1, 1, tzinfo=timezone.utc
+                ).isoformat()
+        elif sub.starts_at <= now:
+            next_grant_hint = "due_now"
+        return {
+            "active": True,
+            "plan_name": plan.name,
+            "monthly_credits": plan.monthly_credits,
+            "expires_at": sub.expires_at.isoformat(),
+            "credits_last_granted_at": last.isoformat() if last else None,
+            "next_credit_grant_hint": next_grant_hint,
+        }
 
     # ── Promo redemption ────────────────────────────────────────
 

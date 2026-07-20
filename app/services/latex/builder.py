@@ -22,6 +22,10 @@ def _add_header(resume_latex: str, resume_info: CustomResumeInfo) -> str:
     resume = resume_latex
     resume += f"\n\\name{{{resume_info.name}}}  \n"
 
+    if resume_info.headline:
+        # Centered headline under the name (printed after \\name via address line)
+        resume += f"\\address{{\\textit{{{_fmt(resume_info.headline)}}}}}\n"
+
     address_section = ""
     contact_section = r"""\address{"""
     contact_info = [resume_info.mobile_number, resume_info.email, resume_info.date_of_birth]
@@ -42,6 +46,14 @@ def _add_header(resume_latex: str, resume_info: CustomResumeInfo) -> str:
     resume += address_section + "\n"
     return resume
 
+
+def _add_summary(resume_latex: str, resume_info: CustomResumeInfo) -> str:
+    if not resume_info.summary:
+        return resume_latex
+    section = r"""\begin{rSection}{Summary}"""
+    section += f"\n{_fmt(resume_info.summary)}\n"
+    section += r"""\end{rSection}"""
+    return resume_latex + section + "\n"
 
 def _add_experience(resume_latex: str, resume_info: CustomResumeInfo) -> str:
     if not resume_info.past_experience:
@@ -83,7 +95,13 @@ def _add_projects(resume_latex: str, resume_info: CustomResumeInfo) -> str:
 
 def _add_skills(resume_latex: str, resume_info: CustomResumeInfo) -> str:
     skills = resume_info.skills
-    has_skills = skills.languages or skills.frameworks or skills.databases or skills.other_technologies
+    has_skills = (
+        skills.languages
+        or skills.frameworks
+        or skills.databases
+        or skills.security
+        or skills.other_technologies
+    )
     if not has_skills:
         return resume_latex
 
@@ -96,13 +114,14 @@ def _add_skills(resume_latex: str, resume_info: CustomResumeInfo) -> str:
         section += f"\\textbf{{Frameworks:}} & {', '.join(skills.frameworks)} \\\\"
     if skills.databases:
         section += f"\\textbf{{Databases:}} & {', '.join(skills.databases)} \\\\"
+    if skills.security:
+        section += f"\\textbf{{Security / Auth:}} & {', '.join(skills.security)} \\\\"
     if skills.other_technologies:
         section += f"\\textbf{{Platforms/Other Technologies:}} & {', '.join(skills.other_technologies)} \\\\"
 
     section += r"""\end{tabularx}
 \end{rSection}"""
     return resume_latex + section + "\n"
-
 
 def _add_education(resume_latex: str, resume_info: CustomResumeInfo) -> str:
     if not resume_info.educations:
@@ -199,6 +218,7 @@ def build_resume(resume_info: CustomResumeInfo) -> str:
 """
     resume_latex = _add_header(resume_latex, resume_info)
     resume_latex += r"""\begin{document}"""
+    resume_latex = _add_summary(resume_latex, resume_info)
     resume_latex = _add_experience(resume_latex, resume_info)
     resume_latex = _add_projects(resume_latex, resume_info)
     resume_latex = _add_skills(resume_latex, resume_info)

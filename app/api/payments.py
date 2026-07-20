@@ -44,6 +44,19 @@ async def create_order(
         amount_paise = tier.price_paise
         receipt = f"tp_{current_user.id[:8]}_{tier.id}"
         notes = {"type": "time_pass", "tier_id": str(tier.id), "user_id": current_user.id}
+    elif body.item_type == "subscription":
+        from app.models.subscription import SubscriptionPlan
+
+        plan = await db.get(SubscriptionPlan, body.item_id)
+        if not plan or not plan.is_active:
+            raise ValueError("Subscription plan not found or inactive")
+        amount_paise = plan.price_paise
+        receipt = f"sub_{current_user.id[:8]}_{plan.id}"
+        notes = {
+            "type": "subscription",
+            "plan_id": str(plan.id),
+            "user_id": current_user.id,
+        }
     else:
         raise ValueError("Invalid item_type")
 
@@ -121,6 +134,18 @@ async def verify_payment(
         await credit_service.activate_time_pass(
             db, current_user.id, int(tier_id_str),
             razorpay_order_id=body.razorpay_order_id,
+        )
+    elif item_type == "subscription":
+        plan_id_str = notes.get("plan_id")
+        if not plan_id_str:
+            raise ValueError("Missing plan_id in order notes")
+        await credit_service.activate_subscription(
+            db,
+            current_user.id,
+            int(plan_id_str),
+            razorpay_order_id=body.razorpay_order_id,
+            razorpay_payment_id=body.razorpay_payment_id,
+            grant_credits=True,
         )
     else:
         raise ValueError(f"Unknown order type in notes: {item_type}")
@@ -207,6 +232,18 @@ async def razorpay_webhook(
                     return {"status": "ignored", "reason": "missing_tier_id"}
                 await credit_service.activate_time_pass(
                     db, user_id, int(tier_id_str), razorpay_order_id=order_id,
+                )
+            elif item_type == "subscription":
+                plan_id_str = notes.get("plan_id")
+                if not plan_id_str:
+                    logger.warning(f"Webhook: missing plan_id in order {order_id}")
+                    return {"status": "ignored", "reason": "missing_plan_id"}
+                await credit_service.activate_subscription(
+                    db,
+                    user_id,
+                    int(plan_id_str),
+                    razorpay_order_id=order_id,
+                    grant_credits=True,
                 )
 
             # Explicit commit — add_credits/activate_time_pass only flush

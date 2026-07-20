@@ -6,7 +6,7 @@ from sqlalchemy import select, func
 from app.models.profile import Profile, ProfileStatus
 from app.schemas.resume import ResumeInfo
 from app.services.ocr.extractor import PDFExtractor
-from app.services.ai.inference import GeminiInference
+from app.services.ai.inference import LLMInference
 from app.services.ai.prompts import STRUCTURED_RESUME_SYSTEM_PROMPT, ENHANCED_RESUME_SYSTEM_PROMPT
 from app.config import get_settings
 from app.exceptions import ProfileNotFoundError
@@ -14,12 +14,35 @@ from logging import getLogger
 
 logger = getLogger(__name__)
 
+# OCR text longer than this with empty experience → sparse parse warning
+_SPARSE_OCR_MIN_CHARS = 200
+
+
+def _completeness_warning(result: dict | object, *, ocr_text_len: int) -> str | None:
+    """Return a soft warning if structured resume looks incomplete vs OCR length."""
+    if hasattr(result, "model_dump"):
+        data = result.model_dump()
+    elif isinstance(result, dict):
+        data = result
+    else:
+        data = {}
+    name = (data.get("name") or "").strip()
+    experiences = data.get("past_experience") or []
+    if not name:
+        return "Structured resume is missing a name — review and edit before generating jobs."
+    if ocr_text_len >= _SPARSE_OCR_MIN_CHARS and not experiences:
+        return (
+            "OCR extracted substantial text but no work experience was structured — "
+            "review the profile; fields may have been dropped."
+        )
+    return None
+
 
 class ProfileService:
     def __init__(self):
         self.extractor = PDFExtractor()
         settings = get_settings()
-        self.flash_model = settings.GEMINI_FLASH_MODEL
+        self.flash_model = settings.LLM_FLASH_MODEL
 
     async def create_profile(self, db: AsyncSession, user_id: str, pdf_bytes: bytes) -> int:
         """Create profile row (PENDING), then extract and structure in background."""
@@ -76,7 +99,7 @@ class ProfileService:
                 )
             else:
                 logger.info(f"[profile:{profile_id}] Using text path → AI structuring")
-                llm = GeminiInference(model_name=self.flash_model)
+                llm = LLMInference(model_name=self.flash_model)
                 result = await llm.run_inference(
                     system_prompt=STRUCTURED_RESUME_SYSTEM_PROMPT,
                     inputs=[text],
@@ -89,7 +112,14 @@ class ProfileService:
             logger.info(f"[profile:{profile_id}] AI structuring: {ai_ms}ms {'(SLOW >60s)' if ai_ms > 60000 else ''}")
 
             t0 = time.monotonic()
-            profile.resume_info = result
+            # Soft completeness warning — never invent fields, but surface sparse parses.
+            data = result.model_dump() if hasattr(result, "model_dump") else dict(result)
+            warning = _completeness_warning(data, ocr_text_len=len(text.strip()))
+            if warning:
+                data = {**data, "_completeness_warning": warning}
+                logger.warning(f"[profile:{profile_id}] Completeness warning: {warning}")
+
+            profile.resume_info = data
             profile.status = ProfileStatus.READY
             await db.commit()
             logger.info(f"[profile:{profile_id}] DB save: {int((time.monotonic() - t0) * 1000)}ms")
@@ -172,7 +202,7 @@ class ProfileService:
         if enhance_count >= 3:
             raise UsageLimitExceeded("You've enhanced this profile 3 times today. Try again tomorrow.")
         
-        llm = GeminiInference(model_name=self.flash_model)
+        llm = LLMInference(model_name=self.flash_model)
         result = await llm.run_inference(
             system_prompt=ENHANCED_RESUME_SYSTEM_PROMPT,
             inputs=[json.dumps(profile.resume_info or {})],

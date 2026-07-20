@@ -1021,6 +1021,14 @@ async def share_analytics_summary(
         select(func.count(distinct(RoastView.ip_address)))
     )).scalar() or 0
 
+    from app.models.user import User as UserModel
+
+    signup_attributions = (await db.execute(
+        select(func.count(UserModel.id)).where(
+            UserModel.signup_source == "roast_share"
+        )
+    )).scalar() or 0
+
     # Top platforms
     platform_rows = (await db.execute(
         select(RoastView.platform, func.count(RoastView.id))
@@ -1063,6 +1071,7 @@ async def share_analytics_summary(
     return {
         "total_views": total_views,
         "unique_ips": unique_ips,
+        "signup_attributions": signup_attributions,
         "top_platforms": top_platforms,
         "top_browsers": top_browsers,
         "top_os": top_os,

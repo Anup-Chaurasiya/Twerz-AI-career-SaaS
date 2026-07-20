@@ -55,6 +55,13 @@ export default function LoginPage() {
   // OAuth callback + redirect if already logged in
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const utm = params.get('utm_source');
+    const shareId = params.get('share_id');
+    if (utm) {
+      sessionStorage.setItem('signup_utm_source', utm);
+      if (shareId) sessionStorage.setItem('signup_share_id', shareId);
+    }
+
     let token = params.get('token') || params.get('access_token');
     if (!token && window.location.hash.includes('access_token=')) {
       const hashQuery = window.location.hash.split('?')[1] || '';
@@ -63,10 +70,33 @@ export default function LoginPage() {
     if (token) {
       localStorage.setItem('token', token);
       window.history.replaceState({}, '', '/login');
-      useAuthStore.getState().fetchMe().then(() => router.push('/dashboard'));
+      useAuthStore.getState().fetchMe().then(async () => {
+        const source = sessionStorage.getItem('signup_utm_source');
+        const sid = sessionStorage.getItem('signup_share_id');
+        if (source) {
+          try {
+            await authApi.setAttribution({ source, share_id: sid });
+            sessionStorage.removeItem('signup_utm_source');
+            sessionStorage.removeItem('signup_share_id');
+          } catch {
+            /* ignore */
+          }
+        }
+        router.push('/dashboard');
+      });
       return;
     }
-    if (!isLoading && isLoggedIn) router.push('/dashboard');
+    if (!isLoading && isLoggedIn) {
+      const source = sessionStorage.getItem('signup_utm_source');
+      const sid = sessionStorage.getItem('signup_share_id');
+      if (source) {
+        authApi.setAttribution({ source, share_id: sid }).then(() => {
+          sessionStorage.removeItem('signup_utm_source');
+          sessionStorage.removeItem('signup_share_id');
+        }).catch(() => {});
+      }
+      router.push('/dashboard');
+    }
   }, [isLoading, isLoggedIn, router]);
 
   const handleLogin = async () => {

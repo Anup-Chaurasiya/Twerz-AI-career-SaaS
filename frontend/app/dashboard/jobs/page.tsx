@@ -69,6 +69,8 @@ export default function JobListPage() {
                   <tr>
                     <th>Company</th>
                     <th>Role</th>
+                    <th>Fit</th>
+                    <th>Pipeline</th>
                     <th>Status</th>
                     <th>Date</th>
                     <th style={{ textAlign: 'right' }}>Actions</th>
@@ -79,6 +81,36 @@ export default function JobListPage() {
                     <tr key={j.id} onClick={() => router.push(`/dashboard/jobs/${j.id}`)}>
                       <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{j.job_description.company}</td>
                       <td>{truncate(j.job_description.role, 30)}</td>
+                      <td style={{ fontFamily: 'JetBrains Mono', fontSize: 12 }}>
+                        {j.fit_score != null ? (
+                          <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 4 }}>
+                            <span>
+                              <span style={{
+                                color: j.fit_label === 'STRONG' ? 'var(--green)' : j.fit_label === 'STRETCH' ? 'var(--amber)' : 'var(--red)',
+                                fontWeight: 700,
+                              }}>
+                                {j.fit_score}
+                              </span>
+                              {' '}
+                              <span style={{
+                                fontSize: 10,
+                                padding: '2px 6px',
+                                borderRadius: 4,
+                                background: j.fit_label === 'STRONG' ? 'rgba(16,185,129,0.12)' : j.fit_label === 'STRETCH' ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)',
+                                color: j.fit_label === 'STRONG' ? 'var(--green)' : j.fit_label === 'STRETCH' ? 'var(--amber)' : 'var(--red)',
+                              }}>
+                                {j.fit_label || ''}
+                              </span>
+                            </span>
+                            {j.evidence_counts && (
+                              <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>
+                                S{j.evidence_counts.supported}/P{j.evidence_counts.partial}/M{j.evidence_counts.missing}
+                              </span>
+                            )}
+                          </span>
+                        ) : '—'}
+                      </td>
+                      <td style={{ fontSize: 11, color: 'var(--text-dim)' }}>{j.application_status || 'SAVED'}</td>
                       <td>
                         <span className={`badge ${getStatusColor(j.status)}`}>
                           {getStatusLabel(j.status)}

@@ -1,5 +1,5 @@
 import enum
-from sqlalchemy import Integer, String, Text, Enum, ForeignKey, Boolean
+from sqlalchemy import Integer, String, Text, Enum, ForeignKey, Boolean, DateTime
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
@@ -12,6 +12,15 @@ class JobStatus(str, enum.Enum):
     GENERATING_PDF = "GENERATING_PDF"
     READY = "READY"
     FAILED = "FAILED"
+
+
+class ApplicationStatus(str, enum.Enum):
+    SAVED = "SAVED"
+    APPLIED = "APPLIED"
+    INTERVIEW = "INTERVIEW"
+    OFFER = "OFFER"
+    REJECTED = "REJECTED"
+    WITHDRAWN = "WITHDRAWN"
 
 
 class Job(TimestampMixin, Base):
@@ -29,6 +38,33 @@ class Job(TimestampMixin, Base):
     status: Mapped[JobStatus] = mapped_column(
         Enum(JobStatus), default=JobStatus.PENDING, nullable=False
     )
+
+    # Fit / ATS analysis (Phase 0)
+    jd_analysis: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    evidence_map: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    fit_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fit_label: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    fit_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    gap_list: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    gap_roadmap: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    ats_score_before: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ats_score_after: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ats_score_detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    bullet_diff: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Version history + extras (Phase 1)
+    resume_versions: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    cover_letter: Mapped[str | None] = mapped_column(Text, nullable=True)
+    interview_packet: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Application tracker (Phase 2)
+    application_status: Mapped[ApplicationStatus] = mapped_column(
+        Enum(ApplicationStatus), default=ApplicationStatus.SAVED, nullable=False
+    )
+    applied_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    follow_up_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    follow_up_notified_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    application_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     user = relationship("User", back_populates="jobs")
     profile = relationship("Profile", back_populates="jobs")

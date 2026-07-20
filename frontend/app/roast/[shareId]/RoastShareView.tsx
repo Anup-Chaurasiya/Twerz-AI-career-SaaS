@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useCallback } from 'react';
 import { RoastResult } from '@/types';
 
 interface Props {
@@ -11,6 +12,69 @@ interface Props {
 
 export function RoastShareView({ shareId, roastData: data, createdAt }: Props) {
   const scoreColor = data.score > 70 ? 'var(--green)' : data.score > 40 ? 'var(--amber)' : 'var(--red)';
+  const roastLine = data.roast_points?.[0]?.text || data.headline || 'Resume roasted.';
+  const shareUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/roast/${shareId}`
+      : `/roast/${shareId}`;
+
+  const downloadShareCard = useCallback(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1080;
+    canvas.height = 1080;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Background
+    const grad = ctx.createLinearGradient(0, 0, 1080, 1080);
+    grad.addColorStop(0, '#0B1628');
+    grad.addColorStop(1, '#162B45');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 1080, 1080);
+
+    ctx.fillStyle = '#FB4100';
+    ctx.font = 'bold 28px monospace';
+    ctx.fillText('ATS BEATER', 80, 100);
+
+    ctx.fillStyle = '#8BA3C7';
+    ctx.font = '20px monospace';
+    ctx.fillText('RESUME ROAST', 80, 140);
+
+    ctx.fillStyle = data.score > 70 ? '#10B981' : data.score > 40 ? '#F59E0B' : '#EF4444';
+    ctx.font = 'bold 160px monospace';
+    ctx.fillText(String(data.score), 80, 360);
+    ctx.fillStyle = '#8BA3C7';
+    ctx.font = 'bold 48px monospace';
+    ctx.fillText('/100', 80 + ctx.measureText(String(data.score)).width + 16, 360);
+
+    ctx.fillStyle = '#E8F1FF';
+    ctx.font = 'bold 36px sans-serif';
+    const headline = `"${(data.headline || 'Roasted').slice(0, 60)}"`;
+    wrapText(ctx, headline, 80, 440, 920, 48);
+
+    ctx.fillStyle = '#A8BDD6';
+    ctx.font = '28px sans-serif';
+    wrapText(ctx, roastLine.slice(0, 160), 80, 560, 920, 40);
+
+    ctx.fillStyle = '#01A9DB';
+    ctx.font = '22px monospace';
+    ctx.fillText(shareUrl.replace(/^https?:\/\//, '').slice(0, 60), 80, 980);
+
+    const a = document.createElement('a');
+    a.download = `ats-beater-roast-${shareId}.png`;
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+  }, [data.headline, data.score, roastLine, shareId, shareUrl]);
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(
+        typeof window !== 'undefined' ? window.location.href : shareUrl
+      );
+    } catch {
+      /* ignore */
+    }
+  };
 
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--deep)', padding: '24px 16px 80px' }}>
@@ -54,15 +118,54 @@ export function RoastShareView({ shareId, roastData: data, createdAt }: Props) {
           </div>
         </div>
 
-        <div style={{ textAlign: 'center' }}>
-          <Link href="/login" className="btn-primary" style={{ textDecoration: 'none', display: 'inline-flex' }}>
-            Fix My Resume with AI
+        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
+            <button type="button" className="btn-secondary" style={{ fontSize: 12 }} onClick={downloadShareCard}>
+              Download share card
+            </button>
+            <button type="button" className="btn-ghost" style={{ fontSize: 12 }} onClick={copyLink}>
+              Copy link
+            </button>
+          </div>
+          <Link
+            href={`/login?next=/dashboard/jobs/new&utm_source=roast_share&share_id=${encodeURIComponent(shareId)}`}
+            className="btn-primary"
+            style={{ textDecoration: 'none', display: 'inline-flex' }}
+          >
+            Fix this resume for a real JD — free tailor credit after signup
           </Link>
-          <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 16, fontFamily: 'JetBrains Mono' }}>
+          <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4, maxWidth: 420, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.5 }}>
+            Stop guessing. Paste a job description and get an ATS-scored, truthful tailored resume — not a roast.
+          </p>
+          <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 8, fontFamily: 'JetBrains Mono' }}>
             Shared roast · {new Date(createdAt).toLocaleDateString()}
           </p>
         </div>
       </div>
     </div>
   );
+}
+
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number
+) {
+  const words = text.split(' ');
+  let line = '';
+  let yy = y;
+  for (let n = 0; n < words.length; n++) {
+    const test = `${line}${words[n]} `;
+    if (ctx.measureText(test).width > maxWidth && n > 0) {
+      ctx.fillText(line.trim(), x, yy);
+      line = `${words[n]} `;
+      yy += lineHeight;
+    } else {
+      line = test;
+    }
+  }
+  ctx.fillText(line.trim(), x, yy);
 }

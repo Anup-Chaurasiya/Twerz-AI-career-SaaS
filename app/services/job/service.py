@@ -1,5 +1,4 @@
 import asyncio
-import json
 import time
 from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,8 +7,7 @@ from app.models.job import Job, JobStatus
 from app.models.profile import Profile, ProfileStatus
 from app.schemas.custom_resume import CustomResumeInfo
 from app.schemas.job import JobDescription
-from app.services.ai.inference import GeminiInference
-from app.services.ai.prompts import CUSTOM_RESUME_SYSTEM_PROMPT, CUSTOM_RESUME_USER_PROMPT
+from app.services.job.tailor_pipeline import TailorPipeline, _append_version
 from app.services.latex.builder import build_resume
 from app.services.latex.compiler import compile_latex
 from app.services.latex.sanitizer import sanitize_special_chars
@@ -17,7 +15,6 @@ from app.services.storage.gcs import GCSClient
 from app.config import get_settings
 from app.exceptions import JobNotFoundError, ProfileNotFoundError
 from logging import getLogger
-
 logger = getLogger(__name__)
 
 # Local temp directory for PDFs before GCS upload
@@ -28,6 +25,31 @@ GCS_UPLOAD_RETRIES = 3
 GCS_UPLOAD_BACKOFF = 2.0  # seconds, exponential
 
 
+async def _publish_job_progress(job_id: int, status: str, message: str) -> None:
+    """Push SSE progress so the job detail page can leave the spinner without a refresh."""
+    try:
+        from app.api.progress import publish
+
+        await publish("job", job_id, {"status": status, "message": message})
+    except Exception:
+        logger.debug("progress publish failed for job %s", job_id, exc_info=True)
+
+
+def _spawn_gcs_upload(pdf_bytes: bytes, user_id: str, job_id: int) -> None:
+    """Fire-and-forget GCS upload without leaking unretrieved task exceptions."""
+    task = asyncio.create_task(_background_gcs_upload(pdf_bytes, user_id, job_id))
+
+    def _done(t: asyncio.Task) -> None:
+        try:
+            exc = t.exception()
+        except asyncio.CancelledError:
+            return
+        if exc:
+            logger.warning(f"Background GCS upload task failed for job {job_id}: {exc}")
+
+    task.add_done_callback(_done)
+
+
 async def _background_gcs_upload(pdf_bytes: bytes, user_id: str, job_id: int) -> None:
     """Upload PDF to GCS in background with retry. Updates job.pdf_gcs_path on success.
     
@@ -36,10 +58,19 @@ async def _background_gcs_upload(pdf_bytes: bytes, user_id: str, job_id: int) ->
     files disappear on container restart.
     """
     from app.database.session import async_session_factory
-    import sentry_sdk
 
     gcs_path = f"resumes/{user_id}/{job_id}.pdf"
-    gcs = GCSClient()
+    try:
+        gcs = GCSClient()
+    except Exception as e:
+        logger.warning(f"GCS client unavailable for job {job_id}: {e} — keeping local PDF")
+        async with async_session_factory() as db:
+            result = await db.execute(select(Job).where(Job.id == job_id))
+            job = result.scalar_one_or_none()
+            if job:
+                job.gcs_upload_failed = True
+                await db.commit()
+        return
 
     for attempt in range(GCS_UPLOAD_RETRIES):
         try:
@@ -66,10 +97,11 @@ async def _background_gcs_upload(pdf_bytes: bytes, user_id: str, job_id: int) ->
             if attempt < GCS_UPLOAD_RETRIES - 1:
                 await asyncio.sleep(GCS_UPLOAD_BACKOFF * (2 ** attempt))
 
-    # All retries failed — mark failure in DB and capture to Sentry
+    # All retries failed — mark failure in DB (Sentry optional)
     logger.error(f"All GCS upload attempts failed for job {job_id}. PDF available locally only.")
     try:
-        # Capture to Sentry with full context
+        import sentry_sdk
+
         with sentry_sdk.push_scope() as scope:
             scope.set_context("gcs_upload", {
                 "job_id": job_id,
@@ -82,7 +114,7 @@ async def _background_gcs_upload(pdf_bytes: bytes, user_id: str, job_id: int) ->
                 level="error"
             )
     except Exception:
-        pass  # Don't fail if Sentry isn't configured
+        pass  # Don't fail if Sentry isn't installed/configured
     
     # Mark failure in DB so download endpoint knows to use signed URLs or local file
     async with async_session_factory() as db:
@@ -96,7 +128,8 @@ async def _background_gcs_upload(pdf_bytes: bytes, user_id: str, job_id: int) ->
 class JobService:
     def __init__(self):
         settings = get_settings()
-        self.pro_model = settings.GEMINI_PRO_MODEL
+        self.pro_model = settings.LLM_PRO_MODEL
+        self.pipeline = TailorPipeline()
 
     async def create_job(
         self,
@@ -126,8 +159,31 @@ class JobService:
         await db.refresh(job)
         return job
 
+    async def analyze_fit(self, db: AsyncSession, job_id: int, user_id: str) -> Job:
+        """Run JD analysis + evidence map without spending a credit or writing a resume."""
+        job = await self._get_job(db, job_id, user_id)
+        profile = await db.get(Profile, job.profile_id)
+        if not profile:
+            raise ProfileNotFoundError(f"Profile {job.profile_id} not found for job {job_id}")
+        result = await self.pipeline.analyze_fit_only(
+            profile_info=profile.resume_info or {},
+            job_description=job.job_description or {},
+            user_id=user_id,
+            reference_id=str(job_id),
+        )
+        job.jd_analysis = result["jd_analysis"]
+        job.evidence_map = result["evidence_map"]
+        job.fit_score = result["fit_score"]
+        job.fit_label = result["fit_label"]
+        job.fit_rationale = result["fit_rationale"]
+        job.gap_list = result["gap_list"]
+        job.gap_roadmap = result.get("gap_roadmap")
+        await db.commit()
+        await db.refresh(job)
+        return job
+
     async def generate_custom_resume(self, db: AsyncSession, job_id: int, user_id: str) -> None:
-        """Phase 1: AI generates CustomResumeInfo from profile + job description."""
+        """Phase 1: Multi-pass tailor pipeline → CustomResumeInfo + fit/ATS fields."""
         t_start = time.monotonic()
         try:
             job = await self._get_job(db, job_id, user_id)
@@ -138,37 +194,55 @@ class JobService:
 
             job.status = JobStatus.GENERATING_RESUME
             await db.commit()
-            logger.info(f"[job:{job_id}] Phase 1 (resume tailoring) started")
-
-            user_prompt = CUSTOM_RESUME_USER_PROMPT.format(
-                user_info=json.dumps(profile.resume_info or {}),
-                job_description=json.dumps(job.job_description or {}),
-            )
+            await _publish_job_progress(job_id, "GENERATING_RESUME", "Analyzing JD and tailoring resume…")
+            logger.info(f"[job:{job_id}] Phase 1 (multi-pass tailor) started")
 
             t0 = time.monotonic()
-            llm = GeminiInference(model_name=self.pro_model)
-            result = await llm.run_inference(
-                system_prompt=CUSTOM_RESUME_SYSTEM_PROMPT,
-                inputs=[user_prompt],
-                structured_output_schema=CustomResumeInfo,
+            result = await self.pipeline.run(
+                profile_info=profile.resume_info or {},
+                job_description=job.job_description or {},
                 user_id=user_id,
-                purpose="resume_tailoring",
                 reference_id=str(job_id),
             )
             ai_ms = int((time.monotonic() - t0) * 1000)
-            logger.info(f"[job:{job_id}] AI tailoring ({self.pro_model}): {ai_ms}ms {'(SLOW >60s)' if ai_ms > 60000 else ''}")
-
-            # Inject PII from profile
-            resume_info = profile.resume_info or {}
-            result["name"] = resume_info.get("name", "")
-            result["email"] = resume_info.get("email", "")
-            result["mobile_number"] = resume_info.get("mobile_number")
-            result["date_of_birth"] = resume_info.get("date_of_birth")
+            logger.info(f"[job:{job_id}] Tailor pipeline: {ai_ms}ms {'(SLOW >60s)' if ai_ms > 60000 else ''}")
 
             t0 = time.monotonic()
-            job.custom_resume_data = result
+            job.custom_resume_data = result["custom_resume_data"]
+            job.jd_analysis = result.get("jd_analysis")
+            job.evidence_map = result.get("evidence_map")
+            job.fit_score = result.get("fit_score")
+            job.fit_label = result.get("fit_label")
+            job.fit_rationale = result.get("fit_rationale")
+            job.gap_list = result.get("gap_list")
+            job.gap_roadmap = result.get("gap_roadmap")
+            job.ats_score_before = result.get("ats_score_before")
+            job.ats_score_after = result.get("ats_score_after")
+            job.ats_score_detail = result.get("ats_score_detail")
+            job.bullet_diff = result.get("bullet_diff")
+            job.resume_versions = result.get("resume_versions")
             job.status = JobStatus.RESUME_GENERATED
             await db.commit()
+            await _publish_job_progress(
+                job_id,
+                "RESUME_GENERATED",
+                f"Resume tailored (fit {job.fit_label}, ATS {job.ats_score_after}). Compiling PDF…",
+            )
+
+            # Notify user resume is ready for review
+            try:
+                from app.services.notifications.service import NotificationService
+                await NotificationService().notify(
+                    db,
+                    user_id,
+                    title="Resume tailored",
+                    body=f"Your tailored resume is ready (fit {job.fit_label}, ATS {job.ats_score_after}).",
+                    kind="resume_ready",
+                    link=f"/dashboard/jobs/{job_id}",
+                )
+            except Exception:
+                logger.debug("Notification failed for job %s", job_id, exc_info=True)
+
             logger.info(f"[job:{job_id}] DB save: {int((time.monotonic() - t0) * 1000)}ms")
 
             total_ms = int((time.monotonic() - t_start) * 1000)
@@ -184,6 +258,7 @@ class JobService:
                 if job:
                     job.status = JobStatus.FAILED
                     await db.commit()
+                    await _publish_job_progress(job_id, "FAILED", f"Resume generation failed: {e}")
             except Exception:
                 logger.exception(f"Failed to mark job {job_id} as FAILED")
             raise
@@ -207,6 +282,7 @@ class JobService:
             if not recompile:
                 job.status = JobStatus.GENERATING_PDF
                 await db.commit()
+                await _publish_job_progress(job_id, "GENERATING_PDF", "Compiling PDF…")
             logger.info(f"[job:{job_id}] Phase 2 (PDF {'recompile' if recompile else 'generation'}) started")
 
             # Sanitize and build LaTeX
@@ -231,12 +307,13 @@ class JobService:
             job.pdf_gcs_path = str(local_path)
             job.status = JobStatus.READY
             await db.commit()
+            await _publish_job_progress(job_id, "READY", "PDF ready")
 
             total_ms = int((time.monotonic() - t_start) * 1000)
             logger.info(f"[job:{job_id}] Phase 2 COMPLETE total={total_ms}ms")
 
             # Background GCS upload (with retry) — don't block the job status
-            asyncio.create_task(_background_gcs_upload(pdf_bytes, user_id, job_id))
+            _spawn_gcs_upload(pdf_bytes, user_id, job_id)
 
         except Exception as e:
             total_ms = int((time.monotonic() - t_start) * 1000)
@@ -251,17 +328,30 @@ class JobService:
             
             await db.rollback()
             if not recompile:
-                # Only set FAILED for initial PDF generation, not chat-triggered recompiles.
-                # On recompile failure, the previous PDF and READY status are preserved.
+                # Resume JSON already exists from Phase 1 — keep RESUME_GENERATED
+                # so the user can retry PDF for free instead of a dead FAILED job.
                 try:
                     result = await db.execute(select(Job).where(Job.id == job_id))
                     job = result.scalar_one_or_none()
                     if job:
-                        job.status = JobStatus.FAILED
-                        # Store the PDF error log for admin debugging
+                        if job.custom_resume_data:
+                            job.status = JobStatus.RESUME_GENERATED
+                        else:
+                            job.status = JobStatus.FAILED
                         if pdf_error_log:
                             job.pdf_error_log = pdf_error_log
+                        elif str(e):
+                            job.pdf_error_log = str(e)[:5000]
                         await db.commit()
+                        await _publish_job_progress(
+                            job_id,
+                            job.status.value,
+                            (
+                                "PDF compile failed — resume JSON is ready; retry PDF for free."
+                                if job.custom_resume_data
+                                else f"PDF generation failed: {e}"
+                            ),
+                        )
                 except Exception:
                     logger.exception(f"Failed to mark job {job_id} as FAILED")
             else:
@@ -272,6 +362,7 @@ class JobService:
                     if job and job.status != JobStatus.READY:
                         job.status = JobStatus.READY
                         await db.commit()
+                        await _publish_job_progress(job_id, "READY", "Recompile failed; previous PDF restored")
                 except Exception:
                     logger.exception(f"Failed to restore READY status for job {job_id}")
             raise
@@ -319,7 +410,7 @@ class JobService:
         for local_path in local_candidates:
             if await asyncio.to_thread(local_path.exists):
                 pdf_bytes = await asyncio.to_thread(local_path.read_bytes)
-                asyncio.create_task(_background_gcs_upload(pdf_bytes, user_id, job_id))
+                _spawn_gcs_upload(pdf_bytes, user_id, job_id)
                 return pdf_bytes
 
         # 3. Regenerate from stored LaTeX
@@ -327,7 +418,7 @@ class JobService:
             logger.info(f"Regenerating PDF from LaTeX for job {job_id}")
             pdf_bytes = await compile_latex(job.resume_latex_code)
             # Schedule background GCS upload
-            asyncio.create_task(_background_gcs_upload(pdf_bytes, user_id, job_id))
+            _spawn_gcs_upload(pdf_bytes, user_id, job_id)
             return pdf_bytes
 
         raise ValueError("PDF not available — no GCS path, local file, or LaTeX code found")
@@ -337,6 +428,123 @@ class JobService:
     ) -> Job:
         job = await self._get_job(db, job_id, user_id)
         job.custom_resume_data = custom_resume_data
+        job.resume_versions = _append_version(
+            job.resume_versions, custom_resume_data, "manual_edit"
+        )
+        if job.status == JobStatus.READY:
+            job.status = JobStatus.RESUME_GENERATED
+        await db.commit()
+        await db.refresh(job)
+        return job
+
+    async def fix_keyword_gaps(
+        self, db: AsyncSession, job_id: int, user_id: str, keywords: list[str]
+    ) -> Job:
+        job = await self._get_job(db, job_id, user_id)
+        if not job.custom_resume_data or not job.evidence_map:
+            raise ValueError("Generate a tailored resume first before fixing keyword gaps")
+        profile = await db.get(Profile, job.profile_id)
+        profile_info = (profile.resume_info if profile else {}) or {}
+        updated = await self.pipeline.fix_keyword_gaps(
+            resume=job.custom_resume_data,
+            job_description=job.job_description or {},
+            evidence_map=job.evidence_map,
+            keywords=keywords,
+            profile_info=profile_info,
+            user_id=user_id,
+            reference_id=str(job_id),
+        )
+        job.custom_resume_data = updated
+        job.resume_versions = _append_version(job.resume_versions, updated, "gap_fix")
+        if job.status == JobStatus.READY:
+            job.status = JobStatus.RESUME_GENERATED
+        await db.commit()
+        await db.refresh(job)
+        return job
+
+    async def restore_version(
+        self, db: AsyncSession, job_id: int, user_id: str, version: int
+    ) -> Job:
+        job = await self._get_job(db, job_id, user_id)
+        versions = job.resume_versions or []
+        match = next((v for v in versions if v.get("version") == version), None)
+        if not match:
+            raise ValueError(f"Version {version} not found")
+        data = match["data"]
+        job.custom_resume_data = data
+        job.resume_versions = _append_version(versions, data, f"restore_v{version}")
+        if job.status == JobStatus.READY:
+            job.status = JobStatus.RESUME_GENERATED
+        await db.commit()
+        await db.refresh(job)
+        return job
+
+    async def generate_cover_letter(self, db: AsyncSession, job_id: int, user_id: str) -> Job:
+        job = await self._get_job(db, job_id, user_id)
+        if not job.evidence_map:
+            raise ValueError("Generate a tailored resume first (needs evidence map)")
+        profile = await db.get(Profile, job.profile_id)
+        profile_info = (profile.resume_info if profile else {}) or {}
+        letter = await self.pipeline.generate_cover_letter(
+            profile_info=profile_info,
+            job_description=job.job_description or {},
+            evidence_map=job.evidence_map,
+            user_id=user_id,
+            reference_id=str(job_id),
+        )
+        job.cover_letter = letter
+        await db.commit()
+        await db.refresh(job)
+        return job
+
+    async def generate_interview_packet(self, db: AsyncSession, job_id: int, user_id: str) -> Job:
+        job = await self._get_job(db, job_id, user_id)
+        if not job.evidence_map:
+            raise ValueError("Generate a tailored resume first (needs evidence map)")
+        profile = await db.get(Profile, job.profile_id)
+        profile_info = (profile.resume_info if profile else {}) or {}
+        packet = await self.pipeline.generate_interview_packet(
+            profile_info=profile_info,
+            job_description=job.job_description or {},
+            evidence_map=job.evidence_map,
+            user_id=user_id,
+            reference_id=str(job_id),
+        )
+        job.interview_packet = packet
+        await db.commit()
+        await db.refresh(job)
+        return job
+
+    async def update_application_status(
+        self,
+        db: AsyncSession,
+        job_id: int,
+        user_id: str,
+        *,
+        application_status: str | None = None,
+        notes: str | None = None,
+        follow_up_at=None,
+    ) -> Job:
+        from datetime import datetime, timezone
+        from app.models.job import ApplicationStatus
+
+        job = await self._get_job(db, job_id, user_id)
+        if application_status:
+            job.application_status = ApplicationStatus(application_status)
+            if application_status == "APPLIED" and not job.applied_at:
+                job.applied_at = datetime.now(timezone.utc)
+        if notes is not None:
+            job.application_notes = notes
+        if follow_up_at is not None:
+            # Empty string / sentinel clears; new datetime resets reminder idempotency.
+            if follow_up_at == "":
+                job.follow_up_at = None
+                job.follow_up_notified_at = None
+            else:
+                prev = job.follow_up_at
+                job.follow_up_at = follow_up_at
+                if prev != follow_up_at:
+                    job.follow_up_notified_at = None
         await db.commit()
         await db.refresh(job)
         return job

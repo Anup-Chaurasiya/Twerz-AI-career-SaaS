@@ -9,7 +9,7 @@
 | Layer | Tech |
 |-------|------|
 | Backend | FastAPI, SQLAlchemy async, PostgreSQL 16 (Docker), Alembic |
-| AI | `google-genai` SDK, **gemini-3-flash-preview** (profile/OCR), **gemini-3.1-pro-preview** (resume gen) |
+| AI | LiteLLM multi-provider (`LLM_FLASH_MODEL` / `LLM_PRO_MODEL`); Google ADK chat still on Gemini (`GEMINI_*`) |
 | PDF | pdflatex + `resume.cls`, pdfplumber for text extraction |
 | Frontend | Next.js 16 (App Router) + React 19 + Zustand + TanStack Query |
 | Auth | Google OAuth 2.0 → JWT |
@@ -34,9 +34,15 @@ Set `DEV_AUTH_BYPASS=true` in `.env` to skip Google OAuth during development.
 ## How To Test
 
 ```bash
-uv run pytest tests/ -v --ignore=tests/integration  # 99 unit tests (in-memory SQLite, no external deps)
-INTEGRATION=1 uv run pytest tests/integration/ -v   # 9 smoke tests (needs real DB + API key + pdflatex)
+uv run pytest tests/ -v --ignore=tests/integration  # unit + golden matrix invariants (no API key)
+INTEGRATION=1 uv run pytest tests/integration/ -v   # smoke tests (needs real DB + API key + pdflatex)
+
+# Golden JD matrix (live LLM, optional)
+INTEGRATION=1 uv run pytest tests/integration/test_golden_jd_matrix.py -v
+INTEGRATION=1 GOLDEN_FULL=1 GOLDEN_STRICT=1 uv run pytest tests/integration/test_golden_jd_matrix.py -v
 ```
+
+**Regression gate before prompt/pipeline changes:** run unit tests including `tests/test_services/test_golden_matrix.py` (12-cell canned fit bands + mocked STRONG/MISMATCH run invariants). Live matrix is optional.
 
 ## Data Flow
 
@@ -99,7 +105,7 @@ app/
     credit.py              # All credit/payment Pydantic schemas
   database/session.py      # async engine, sessionmaker, get_db() generator
   services/
-    ai/inference.py        # GeminiInference — structured output + retry
+    ai/inference.py        # LLMInference (LiteLLM) — multi-provider structured output + retry
     ai/prompts.py          # System/user prompt templates
     ai/retry.py            # retry_decor with exponential backoff
     ocr/extractor.py       # PDFExtractor — pdfplumber first, Gemini vision fallback

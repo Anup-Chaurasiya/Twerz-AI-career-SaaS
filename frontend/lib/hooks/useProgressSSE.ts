@@ -28,6 +28,7 @@ export function useProgressSSE({
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const onUpdateRef = useRef(onUpdate);
   const onCompleteRef = useRef(onComplete);
+  const completedRef = useRef(false);
   
   const MAX_RETRIES = 5;
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
@@ -39,6 +40,22 @@ export function useProgressSSE({
 
   useEffect(() => {
     if (!enabled || !entityId) return;
+    completedRef.current = false;
+
+    const finish = (status: 'READY' | 'FAILED') => {
+      if (completedRef.current) return;
+      completedRef.current = true;
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      setIsConnected(false);
+      onCompleteRef.current(status);
+    };
 
     const connect = () => {
       try {
@@ -62,11 +79,8 @@ export function useProgressSSE({
               progress: data.progress,
             });
             
-            // Check for completion
             if (data.status === 'READY' || data.status === 'FAILED') {
-              eventSource.close();
-              setIsConnected(false);
-              onCompleteRef.current(data.status as 'READY' | 'FAILED');
+              finish(data.status);
             }
           } catch (err) {
             console.error('Failed to parse SSE message:', err);
@@ -77,27 +91,26 @@ export function useProgressSSE({
           eventSource.close();
           setIsConnected(false);
 
+          if (completedRef.current) return;
           if (retryCountRef.current < MAX_RETRIES) {
             retryCountRef.current++;
-            const backoffDelay = 2000 * retryCountRef.current; // exponential backoff
+            const backoffDelay = 2000 * retryCountRef.current;
             setTimeout(connect, backoffDelay);
           } else {
-            // Fall back to polling after 5 SSE failures
             setError('SSE connection failed, using fallback polling');
-            startPollingFallback();
           }
         };
       } catch (err) {
         console.error('Failed to create EventSource:', err);
         setError('Failed to establish SSE connection');
-        startPollingFallback();
       }
     };
 
     const startPollingFallback = () => {
-      if (pollingIntervalRef.current) return; // Already polling
+      if (pollingIntervalRef.current) return;
       
       const poll = async () => {
+        if (completedRef.current) return;
         try {
           const token = localStorage.getItem('token');
           const response = await fetch(`${API_BASE}/${entityType}s/${entityId}`, {
@@ -109,11 +122,7 @@ export function useProgressSSE({
             onUpdateRef.current({ status: data.status, message: `Status: ${data.status}` });
             
             if (data.status === 'READY' || data.status === 'FAILED') {
-              if (pollingIntervalRef.current) {
-                clearInterval(pollingIntervalRef.current);
-                pollingIntervalRef.current = null;
-              }
-              onCompleteRef.current(data.status);
+              finish(data.status);
             }
           }
         } catch (err) {
@@ -121,12 +130,12 @@ export function useProgressSSE({
         }
       };
 
-      // Poll every 5 seconds
-      pollingIntervalRef.current = setInterval(poll, 5000);
-      poll(); // Initial poll
+      pollingIntervalRef.current = setInterval(poll, 2000);
+      poll();
     };
 
     connect();
+    startPollingFallback();
 
     return () => {
       if (eventSourceRef.current) {

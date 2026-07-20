@@ -25,6 +25,10 @@ class CustomSkills(BaseModel):
     languages: List[str] = Field(default=[], title="List of languages")
     frameworks: List[str] = Field(default=[], title="List of frameworks")
     databases: List[str] = Field(default=[], title="List of databases")
+    security: List[str] = Field(
+        default=[],
+        title="Security, auth, IAM, compliance, and related skills the candidate actually has",
+    )
     other_technologies: List[str] = Field(default=[], title="List of other technologies")
 
 
@@ -58,6 +62,14 @@ class CustomResumeInfo(BaseModel):
     email: str = Field(..., title="Email")
     mobile_number: Optional[str] = Field(default=None, title="Mobile number")
     date_of_birth: Optional[str] = Field(default=None, title="Date of birth")
+    headline: Optional[str] = Field(
+        default=None,
+        title="Professional headline under the name, tailored to the target role using only truthful themes",
+    )
+    summary: Optional[str] = Field(
+        default=None,
+        title="3-4 line professional summary aligned to the JD, evidence-only",
+    )
     links: List[CustomLink] = Field(default=[], title="List of links")
     projects: List[CustomProject] = Field(default=[], title="List of projects")
     past_experience: List[CustomExperience] = Field(default=[], title="List of experiences")

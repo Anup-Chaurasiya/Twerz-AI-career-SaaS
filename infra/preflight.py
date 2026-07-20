@@ -81,46 +81,46 @@ async def check_database():
         report("PostgreSQL — connectivity", False, str(e)[:80], elapsed)
 
 
-async def check_gemini_flash():
-    """Check Gemini Flash model responds."""
+async def check_llm_flash():
+    """Check configured Flash model responds via LiteLLM."""
     from app.config import get_settings
-    from app.services.ai.inference import GeminiInference
+    from app.services.ai.inference import LLMInference
 
     settings = get_settings()
     t0 = time.monotonic()
     try:
-        llm = GeminiInference(model_name=settings.GEMINI_FLASH_MODEL)
+        llm = LLMInference(model_name=settings.LLM_FLASH_MODEL)
         result = await llm.run_inference(
             system_prompt="Reply with exactly: OK",
             inputs=["health check"],
         )
         elapsed = (time.monotonic() - t0) * 1000
         passed = isinstance(result, str) and len(result) > 0
-        report(f"Gemini Flash ({settings.GEMINI_FLASH_MODEL})", passed, f"Response: {result[:30]}", elapsed)
+        report(f"LLM Flash ({settings.LLM_FLASH_MODEL})", passed, f"Response: {result[:30]}", elapsed)
     except Exception as e:
         elapsed = (time.monotonic() - t0) * 1000
-        report(f"Gemini Flash ({settings.GEMINI_FLASH_MODEL})", False, str(e)[:80], elapsed)
+        report(f"LLM Flash ({settings.LLM_FLASH_MODEL})", False, str(e)[:80], elapsed)
 
 
-async def check_gemini_pro():
-    """Check Gemini Pro model responds."""
+async def check_llm_pro():
+    """Check configured Pro model responds via LiteLLM."""
     from app.config import get_settings
-    from app.services.ai.inference import GeminiInference
+    from app.services.ai.inference import LLMInference
 
     settings = get_settings()
     t0 = time.monotonic()
     try:
-        llm = GeminiInference(model_name=settings.GEMINI_PRO_MODEL)
+        llm = LLMInference(model_name=settings.LLM_PRO_MODEL)
         result = await llm.run_inference(
             system_prompt="Reply with exactly: OK",
             inputs=["health check"],
         )
         elapsed = (time.monotonic() - t0) * 1000
         passed = isinstance(result, str) and len(result) > 0
-        report(f"Gemini Pro ({settings.GEMINI_PRO_MODEL})", passed, f"Response: {result[:30]}", elapsed)
+        report(f"LLM Pro ({settings.LLM_PRO_MODEL})", passed, f"Response: {result[:30]}", elapsed)
     except Exception as e:
         elapsed = (time.monotonic() - t0) * 1000
-        report(f"Gemini Pro ({settings.GEMINI_PRO_MODEL})", False, str(e)[:80], elapsed)
+        report(f"LLM Pro ({settings.LLM_PRO_MODEL})", False, str(e)[:80], elapsed)
 
 
 async def check_latex():
@@ -173,8 +173,8 @@ async def main():
     print(f"\n{BOLD}ATS Beater — Pre-flight Check{RESET}\n")
 
     await check_database()
-    # Run Gemini checks in parallel
-    await asyncio.gather(check_gemini_flash(), check_gemini_pro())
+    # Run LLM checks in parallel
+    await asyncio.gather(check_llm_flash(), check_llm_pro())
     await check_latex()
     await check_gcs()
 

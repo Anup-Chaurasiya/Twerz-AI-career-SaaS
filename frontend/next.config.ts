@@ -20,6 +20,12 @@ const nextConfig: NextConfig = {
       { source: '/credits/:path*', destination: `${api}/credits/:path*` },
       { source: '/payments/:path*', destination: `${api}/payments/:path*` },
       { source: '/admin/:path*', destination: `${api}/admin/:path*` },
+      { source: '/notifications/:path*', destination: `${api}/notifications/:path*` },
+      { source: '/notifications', destination: `${api}/notifications` },
+      { source: '/account/:path*', destination: `${api}/account/:path*` },
+      { source: '/account', destination: `${api}/account` },
+      { source: '/extension/:path*', destination: `${api}/extension/:path*` },
+      { source: '/progress/:path*', destination: `${api}/progress/:path*` },
       { source: '/health', destination: `${api}/health` },
     ];
   },

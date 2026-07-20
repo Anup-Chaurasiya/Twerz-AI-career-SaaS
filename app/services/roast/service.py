@@ -15,7 +15,7 @@ from app.config import get_settings
 from app.exceptions import RoastNotFoundError
 from app.models.roast import Roast, RoastStatus
 from app.schemas.roast import RoastResult
-from app.services.ai.inference import GeminiInference
+from app.services.ai.inference import LLMInference
 from app.services.ai.prompts import ROAST_SYSTEM_PROMPT
 from app.services.ocr.extractor import PDFExtractor
 
@@ -29,7 +29,7 @@ class RoastService:
     def __init__(self) -> None:
         self.extractor = PDFExtractor()
         settings = get_settings()
-        self.flash_model = settings.GEMINI_FLASH_MODEL
+        self.flash_model = settings.LLM_FLASH_MODEL
 
     @staticmethod
     def compute_hash(pdf_bytes: bytes) -> str:
@@ -97,7 +97,7 @@ class RoastService:
             images: list[dict[str, Any]] = await self.pdf_to_images(pdf_bytes)
 
             now: str = datetime.now(timezone.utc).strftime("%B %d, %Y")
-            llm: GeminiInference = GeminiInference(model_name=self.flash_model)
+            llm: LLMInference = LLMInference(model_name=self.flash_model)
 
             user_message_parts: list[Any] = [
                 f"Today's date is {now}. Here is the resume to roast. Examine each page — look at both the content AND the formatting/layout.",

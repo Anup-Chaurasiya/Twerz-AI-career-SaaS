@@ -118,14 +118,16 @@ async def test_time_pass_stacking(db_session, test_user):
 
 @pytest.mark.asyncio
 async def test_daily_reset(db_session, test_user):
+    from datetime import timezone
+    utc_today = datetime.now(timezone.utc).date()
     uc = await service.ensure_user_credit(db_session, test_user.id)
     uc.daily_free_used = 3
-    uc.daily_free_reset_date = date.today() - timedelta(days=1)
+    uc.daily_free_reset_date = utc_today - timedelta(days=1)
     await db_session.commit()
 
     service._reset_daily_if_needed(uc)
     assert uc.daily_free_used == 0
-    assert uc.daily_free_reset_date == date.today()
+    assert uc.daily_free_reset_date == utc_today
 
 
 @pytest.mark.asyncio

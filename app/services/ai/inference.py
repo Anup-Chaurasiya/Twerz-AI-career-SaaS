@@ -1,16 +1,18 @@
 import asyncio
 import json
+import os
 import time
 from logging import getLogger
-from typing import Type
+from typing import Any, Type
+
 from pydantic import BaseModel, ValidationError
-from google import genai
-from google.genai import types
-from app.config import get_settings, is_gemini_configured
+from litellm import acompletion
+
+from app.config import get_settings, is_llm_configured
 from app.exceptions import AIInferenceError
 from app.services.ai.retry import retry_decor
 
-# If primary model exceeds this, immediately fall back to GEMINI_PRO_MODEL.
+# If primary model exceeds this, immediately fall back to LLM_PRO_MODEL.
 PRIMARY_TIMEOUT_SECONDS = 60
 
 logger = getLogger(__name__)
@@ -59,11 +61,120 @@ async def _log_request(
         logger.debug("Failed to persist LLMRequest row", exc_info=True)
 
 
-class GeminiInference:
+def _normalize_content_part(part: Any) -> dict | str:
+    """Convert Gemini-style or plain parts into OpenAI/LiteLLM multimodal parts."""
+    if isinstance(part, str):
+        return {"type": "text", "text": part}
+
+    if not isinstance(part, dict):
+        return {"type": "text", "text": str(part)}
+
+    # Already OpenAI-style multimodal
+    if part.get("type") in ("text", "image_url"):
+        return part
+
+    # Gemini inline_data → data URL
+    inline = part.get("inline_data") or part.get("inlineData")
+    if isinstance(inline, dict):
+        mime = inline.get("mime_type") or inline.get("mimeType") or "image/jpeg"
+        data = inline.get("data", "")
+        return {
+            "type": "image_url",
+            "image_url": {"url": f"data:{mime};base64,{data}"},
+        }
+
+    if "text" in part:
+        return {"type": "text", "text": part["text"]}
+
+    return {"type": "text", "text": json.dumps(part)}
+
+
+def build_messages(system_prompt: str, inputs: list | None) -> list[dict]:
+    """Build LiteLLM/OpenAI chat messages from system prompt + mixed inputs."""
+    messages: list[dict] = [{"role": "system", "content": system_prompt}]
+    if not inputs:
+        return messages
+
+    # Single plain string → simple user message
+    if len(inputs) == 1 and isinstance(inputs[0], str):
+        messages.append({"role": "user", "content": inputs[0]})
+        return messages
+
+    # Mixed text/images → multimodal content array
+    content = [_normalize_content_part(p) for p in inputs]
+    # Collapse to plain string when everything is text (better provider compat)
+    if all(
+        isinstance(c, dict) and c.get("type") == "text" for c in content
+    ):
+        text = "\n".join(c["text"] for c in content)
+        messages.append({"role": "user", "content": text})
+    else:
+        messages.append({"role": "user", "content": content})
+    return messages
+
+
+def _response_text(response: Any) -> str:
+    """Extract assistant text from a LiteLLM completion response."""
+    try:
+        content = response.choices[0].message.content
+    except (AttributeError, IndexError, KeyError, TypeError):
+        content = None
+    if content is None:
+        return ""
+    if isinstance(content, list):
+        # Some providers return multimodal content blocks
+        texts = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                texts.append(block.get("text", ""))
+            elif isinstance(block, str):
+                texts.append(block)
+        return "".join(texts).strip()
+    return str(content).strip()
+
+
+def _usage_tokens(response: Any) -> tuple[int, int, int, int]:
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return 0, 0, 0, 0
+    input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+    output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+    total_tokens = int(getattr(usage, "total_tokens", 0) or (input_tokens + output_tokens))
+    details = getattr(usage, "prompt_tokens_details", None)
+    cached_tokens = 0
+    if details is not None:
+        cached_tokens = int(getattr(details, "cached_tokens", 0) or 0)
+    return input_tokens, output_tokens, total_tokens, cached_tokens
+
+
+def _api_key_for_model(model: str) -> str | None:
+    """Pick the provider API key for a LiteLLM model string."""
+    settings = get_settings()
+    # Ensure keys from .env are visible to LiteLLM even if the process
+    # started before Settings synced them into os.environ.
+    if settings.OPENAI_API_KEY:
+        os.environ["OPENAI_API_KEY"] = settings.OPENAI_API_KEY
+    if settings.ANTHROPIC_API_KEY:
+        os.environ["ANTHROPIC_API_KEY"] = settings.ANTHROPIC_API_KEY
+    if settings.GEMINI_API_KEY:
+        os.environ["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
+
+    m = model.lower()
+    if m.startswith("openai/") or m.startswith("gpt-"):
+        return settings.OPENAI_API_KEY or None
+    if m.startswith("anthropic/") or m.startswith("claude"):
+        return settings.ANTHROPIC_API_KEY or None
+    if m.startswith("gemini/") or m.startswith("vertex_ai/"):
+        return settings.GEMINI_API_KEY or settings.GOOGLE_API_KEY or None
+    return None
+
+
+class LLMInference:
+    """Provider-agnostic LLM client via LiteLLM (Gemini, OpenAI, Anthropic, …)."""
+
     def __init__(self, model_name: str | None = None):
         settings = get_settings()
-        self.model = model_name or settings.GEMINI_FLASH_MODEL
-        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        self.model = model_name or settings.LLM_FLASH_MODEL
 
     def parse_output(
         self,
@@ -96,22 +207,30 @@ class GeminiInference:
     async def _call_api(
         self,
         model: str,
-        config_params: dict,
-        inputs: list | None,
+        messages: list[dict],
         *,
+        temperature: float = 0.1,
+        response_format: Any | None = None,
         timeout: int | None = None,
         user_id: str | None = None,
         purpose: str | None = None,
         reference_id: str | None = None,
     ):
-        """Single Gemini API call with optional timeout. Returns the raw response."""
+        """Single LiteLLM completion with optional timeout."""
         t0 = time.monotonic()
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+        }
+        api_key = _api_key_for_model(model)
+        if api_key:
+            kwargs["api_key"] = api_key
+        if response_format is not None:
+            kwargs["response_format"] = response_format
+
         try:
-            coro = self.client.aio.models.generate_content(
-                model=model,
-                config=types.GenerateContentConfig(**config_params),
-                contents=inputs,
-            )
+            coro = acompletion(**kwargs)
             if timeout:
                 response = await asyncio.wait_for(coro, timeout=timeout)
             else:
@@ -140,11 +259,7 @@ class GeminiInference:
             raise
 
         elapsed_ms = int((time.monotonic() - t0) * 1000)
-        usage = getattr(response, "usage_metadata", None)
-        input_tokens = getattr(usage, "prompt_token_count", 0) if usage else 0
-        output_tokens = getattr(usage, "candidates_token_count", 0) if usage else 0
-        total_tokens = getattr(usage, "total_token_count", 0) if usage else 0
-        cached_tokens = getattr(usage, "cached_content_token_count", 0) if usage else 0
+        input_tokens, output_tokens, total_tokens, cached_tokens = _usage_tokens(response)
 
         log_fn = logger.warning if elapsed_ms > 60000 else logger.info
         log_fn(
@@ -168,17 +283,23 @@ class GeminiInference:
     async def _call_api_with_retry(
         self,
         model: str,
-        config_params: dict,
-        inputs: list | None,
+        messages: list[dict],
         *,
+        temperature: float = 0.1,
+        response_format: Any | None = None,
         user_id: str | None = None,
         purpose: str | None = None,
         reference_id: str | None = None,
     ):
-        """Gemini API call with retry (no timeout — used for fallback model)."""
+        """LiteLLM call with retry (no timeout — used for fallback model)."""
         return await self._call_api(
-            model, config_params, inputs,
-            user_id=user_id, purpose=purpose, reference_id=reference_id,
+            model,
+            messages,
+            temperature=temperature,
+            response_format=response_format,
+            user_id=user_id,
+            purpose=purpose,
+            reference_id=reference_id,
         )
 
     async def run_inference(
@@ -192,47 +313,43 @@ class GeminiInference:
         user_id: str | None = None,
         purpose: str | None = None,
         reference_id: str | None = None,
-        thinking_level: str = "LOW",
+        thinking_level: str = "LOW",  # kept for call-site compat; unused by LiteLLM
         fallback_model: str | None = None,
         primary_timeout: int | None = PRIMARY_TIMEOUT_SECONDS,
     ) -> str | dict | list:
+        del thinking_level  # Gemini-specific; not applied via LiteLLM
         if fallback_model is None:
-            fallback_model = get_settings().GEMINI_PRO_MODEL
-        if not is_gemini_configured():
+            fallback_model = get_settings().LLM_PRO_MODEL
+        if not is_llm_configured():
             raise AIInferenceError(
-                "GEMINI_API_KEY is not configured. Add a valid key from "
-                "https://aistudio.google.com/apikey to your .env file."
-            )
-        config_params: dict = {
-            "system_instruction": system_prompt,
-            "temperature": temperature,
-        }
-
-        # Constrain thinking to reduce Gemini 3 preview latency spikes
-        if thinking_level:
-            config_params["thinking_config"] = types.ThinkingConfig(
-                thinking_level=thinking_level,
+                "No LLM API key configured. Set GEMINI_API_KEY, OPENAI_API_KEY, "
+                "or ANTHROPIC_API_KEY in your .env file."
             )
 
+        messages = build_messages(system_prompt, inputs)
+
+        response_format: Any | None = None
         if structured_output_schema:
-            config_params["response_mime_type"] = "application/json"
-            if isinstance(structured_output_schema, type) and issubclass(
-                structured_output_schema, BaseModel
-            ):
-                config_params["response_schema"] = structured_output_schema
+            # Prefer provider-native JSON schema when LiteLLM/provider supports it.
+            # Falls back gracefully; parse_output still validates Pydantic.
+            response_format = structured_output_schema
 
-        call_kwargs = dict(user_id=user_id, purpose=purpose, reference_id=reference_id)
+        call_kwargs = dict(
+            temperature=temperature,
+            response_format=response_format,
+            user_id=user_id,
+            purpose=purpose,
+            reference_id=reference_id,
+        )
 
         async def _get_response():
             """Primary → retry → fallback flow."""
-            # Strip thinking_config for fallback — Gemini 2.5 uses thinking_budget,
-            # not thinking_level; passing the wrong one may cause an API error.
-            fallback_params = {k: v for k, v in config_params.items() if k != "thinking_config"}
-
             try:
                 return await self._call_api(
-                    self.model, config_params, inputs,
-                    timeout=primary_timeout, **call_kwargs,
+                    self.model,
+                    messages,
+                    timeout=primary_timeout,
+                    **call_kwargs,
                 )
             except asyncio.TimeoutError:
                 if not fallback_model or fallback_model == self.model:
@@ -242,16 +359,15 @@ class GeminiInference:
                     f"falling back to {fallback_model}"
                 )
                 return await self._call_api_with_retry(
-                    fallback_model, fallback_params, inputs, **call_kwargs,
+                    fallback_model, messages, **call_kwargs,
                 )
             except Exception:
                 # Non-timeout errors (429, 503, network): retry with primary model first
                 try:
                     return await self._call_api_with_retry(
-                        self.model, config_params, inputs, **call_kwargs,
+                        self.model, messages, **call_kwargs,
                     )
                 except Exception:
-                    # Primary retries exhausted — fall back
                     if not fallback_model or fallback_model == self.model:
                         raise
                     logger.warning(
@@ -259,7 +375,7 @@ class GeminiInference:
                         f"falling back to {fallback_model}"
                     )
                     return await self._call_api_with_retry(
-                        fallback_model, fallback_params, inputs, **call_kwargs,
+                        fallback_model, messages, **call_kwargs,
                     )
 
         # Retry on schema validation failures — the AI returned valid JSON but it
@@ -268,7 +384,7 @@ class GeminiInference:
         max_validation_retries = 2
         for attempt in range(1 + max_validation_retries):
             response = await _get_response()
-            response_str: str = response.text.strip()
+            response_str = _response_text(response)
 
             if not structured_output_schema:
                 return response_str
@@ -286,3 +402,7 @@ class GeminiInference:
                 logger.warning(
                     f"Schema validation failed (attempt {attempt + 1}), retrying: {e}"
                 )
+
+
+# Backward-compatible alias for existing imports / tests
+GeminiInference = LLMInference

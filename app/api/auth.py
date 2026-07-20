@@ -173,6 +173,47 @@ async def complete_onboarding(
     
     Called after user completes the welcome flow (uploads resume, sees tutorial, etc.)
     """
-    current_user.onboarding_completed = True
+    user = await db.get(User, current_user.id)
+    if not user:
+        raise AuthenticationError("User not found")
+    user.onboarding_completed = True
     await db.commit()
     return {"success": True, "onboarding_completed": True}
+
+
+@router.post("/attribution")
+async def set_signup_attribution(
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set signup_source / signup_share_id once (first-write wins)."""
+    user = await db.get(User, current_user.id)
+    if not user:
+        raise AuthenticationError("User not found")
+
+    source = (payload.get("source") or payload.get("utm_source") or "").strip()[:64]
+    share_id = (payload.get("share_id") or "").strip()[:32] or None
+    if not source:
+        return {
+            "success": False,
+            "updated": False,
+            "signup_source": user.signup_source,
+            "signup_share_id": user.signup_share_id,
+        }
+
+    updated = False
+    if not user.signup_source:
+        user.signup_source = source
+        updated = True
+    if share_id and not user.signup_share_id:
+        user.signup_share_id = share_id
+        updated = True
+    if updated:
+        await db.commit()
+    return {
+        "success": True,
+        "updated": updated,
+        "signup_source": user.signup_source,
+        "signup_share_id": user.signup_share_id,
+    }

@@ -174,3 +174,19 @@ def test_build_resume_with_projects():
     latex = build_resume(info)
     assert "Projects" in latex
     assert "MyProject" in latex
+
+
+def test_build_resume_with_headline_and_summary():
+    info = CustomResumeInfo(
+        name="Anup",
+        email="a@example.com",
+        headline="Software Engineer | Auth & APIs",
+        summary="Engineer building authenticated SaaS platforms with OAuth and JWT.",
+        skills=CustomSkills(security=["OAuth", "JWT"], languages=["Python"]),
+    )
+    latex = build_resume(info)
+    assert "Software Engineer" in latex
+    assert "Summary" in latex
+    assert "authenticated SaaS" in latex
+    assert "Security / Auth" in latex
+    assert "OAuth" in latex

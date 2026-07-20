@@ -45,18 +45,27 @@ def _extract_errors(log_text: str) -> str:
     return "\n".join(lines[-20:])
 
 
-async def _run_pdflatex(tmp_path: Path, env: dict, pass_num: int) -> tuple[int, bytes, bytes]:
+async def _run_pdflatex(
+    pdflatex_bin: str, tmp_path: Path, env: dict, pass_num: int
+) -> tuple[int, bytes, bytes]:
     """Run a single pdflatex pass. Returns (returncode, stdout, stderr)."""
-    process = await asyncio.create_subprocess_exec(
-        "pdflatex",
-        "-interaction=nonstopmode",
-        "-halt-on-error",
-        "resume.tex",
-        cwd=str(tmp_path),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        env=env,
-    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            pdflatex_bin,
+            "-interaction=nonstopmode",
+            "-halt-on-error",
+            "resume.tex",
+            cwd=str(tmp_path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+        )
+    except FileNotFoundError as e:
+        raise LaTeXCompilationError(
+            f"pdflatex not found at '{pdflatex_bin}'. "
+            "Install BasicTeX (brew install --cask basictex) or MacTeX, "
+            "then set LATEX_BIN_PATH in .env (e.g. /Library/TeX/texbin)."
+        ) from e
 
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=PDFLATEX_TIMEOUT)
@@ -65,6 +74,24 @@ async def _run_pdflatex(tmp_path: Path, env: dict, pass_num: int) -> tuple[int, 
         raise LaTeXCompilationError(f"LaTeX compilation timed out on pass {pass_num} (>{PDFLATEX_TIMEOUT}s)")
 
     return process.returncode, stdout, stderr
+
+
+def _resolve_pdflatex(tex_bin_path: str) -> str:
+    """Return absolute pdflatex path, preferring LATEX_BIN_PATH then PATH."""
+    candidates = [
+        Path(tex_bin_path) / "pdflatex" if tex_bin_path else None,
+        Path("/Library/TeX/texbin/pdflatex"),
+        Path("/usr/local/texlive/2025/bin/universal-darwin/pdflatex"),
+        Path("/usr/local/texlive/2024/bin/universal-darwin/pdflatex"),
+    ]
+    for path in candidates:
+        if path and path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+    which = shutil.which("pdflatex")
+    if which:
+        return which
+    # Fall back to bare name so caller gets a clear FileNotFoundError message
+    return str(Path(tex_bin_path) / "pdflatex") if tex_bin_path else "pdflatex"
 
 
 async def compile_latex(latex_code: str) -> bytes:
@@ -84,6 +111,15 @@ async def compile_latex(latex_code: str) -> bytes:
         logger.error(f"LaTeX validation failed: {validation_error}")
         raise LaTeXCompilationError(f"Resume content has formatting issues: {validation_error}")
 
+    tex_bin_path = settings.LATEX_BIN_PATH
+    pdflatex_bin = _resolve_pdflatex(tex_bin_path)
+    if not Path(pdflatex_bin).is_file() and shutil.which(pdflatex_bin) is None:
+        raise LaTeXCompilationError(
+            f"pdflatex not found at '{pdflatex_bin}'. "
+            "Install BasicTeX (brew install --cask basictex) or MacTeX, "
+            "then set LATEX_BIN_PATH in .env (e.g. /Library/TeX/texbin)."
+        )
+
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
 
@@ -99,10 +135,10 @@ async def compile_latex(latex_code: str) -> bytes:
         tex_path.write_text(latex_code, encoding="utf-8")
 
         # Ensure pdflatex is in PATH
-        tex_bin_path = settings.LATEX_BIN_PATH
         env = os.environ.copy()
-        if tex_bin_path not in env.get("PATH", ""):
-            env["PATH"] = tex_bin_path + os.pathsep + env.get("PATH", "")
+        bin_dir = str(Path(pdflatex_bin).parent)
+        if bin_dir not in env.get("PATH", ""):
+            env["PATH"] = bin_dir + os.pathsep + env.get("PATH", "")
 
         pdf_path = tmp_path / "resume.pdf"
         log_path = tmp_path / "resume.log"
@@ -110,7 +146,9 @@ async def compile_latex(latex_code: str) -> bytes:
 
         # Run pdflatex twice (cross-references + hyperref bookmarks)
         for pass_num in range(1, PDFLATEX_PASSES + 1):
-            returncode, stdout, stderr = await _run_pdflatex(tmp_path, env, pass_num)
+            returncode, stdout, stderr = await _run_pdflatex(
+                pdflatex_bin, tmp_path, env, pass_num
+            )
 
             if returncode != 0:
                 # Read full log file for storage

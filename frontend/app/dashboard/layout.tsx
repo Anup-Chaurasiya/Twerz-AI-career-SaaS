@@ -1,17 +1,31 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useCreditStore } from '@/lib/stores/creditStore';
+import { notificationsApi } from '@/lib/api/endpoints';
+import { OnboardingWelcomeModal } from '@/components/OnboardingWelcomeModal';
 
 const navItems = [
   { href: '/dashboard', icon: (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>), label: 'Dashboard' },
   { href: '/dashboard/profiles', icon: (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 10V8a2.4 2.4 0 0 0-.706-1.704l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.35"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M16 14a2 2 0 0 0-2 2"/><path d="M16 22a2 2 0 0 1-2-2"/><path d="M20 14a2 2 0 0 1 2 2"/><path d="M20 22a2 2 0 0 0 2-2"/></svg>), label: 'Profiles' },
   { href: '/dashboard/jobs', icon: (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>), label: 'Jobs' },
+  { href: '/dashboard/tracker', icon: (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>), label: 'Tracker' },
   { href: '/dashboard/roasts', icon: (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>), label: 'Roasts' },
   { href: '/dashboard/credits', icon: (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>), label: 'Credits' },
+  { href: '/dashboard/account', icon: (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>), label: 'Account' },
 ];
+
+type NotifItem = {
+  id: number;
+  title: string;
+  body: string;
+  kind: string;
+  link: string | null;
+  is_read: boolean;
+  created_at: string;
+};
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoggedIn, isLoading, logout } = useAuthStore();
@@ -19,14 +33,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [notifs, setNotifs] = useState<NotifItem[]>([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  const unreadCount = notifs.filter((n) => !n.is_read).length;
+
+  const loadNotifs = () => {
+    notificationsApi.list(false).then((res) => setNotifs(res.data.items || [])).catch(() => {});
+  };
 
   useEffect(() => {
     if (!isLoading && !isLoggedIn) router.push('/login');
   }, [isLoading, isLoggedIn, router]);
 
   useEffect(() => {
-    if (isLoggedIn) fetchBalance();
+    if (isLoggedIn) {
+      fetchBalance();
+      loadNotifs();
+      const t = setInterval(loadNotifs, 60_000);
+      return () => clearInterval(t);
+    }
   }, [isLoggedIn, fetchBalance]);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
 
   if (isLoading) {
     return (
@@ -44,6 +82,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const isActive = (href: string) => href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href);
 
+  const onNotifClick = async (n: NotifItem) => {
+    if (!n.is_read) {
+      try {
+        await notificationsApi.markRead(n.id);
+        setNotifs((prev) => prev.map((x) => (x.id === n.id ? { ...x, is_read: true } : x)));
+      } catch { /* ignore */ }
+    }
+    setNotifOpen(false);
+    if (n.link) router.push(n.link);
+  };
+
   return (
     <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden', background: 'var(--deep)', position: 'relative' }}>
       <div className="dot-grid" aria-hidden />
@@ -51,12 +100,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="ambient-orb" style={{ width: 500, height: 500, top: -100, left: 200, background: 'rgba(1,169,219,0.04)' }} aria-hidden />
       <div className="ambient-orb" style={{ width: 350, height: 350, bottom: 50, right: 200, background: 'rgba(251,65,0,0.03)', animationDirection: 'alternate-reverse', animationDuration: '16s' }} aria-hidden />
 
-      {/* Sidebar Backdrop */}
       <div className={`sidebar-backdrop ${sidebarOpen ? 'visible' : ''}`} onClick={() => setSidebarOpen(false)} />
 
-      {/* Sidebar */}
       <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`} style={{ position: 'relative', zIndex: 60 }}>
-        {/* Logo */}
         <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid rgba(1,169,219,0.08)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'JetBrains Mono', fontWeight: 800, fontSize: 15 }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, rgba(251,65,0,0.2), rgba(251,65,0,0.05))', border: '1px solid rgba(251,65,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -66,7 +112,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </div>
 
-        {/* Nav */}
         <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
           <div style={{ marginBottom: 4 }}>
             <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', color: 'var(--text-dim)', padding: '0 8px', marginBottom: 8 }}>Navigation</div>
@@ -88,7 +133,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           )}
         </nav>
 
-        {/* Credits */}
         {balance && (
           <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(1,169,219,0.08)' }}>
             <div style={{ background: 'rgba(1,169,219,0.06)', border: '1px solid rgba(1,169,219,0.12)', borderRadius: 8, padding: '10px 12px' }}>
@@ -102,7 +146,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         )}
 
-        {/* User */}
         <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(1,169,219,0.08)', display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(251,65,0,0.15)', border: '1px solid rgba(251,65,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'JetBrains Mono', fontWeight: 700, fontSize: 12, color: 'var(--orange)', flexShrink: 0 }}>
             {user?.name?.charAt(0).toUpperCase()}
@@ -117,9 +160,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      {/* Main Content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', zIndex: 2 }}>
-        {/* Header */}
         <header className="top-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button className="hamburger-btn" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Toggle menu">
@@ -132,6 +173,58 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div ref={notifRef} style={{ position: 'relative' }}>
+              <button
+                className="btn-ghost"
+                aria-label="Notifications"
+                onClick={() => { setNotifOpen((o) => !o); if (!notifOpen) loadNotifs(); }}
+                style={{ padding: '6px 8px', position: 'relative' }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+                {unreadCount > 0 && (
+                  <span style={{
+                    position: 'absolute', top: 2, right: 2, minWidth: 14, height: 14, borderRadius: 7,
+                    background: 'var(--orange)', color: '#fff', fontSize: 9, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
+                    fontFamily: 'JetBrains Mono',
+                  }}>
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+              {notifOpen && (
+                <div style={{
+                  position: 'absolute', right: 0, top: '100%', marginTop: 8, width: 320, maxHeight: 360,
+                  overflowY: 'auto', background: 'var(--card)', border: '1px solid var(--card-border)',
+                  borderRadius: 10, boxShadow: '0 12px 40px rgba(0,0,0,0.45)', zIndex: 100,
+                }}>
+                  <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--card-border)', fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>
+                    NOTIFICATIONS
+                  </div>
+                  {!notifs.length && (
+                    <div style={{ padding: 16, fontSize: 12, color: 'var(--text-dim)' }}>No notifications yet</div>
+                  )}
+                  {notifs.map((n) => (
+                    <button
+                      key={n.id}
+                      onClick={() => onNotifClick(n)}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px',
+                        border: 'none', borderBottom: '1px solid rgba(255,255,255,0.04)',
+                        background: n.is_read ? 'transparent' : 'rgba(1,169,219,0.06)',
+                        cursor: 'pointer', color: 'var(--text-primary)',
+                      }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: n.is_read ? 500 : 700 }}>{n.title}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>{n.body}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             {balance && !balance.has_unlimited && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: 'rgba(1,169,219,0.06)', border: '1px solid rgba(1,169,219,0.12)', borderRadius: 6 }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
@@ -148,6 +241,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </header>
         <main style={{ flex: 1, overflow: 'hidden' }}>{children}</main>
       </div>
+      <OnboardingWelcomeModal />
     </div>
   );
 }

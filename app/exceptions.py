@@ -28,6 +28,14 @@ class ForbiddenError(Exception):
     pass
 
 
+class PaymentRequiredError(Exception):
+    """402 — feature gated behind Job Hunt Pro / time pass."""
+
+    def __init__(self, message: str, *, paywall: dict | None = None):
+        super().__init__(message)
+        self.paywall = paywall or {}
+
+
 class RoastNotFoundError(Exception):
     pass
 

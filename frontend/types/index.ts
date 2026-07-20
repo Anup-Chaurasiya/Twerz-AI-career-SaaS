@@ -5,9 +5,13 @@ export interface User {
   name: string;
   picture_url?: string;
   consent_accepted: boolean;
+  onboarding_completed?: boolean;
+  is_new_user?: boolean;
   is_super_admin: boolean;
   tenant_id?: string;
   tenant_name?: string;
+  signup_source?: string | null;
+  signup_share_id?: string | null;
 }
 
 export interface LoginResponse {
@@ -110,6 +114,73 @@ export interface Job {
   created_at: string;
   updated_at: string;
   candidate_name?: string;
+  fit_score?: number | null;
+  fit_label?: 'STRONG' | 'STRETCH' | 'MISMATCH' | string | null;
+  fit_rationale?: string | null;
+  fit_score_breakdown?: {
+    coverage_pct: number;
+    coverage_score: number;
+    seniority: {
+      jd: string;
+      candidate: string;
+      gap: number;
+      penalty: number;
+    };
+    raw_score: number;
+    final_score: number;
+    fit_label?: string;
+    formula: string;
+    weights: { SUPPORTED: number; PARTIAL: number; MISSING: number };
+    items: Array<{ requirement: string; support: string; weight: number }>;
+    counts: { supported: number; partial: number; missing: number };
+  } | null;
+  evidence_counts?: { supported: number; partial: number; missing: number } | null;
+  gap_list?: string[];
+  gap_roadmap?: {
+    summary?: string;
+    steps?: Array<{
+      title: string;
+      detail: string;
+      category?: 'skill' | 'cert' | 'project' | 'experience' | 'other' | string;
+    }>;
+  } | null;
+  jd_analysis?: Record<string, any> | null;
+  evidence_map?: {
+    items?: Array<{
+      requirement: string;
+      support: 'SUPPORTED' | 'PARTIAL' | 'MISSING' | string;
+      evidence_quote?: string | null;
+      transferable_angle?: string | null;
+    }>;
+    gaps?: string[];
+    transferable_themes?: string[];
+  } | null;
+  ats_score_before?: number | null;
+  ats_score_after?: number | null;
+  ats_score_detail?: Record<string, any> | null;
+  bullet_diff?: {
+    experiences?: Array<{
+      company?: string;
+      role?: string;
+      pairs: Array<{ original: string; tailored: string; keyword?: string | null }>;
+    }>;
+    projects?: Array<{
+      name?: string;
+      pairs: Array<{ original: string; tailored: string; keyword?: string | null }>;
+    }>;
+  } | null;
+  resume_versions?: Array<{ version: number; label: string }>;
+  cover_letter?: string | null;
+  interview_packet?: {
+    likely_questions?: string[];
+    star_stories?: string[];
+    elevator_pitch?: string;
+    gaps_to_prepare?: string[];
+  } | null;
+  application_status?: 'SAVED' | 'APPLIED' | 'INTERVIEW' | 'OFFER' | 'REJECTED' | 'WITHDRAWN' | string;
+  applied_at?: string | null;
+  follow_up_at?: string | null;
+  application_notes?: string | null;
 }
 
 export interface JobCreatePayload {
@@ -195,6 +266,14 @@ export interface CreditBalance {
   daily_free_total: number;
   active_time_pass?: ActiveTimePassInfo;
   has_unlimited: boolean;
+  subscription?: {
+    active: boolean;
+    plan_name: string;
+    monthly_credits: number;
+    expires_at: string;
+    credits_last_granted_at?: string | null;
+    next_credit_grant_hint?: string | null;
+  } | null;
 }
 
 export interface CreditTransaction {

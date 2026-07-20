@@ -3,7 +3,7 @@ import base64
 from io import BytesIO
 import pdfplumber
 from pdf2image import convert_from_bytes
-from app.services.ai.inference import GeminiInference
+from app.services.ai.inference import LLMInference
 from app.services.ai.prompts import STRUCTURED_RESUME_SYSTEM_PROMPT
 from app.schemas.resume import ResumeInfo
 from app.config import get_settings
@@ -15,7 +15,7 @@ logger = getLogger(__name__)
 class PDFExtractor:
     def __init__(self):
         settings = get_settings()
-        self.flash_model = settings.GEMINI_FLASH_MODEL
+        self.flash_model = settings.LLM_FLASH_MODEL
 
     def extract_text(self, pdf_bytes: bytes) -> str:
         """Fast extraction using pdfplumber without LLM."""
@@ -36,7 +36,7 @@ class PDFExtractor:
         reference_id: str | None = None,
     ) -> dict:
         """Convert PDF to images and send ALL pages + structuring prompt in a single
-        Gemini call. Returns a ResumeInfo dict directly (no separate structuring step).
+        LLM call. Returns a ResumeInfo dict directly (no separate structuring step).
         """
         pages = await asyncio.to_thread(convert_from_bytes, pdf_bytes, dpi=200)
         images = []
@@ -44,9 +44,12 @@ class PDFExtractor:
             buf = BytesIO()
             page.save(buf, format="JPEG", quality=85)
             b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-            images.append({"inline_data": {"mime_type": "image/jpeg", "data": b64}})
+            images.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+            })
 
-        llm = GeminiInference(model_name=self.flash_model)
+        llm = LLMInference(model_name=self.flash_model)
         result = await llm.run_inference(
             system_prompt=STRUCTURED_RESUME_SYSTEM_PROMPT,
             inputs=[

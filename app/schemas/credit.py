@@ -244,14 +244,14 @@ class RedeemPromoRequest(BaseModel):
 # ── Payments ────────────────────────────────────────────────────
 
 class CreateOrderRequest(BaseModel):
-    item_type: str  # "credit_pack" or "time_pass"
+    item_type: str  # "credit_pack", "time_pass", or "subscription"
     item_id: int
 
     @field_validator("item_type")
     @classmethod
     def validate_item_type(cls, v: str) -> str:
-        if v not in ("credit_pack", "time_pass"):
-            raise ValueError("item_type must be credit_pack or time_pass")
+        if v not in ("credit_pack", "time_pass", "subscription"):
+            raise ValueError("item_type must be credit_pack, time_pass, or subscription")
         return v
 
 

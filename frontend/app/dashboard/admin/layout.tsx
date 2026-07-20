@@ -22,6 +22,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { name: 'Users', href: '/dashboard/admin/users' },
     { name: 'Tenants', href: '/dashboard/admin/tenants' },
     { name: 'Credit Config', href: '/dashboard/admin/credits' },
+    { name: 'Share Analytics', href: '/dashboard/admin/share-analytics' },
   ];
 
   return (

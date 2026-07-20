@@ -3,8 +3,9 @@ import math
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query
 from fastapi.responses import Response
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.session import get_db
 from app.background import create_tracked_task
@@ -12,6 +13,11 @@ from app.models.job import JobStatus
 from app.models.user import User
 from app.dependencies import get_current_user
 from app.services.job.service import JobService, PDF_DIR
+from app.services.job.tailor_pipeline import (
+    LOW_FIT_LABELS,
+    evidence_counts_from_map,
+    fit_score_breakdown_from_stored,
+)
 from app.services.credit.service import CreditService
 from app.schemas.job import JobCreate
 from logging import getLogger
@@ -21,6 +27,13 @@ logger = getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 service = JobService()
 credit_service = CreditService()
+
+
+class GenerateResumeRequest(BaseModel):
+    confirm_low_fit: bool = Field(
+        default=False,
+        description="Required true when fit_label is STRETCH or MISMATCH",
+    )
 
 
 def _pdf_filename(job) -> str:
@@ -64,6 +77,12 @@ async def list_jobs(
                 "job_description": j.job_description,
                 "candidate_name": (j.custom_resume_data or {}).get("name"),
                 "status": j.status.value,
+                "fit_score": j.fit_score,
+                "fit_label": j.fit_label,
+                "ats_score_after": j.ats_score_after,
+                "evidence_counts": evidence_counts_from_map(j.evidence_map),
+                "application_status": j.application_status.value if j.application_status else "SAVED",
+                "follow_up_at": j.follow_up_at.isoformat() if j.follow_up_at else None,
                 "created_at": j.created_at.isoformat(),
                 "updated_at": j.updated_at.isoformat(),
             }
@@ -98,6 +117,7 @@ async def generate_resume(
     job_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    payload: GenerateResumeRequest = Body(default_factory=GenerateResumeRequest),
 ):
     # SELECT FOR UPDATE prevents double-charge race: second concurrent request
     # blocks here until the first commits GENERATING_RESUME, then fails the guard.
@@ -107,6 +127,22 @@ async def generate_resume(
     if job.status.value not in ("PENDING", "FAILED"):
         raise ValueError(
             f"Job is already {job.status.value} — cannot re-generate"
+        )
+
+    # Free analyze-fit if not yet run, then gate low-fit before charging
+    if job.fit_score is None or not job.fit_label:
+        job = await service.analyze_fit(db, job_id, current_user.id)
+        # Re-lock after analyze commit
+        job = await service.get_job(db, job_id, current_user.id, for_update=True)
+        if job.status.value not in ("PENDING", "FAILED"):
+            raise ValueError(
+                f"Job is already {job.status.value} — cannot re-generate"
+            )
+
+    if job.fit_label in LOW_FIT_LABELS and not payload.confirm_low_fit:
+        raise ValueError(
+            f"Fit is {job.fit_label} — set confirm_low_fit=true to generate anyway, "
+            "or skip to avoid spending a credit."
         )
 
     # Deduct credit synchronously — raises 429 if no credits available
@@ -205,9 +241,178 @@ async def get_job(
         "status": job.status.value,
         "gcs_upload_failed": job.gcs_upload_failed,
         "pdf_error_log": job.pdf_error_log,
+        "jd_analysis": job.jd_analysis,
+        "evidence_map": job.evidence_map,
+        "fit_score": job.fit_score,
+        "fit_label": job.fit_label,
+        "fit_rationale": job.fit_rationale,
+        "fit_score_breakdown": fit_score_breakdown_from_stored(job.jd_analysis, job.evidence_map),
+        "evidence_counts": evidence_counts_from_map(job.evidence_map),
+        "gap_list": job.gap_list or [],
+        "gap_roadmap": job.gap_roadmap,
+        "ats_score_before": job.ats_score_before,
+        "ats_score_after": job.ats_score_after,
+        "ats_score_detail": job.ats_score_detail,
+        "bullet_diff": job.bullet_diff,
+        "resume_versions": [
+            {"version": v.get("version"), "label": v.get("label")}
+            for v in (job.resume_versions or [])
+        ],
+        "cover_letter": job.cover_letter,
+        "interview_packet": job.interview_packet,
+        "application_status": job.application_status.value if job.application_status else "SAVED",
+        "applied_at": job.applied_at.isoformat() if job.applied_at else None,
+        "follow_up_at": job.follow_up_at.isoformat() if job.follow_up_at else None,
+        "application_notes": job.application_notes,
         "created_at": job.created_at.isoformat(),
         "updated_at": job.updated_at.isoformat(),
     }
+
+
+@router.post("/{job_id}/analyze-fit", status_code=200)
+async def analyze_fit(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Free pre-generate fit analysis (does not deduct credits)."""
+    job = await service.analyze_fit(db, job_id, current_user.id)
+    return {
+        "job_id": job.id,
+        "fit_score": job.fit_score,
+        "fit_label": job.fit_label,
+        "fit_rationale": job.fit_rationale,
+        "fit_score_breakdown": fit_score_breakdown_from_stored(job.jd_analysis, job.evidence_map),
+        "evidence_counts": evidence_counts_from_map(job.evidence_map),
+        "gap_list": job.gap_list or [],
+        "gap_roadmap": job.gap_roadmap,
+        "jd_analysis": job.jd_analysis,
+        "evidence_map": job.evidence_map,
+    }
+
+
+@router.post("/{job_id}/fix-gaps", status_code=200)
+async def fix_gaps(
+    job_id: int,
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    keywords = payload.get("keywords") or []
+    if not isinstance(keywords, list) or not keywords:
+        raise ValueError("keywords must be a non-empty list")
+    job = await service.fix_keyword_gaps(db, job_id, current_user.id, keywords)
+    return {
+        "success": True,
+        "custom_resume_data": job.custom_resume_data,
+        "status": job.status.value,
+        "resume_versions": [
+            {"version": v.get("version"), "label": v.get("label")}
+            for v in (job.resume_versions or [])
+        ],
+    }
+
+
+@router.post("/{job_id}/restore-version", status_code=200)
+async def restore_version(
+    job_id: int,
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    version = payload.get("version")
+    if not isinstance(version, int):
+        raise ValueError("version must be an integer")
+    job = await service.restore_version(db, job_id, current_user.id, version)
+    return {
+        "success": True,
+        "custom_resume_data": job.custom_resume_data,
+        "status": job.status.value,
+    }
+
+
+@router.post("/{job_id}/cover-letter", status_code=200)
+async def generate_cover_letter(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    job = await service.generate_cover_letter(db, job_id, current_user.id)
+    return {"cover_letter": job.cover_letter}
+
+
+@router.post("/{job_id}/interview-packet", status_code=200)
+async def generate_interview_packet(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.credit.entitlements import require_pro_or_pass
+
+    await require_pro_or_pass(
+        db,
+        current_user.id,
+        feature="interview_packets",
+        message="Interview packets require Job Hunt Pro or an active time pass.",
+    )
+    job = await service.generate_interview_packet(db, job_id, current_user.id)
+    return {"interview_packet": job.interview_packet}
+
+
+@router.patch("/{job_id}/application", status_code=200)
+async def update_application(
+    job_id: int,
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from datetime import datetime
+
+    # None = leave unchanged; "" / null in JSON = clear; ISO string = set
+    if "follow_up_at" not in payload:
+        follow_up = None
+    elif payload.get("follow_up_at") in (None, ""):
+        follow_up = ""
+    else:
+        follow_up = datetime.fromisoformat(
+            str(payload["follow_up_at"]).replace("Z", "+00:00")
+        )
+    job = await service.update_application_status(
+        db,
+        job_id,
+        current_user.id,
+        application_status=payload.get("application_status"),
+        notes=payload.get("application_notes"),
+        follow_up_at=follow_up,
+    )
+    return {
+        "application_status": job.application_status.value,
+        "applied_at": job.applied_at.isoformat() if job.applied_at else None,
+        "follow_up_at": job.follow_up_at.isoformat() if job.follow_up_at else None,
+        "application_notes": job.application_notes,
+    }
+
+
+@router.get("/{job_id}/docx")
+async def download_docx(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.latex.docx_builder import build_docx_bytes
+    from app.exceptions import NotFoundError
+
+    job = await service.get_job(db, job_id, current_user.id)
+    if not job.custom_resume_data:
+        raise NotFoundError("No tailored resume data available")
+    docx_bytes = build_docx_bytes(job.custom_resume_data)
+    jd = job.job_description or {}
+    filename = f"Resume_{(jd.get('role') or 'tailored').replace(' ', '_')}.docx"
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{job_id}/status")
@@ -217,7 +422,13 @@ async def get_job_status(
     current_user: User = Depends(get_current_user),
 ):
     job = await service.get_job(db, job_id, current_user.id)
-    return {"id": job.id, "status": job.status.value}
+    return {
+        "id": job.id,
+        "status": job.status.value,
+        "fit_score": job.fit_score,
+        "fit_label": job.fit_label,
+        "ats_score_after": job.ats_score_after,
+    }
 
 
 @router.get("/{job_id}/pdf")

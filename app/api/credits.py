@@ -52,7 +52,10 @@ async def get_balance(
     current_user: User = Depends(get_current_user),
 ):
     """Current user's credit balance and status."""
-    return await credit_service.get_balance(db, current_user.id)
+    balance = await credit_service.get_balance(db, current_user.id)
+    # Persist daily reset + optional monthly Pro credit grant
+    await db.commit()
+    return balance
 
 
 @router.get("/history")
@@ -96,3 +99,122 @@ async def redeem_promo(
     result = await credit_service.redeem_promo(db, current_user.id, body.code)
     balance = await credit_service.get_balance(db, current_user.id)
     return {**result, "balance": balance}
+
+
+@router.get("/subscriptions")
+async def list_subscription_plans(db: AsyncSession = Depends(get_db)):
+    """Public: list active Job Hunt Pro-style subscription plans."""
+    from app.models.subscription import SubscriptionPlan
+
+    result = await db.execute(
+        select(SubscriptionPlan)
+        .where(SubscriptionPlan.is_active == True)
+        .order_by(SubscriptionPlan.sort_order, SubscriptionPlan.price_paise)
+    )
+    plans = result.scalars().all()
+    return {
+        "plans": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "monthly_credits": p.monthly_credits,
+                "price_paise": p.price_paise,
+                "includes_tracker": p.includes_tracker,
+                "includes_interview_packets": p.includes_interview_packets,
+                "includes_extension": p.includes_extension,
+            }
+            for p in plans
+        ]
+    }
+
+
+@router.get("/subscriptions/me")
+async def my_subscription(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from datetime import datetime, timezone
+    from app.models.subscription import UserSubscription, SubscriptionPlan
+
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(UserSubscription, SubscriptionPlan)
+        .join(SubscriptionPlan, UserSubscription.plan_id == SubscriptionPlan.id)
+        .where(
+            UserSubscription.user_id == current_user.id,
+            UserSubscription.is_active == True,
+            UserSubscription.expires_at > now,
+        )
+        .order_by(UserSubscription.expires_at.desc())
+        .limit(1)
+    )
+    row = result.first()
+    if not row:
+        return {"active": False, "subscription": None}
+    sub, plan = row
+    return {
+        "active": True,
+        "subscription": {
+            "id": sub.id,
+            "plan_name": plan.name,
+            "monthly_credits": plan.monthly_credits,
+            "starts_at": sub.starts_at.isoformat(),
+            "expires_at": sub.expires_at.isoformat(),
+            "credits_last_granted_at": (
+                sub.credits_last_granted_at.isoformat()
+                if sub.credits_last_granted_at
+                else None
+            ),
+            "includes_tracker": plan.includes_tracker,
+            "includes_interview_packets": plan.includes_interview_packets,
+            "includes_extension": plan.includes_extension,
+        },
+    }
+
+
+@router.post("/subscriptions/{plan_id}/activate-dev")
+async def activate_subscription_dev(
+    plan_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """DEV helper: activate a subscription without Razorpay (ENVIRONMENT=DEV only)."""
+    from datetime import datetime, timezone, timedelta
+    from app.config import get_settings
+    from app.models.subscription import SubscriptionPlan, UserSubscription
+    from app.exceptions import BadRequestError, NotFoundError
+    from app.models.credit import TransactionType
+
+    settings = get_settings()
+    if settings.ENVIRONMENT.upper() != "DEV":
+        raise BadRequestError("Dev subscription activate is only available in DEV")
+
+    plan = await db.get(SubscriptionPlan, plan_id)
+    if not plan or not plan.is_active:
+        raise NotFoundError("Subscription plan not found")
+
+    now = datetime.now(timezone.utc)
+    sub = UserSubscription(
+        user_id=current_user.id,
+        plan_id=plan.id,
+        starts_at=now,
+        expires_at=now + timedelta(days=30),
+        credits_last_granted_at=now,
+        is_active=True,
+    )
+    db.add(sub)
+    await credit_service.add_credits(
+        db,
+        current_user.id,
+        plan.monthly_credits,
+        txn_type=TransactionType.CREDIT_PURCHASE,
+        description=f"Subscription: {plan.name}",
+    )
+    await db.commit()
+    await db.refresh(sub)
+    return {
+        "success": True,
+        "subscription_id": sub.id,
+        "expires_at": sub.expires_at.isoformat(),
+        "credits_granted": plan.monthly_credits,
+    }

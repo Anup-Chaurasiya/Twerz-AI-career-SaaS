@@ -6,6 +6,8 @@ from app.models.token_usage import LLMRequest
 from app.models.tenant import Tenant, TenantDomainRule
 from app.models.roast import Roast
 from app.models.roast_view import RoastView
+from app.models.notification import Notification
+from app.models.subscription import SubscriptionPlan, UserSubscription
 from app.models.credit import (
     CreditPack, TimePassTier, UserCredit, UserTimePass,
     CreditTransaction, PromoCode, PromoRedemption,
@@ -15,6 +17,7 @@ from app.models.credit import (
 __all__ = [
     "Base", "TimestampMixin", "User", "Profile", "Job",
     "LLMRequest", "Tenant", "TenantDomainRule", "Roast", "RoastView",
+    "Notification", "SubscriptionPlan", "UserSubscription",
     "CreditPack", "TimePassTier", "UserCredit", "UserTimePass",
     "CreditTransaction", "PromoCode", "PromoRedemption",
     "TransactionType", "PromoType",
