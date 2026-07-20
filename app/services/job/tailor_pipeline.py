@@ -18,6 +18,7 @@ from app.schemas.tailor import (
     FitLabel,
     FitVerdict,
     GapRoadmap,
+    ImpliedClaimScan,
     InterviewPacket,
     JDAnalysis,
 )
@@ -40,11 +41,14 @@ from app.services.ai.prompts import (
     GAP_FIX_USER_PROMPT,
     GAP_ROADMAP_SYSTEM_PROMPT,
     GAP_ROADMAP_USER_PROMPT,
+    IMPLIED_CLAIM_SCAN_SYSTEM_PROMPT,
+    IMPLIED_CLAIM_SCAN_USER_PROMPT,
     INTERVIEW_PACKET_REPAIR_PROMPT,
     INTERVIEW_PACKET_SYSTEM_PROMPT,
     INTERVIEW_PACKET_USER_PROMPT,
     JD_ANALYSIS_SYSTEM_PROMPT,
     JD_ANALYSIS_USER_PROMPT,
+    WRITE_MODE_STRETCH,
     WRITE_MODE_STRONG,
     WRITE_MODE_TRANSFERABLE,
 )
@@ -52,12 +56,15 @@ from app.services.job.honesty import (
     find_forbidden_in_obj,
     find_forbidden_in_text,
     forbidden_tools_from_evidence,
+    missing_requirements_list,
     strip_forbidden_mentions,
+    verify_evidence_quotes,
 )
 
 logger = getLogger(__name__)
 
 REFINE_SCORE_THRESHOLD = 72
+MAX_REFINE_PASSES = 2
 # Structure is JD-independent so tailored resumes can improve ATS even on mismatch.
 ATS_STRUCTURE_WEIGHT = 0.55
 ATS_KEYWORD_WEIGHT = 0.45
@@ -81,10 +88,12 @@ def clamp_score(raw: int | float | None) -> int | None:
 
 
 def write_mode_block(fit_label: FitLabel | str) -> str:
-    """Fit-conditional write/refine instructions (STRONG vs transferable-only)."""
+    """Fit-conditional write/refine instructions (STRONG / STRETCH / transferable-only)."""
     label = fit_label.value if isinstance(fit_label, FitLabel) else str(fit_label or "")
     if label == FitLabel.STRONG.value:
         return WRITE_MODE_STRONG.strip()
+    if label == FitLabel.STRETCH.value:
+        return WRITE_MODE_STRETCH.strip()
     return WRITE_MODE_TRANSFERABLE.strip()
 
 
@@ -112,7 +121,9 @@ def structural_ats_score(resume: dict) -> int:
     skills = resume.get("skills")
     skill_count = 0
     if isinstance(skills, dict):
-        for value in skills.values():
+        for key, value in skills.items():
+            if key in ("domain_label",):
+                continue
             if isinstance(value, list):
                 skill_count += sum(1 for item in value if str(item).strip())
             elif isinstance(value, str) and value.strip():
@@ -171,14 +182,15 @@ def blend_ats_score(llm_score: int, structure_score: int) -> int:
 
 
 def _coerce_ats_score(raw: Any) -> tuple[ATSScoreResult, int | float | None]:
-    """Clamp LLM ATS score before Pydantic validate; return (result, raw_pre_clamp)."""
+    """Validate LLM ATS score (0–100). Out-of-range fails validation so inference can retry.
+
+    Returns (result, raw_score). Does not pre-clamp — schema enforces ge/le.
+    """
     if hasattr(raw, "model_dump"):
         data = raw.model_dump(mode="json")
     else:
         data = dict(raw)
     raw_score = data.get("score")
-    clamped = clamp_score(raw_score)
-    data["score"] = 0 if clamped is None else clamped
     return ATSScoreResult.model_validate(data), raw_score
 
 
@@ -621,8 +633,10 @@ class TailorPipeline:
             purpose="ats_score_after",
         )
 
-        # Refine whenever ATS is below threshold — independent of Fit verdict
-        if ats_after.score < REFINE_SCORE_THRESHOLD:
+        # Refine whenever ATS is below threshold — independent of Fit verdict (capped)
+        refine_passes = 0
+        while ats_after.score < REFINE_SCORE_THRESHOLD and refine_passes < MAX_REFINE_PASSES:
+            refine_passes += 1
             resume = await self.refine_resume(
                 resume,
                 job_description,
@@ -653,7 +667,16 @@ class TailorPipeline:
                 evidence_map,
                 user_id=user_id,
                 reference_id=reference_id,
-                purpose="ats_score_after_refine",
+                purpose=f"ats_score_after_refine_{refine_passes}",
+            )
+
+        if ats_after.score < REFINE_SCORE_THRESHOLD and refine_passes >= MAX_REFINE_PASSES:
+            logger.warning(
+                "refine_cap_hit reference_id=%s passes=%s ats_score=%s threshold=%s",
+                reference_id,
+                refine_passes,
+                ats_after.score,
+                REFINE_SCORE_THRESHOLD,
             )
 
         resume = _inject_pii(resume, profile_info)
@@ -758,7 +781,15 @@ class TailorPipeline:
             purpose="evidence_map",
             reference_id=reference_id,
         )
-        return EvidenceMap.model_validate(raw)
+        evidence = EvidenceMap.model_validate(raw)
+        evidence, unverified = verify_evidence_quotes(evidence, profile_info)
+        if unverified:
+            logger.warning(
+                "evidence_quote_unverified count=%s reference_id=%s",
+                unverified,
+                reference_id,
+            )
+        return evidence
 
     async def write_resume(
         self,
@@ -970,6 +1001,70 @@ class TailorPipeline:
         )
         return _inject_pii(dict(raw), profile_info)
 
+    async def scan_implied_claims(
+        self,
+        draft_text: str,
+        evidence_map: EvidenceMap,
+        *,
+        user_id: str | None,
+        reference_id: str | None,
+        purpose: str = "implied_claim_scan",
+    ) -> list[str]:
+        """Flash semantic scan for paraphrased MISSING-tool claims. Returns requirement strings."""
+        missing = missing_requirements_list(evidence_map)
+        if not missing or not (draft_text or "").strip():
+            return []
+        llm = LLMInference(model_name=self.flash_model)
+        raw = await llm.run_inference(
+            system_prompt=IMPLIED_CLAIM_SCAN_SYSTEM_PROMPT,
+            inputs=[
+                IMPLIED_CLAIM_SCAN_USER_PROMPT.format(
+                    missing_requirements=_dumps(missing),
+                    draft_text=draft_text,
+                )
+            ],
+            structured_output_schema=ImpliedClaimScan,
+            user_id=user_id,
+            purpose=purpose,
+            reference_id=reference_id,
+        )
+        scan = ImpliedClaimScan.model_validate(raw)
+        return [v.requirement.strip() for v in scan.violations if v.requirement and v.requirement.strip()]
+
+    async def _honesty_hits(
+        self,
+        text_or_obj: str | dict,
+        evidence_map: EvidenceMap,
+        *,
+        user_id: str | None,
+        reference_id: str | None,
+        purpose: str,
+    ) -> list[str]:
+        """Union of substring forbidden hits and semantic implied-claim hits."""
+        forbidden = forbidden_tools_from_evidence(evidence_map)
+        if isinstance(text_or_obj, str):
+            hits = find_forbidden_in_text(text_or_obj, forbidden)
+            draft = text_or_obj
+        else:
+            hits = find_forbidden_in_obj(text_or_obj, forbidden)
+            draft = _dumps(text_or_obj)
+        implied = await self.scan_implied_claims(
+            draft,
+            evidence_map,
+            user_id=user_id,
+            reference_id=reference_id,
+            purpose=purpose,
+        )
+        # Preserve order, de-dupe case-insensitively
+        seen: set[str] = set()
+        merged: list[str] = []
+        for h in list(hits) + list(implied):
+            key = h.lower()
+            if key not in seen:
+                seen.add(key)
+                merged.append(h)
+        return merged
+
     async def generate_cover_letter(
         self,
         *,
@@ -998,7 +1093,13 @@ class TailorPipeline:
             reference_id=reference_id,
         )
         letter = CoverLetterResult.model_validate(raw).cover_letter
-        hits = find_forbidden_in_text(letter, forbidden)
+        hits = await self._honesty_hits(
+            letter,
+            evidence_map,
+            user_id=user_id,
+            reference_id=reference_id,
+            purpose="cover_letter_implied_scan",
+        )
         if hits:
             logger.warning("Cover letter honesty hit: %s — re-prompting once", hits)
             raw2 = await llm.run_inference(
@@ -1017,10 +1118,18 @@ class TailorPipeline:
                 reference_id=reference_id,
             )
             letter = CoverLetterResult.model_validate(raw2).cover_letter
-            hits2 = find_forbidden_in_text(letter, forbidden)
+            hits2 = await self._honesty_hits(
+                letter,
+                evidence_map,
+                user_id=user_id,
+                reference_id=reference_id,
+                purpose="cover_letter_implied_scan_repair",
+            )
             if hits2:
                 logger.warning("Cover letter still dirty after repair: %s — redacting", hits2)
-                letter = strip_forbidden_mentions(letter, hits2)
+                # Prefer exact forbidden tokens for redaction; also try implied labels
+                redact = list(dict.fromkeys(hits2 + find_forbidden_in_text(letter, forbidden)))
+                letter = strip_forbidden_mentions(letter, redact)
         return letter
 
     async def generate_interview_packet(
@@ -1051,7 +1160,13 @@ class TailorPipeline:
             reference_id=reference_id,
         )
         packet = InterviewPacket.model_validate(raw).model_dump(mode="json")
-        hits = find_forbidden_in_obj(packet, forbidden)
+        hits = await self._honesty_hits(
+            packet,
+            evidence_map,
+            user_id=user_id,
+            reference_id=reference_id,
+            purpose="interview_packet_implied_scan",
+        )
         if hits:
             logger.warning("Interview packet honesty hit: %s — re-prompting once", hits)
             raw2 = await llm.run_inference(
@@ -1070,10 +1185,17 @@ class TailorPipeline:
                 reference_id=reference_id,
             )
             packet = InterviewPacket.model_validate(raw2).model_dump(mode="json")
-            hits2 = find_forbidden_in_obj(packet, forbidden)
+            hits2 = await self._honesty_hits(
+                packet,
+                evidence_map,
+                user_id=user_id,
+                reference_id=reference_id,
+                purpose="interview_packet_implied_scan_repair",
+            )
             if hits2:
                 logger.warning("Interview packet still dirty after repair: %s — redacting strings", hits2)
-                packet = _redact_packet(packet, hits2)
+                redact = list(dict.fromkeys(hits2 + find_forbidden_in_obj(packet, forbidden)))
+                packet = _redact_packet(packet, redact)
         return packet
 
 

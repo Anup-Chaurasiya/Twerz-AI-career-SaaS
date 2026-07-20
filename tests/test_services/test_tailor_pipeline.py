@@ -33,6 +33,7 @@ from app.schemas.tailor import (
 )
 from app.services.job.tailor_pipeline import (
     REFINE_SCORE_THRESHOLD,
+    MAX_REFINE_PASSES,
     TailorPipeline,
     _coerce_ats_score,
     blend_ats_score,
@@ -123,23 +124,37 @@ def test_blend_ats_score_moves_when_structure_improves():
     assert 0 <= high <= 100
 
 
-def test_coerce_ats_score_clamps_raw():
+def test_coerce_ats_score_validates_range():
+    """Out-of-range LLM scores fail validation (inference retries); in-range pass through."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        _coerce_ats_score(
+            {
+                "score": -100,
+                "matched_keywords": [],
+                "missing_keywords": ["Okta"],
+                "strengths": [],
+                "weaknesses": ["low"],
+                "critique": "needs structure",
+            }
+        )
+
+    with pytest.raises(ValidationError):
+        _coerce_ats_score({"score": 140, "critique": "ok"})
+
     result, raw = _coerce_ats_score(
         {
-            "score": -100,
-            "matched_keywords": [],
-            "missing_keywords": ["Okta"],
-            "strengths": [],
-            "weaknesses": ["low"],
-            "critique": "needs structure",
+            "score": 72,
+            "matched_keywords": ["Python"],
+            "missing_keywords": [],
+            "strengths": ["clear"],
+            "weaknesses": [],
+            "critique": "ok",
         }
     )
-    assert raw == -100
-    assert result.score == 0
-
-    result2, raw2 = _coerce_ats_score({"score": 140, "critique": "ok"})
-    assert raw2 == 140
-    assert result2.score == 100
+    assert raw == 72
+    assert result.score == 72
 
 
 def test_fit_verdict_seniority_penalty_raw_can_go_negative_then_clamped():
@@ -265,7 +280,7 @@ async def test_pipeline_refines_on_mismatch_when_ats_low():
     assert fit.fit_label == FitLabel.MISMATCH
 
     low_ats = ATSScoreResult(score=25, critique="weak structure")
-    refined_ats = ATSScoreResult(score=40, critique="better structure")
+    refined_ats = ATSScoreResult(score=80, critique="better structure")
     resume = {
         "name": "Test",
         "email": "t@example.com",
@@ -290,12 +305,12 @@ async def test_pipeline_refines_on_mismatch_when_ats_low():
     async def fake_score(*_a, purpose: str = "", **_k):
         score_calls.append(purpose)
         meta_low = {"llm_raw": 25, "llm_clamped": 25, "structure": 40, "blended": 25}
-        meta_hi = {"llm_raw": 40, "llm_clamped": 40, "structure": 70, "blended": 40}
+        meta_hi = {"llm_raw": 80, "llm_clamped": 80, "structure": 70, "blended": 80}
         if purpose == "ats_score_before":
             return low_ats, meta_low
         if purpose == "ats_score_after":
             return low_ats, meta_low
-        if purpose == "ats_score_after_refine":
+        if purpose.startswith("ats_score_after_refine"):
             return refined_ats, meta_hi
         return low_ats, meta_low
 
@@ -325,22 +340,86 @@ async def test_pipeline_refines_on_mismatch_when_ats_low():
         tp.compute_fit_verdict_and_raw = original
 
     pipeline.refine_resume.assert_awaited_once()
-    assert "ats_score_after_refine" in score_calls
+    assert any(c.startswith("ats_score_after_refine") for c in score_calls)
     assert result["fit_score"] == 0
     assert result["fit_label"] == "MISMATCH"
     assert result["gap_roadmap"] is not None
     assert len(result["gap_roadmap"]["steps"]) == 3
     assert result["ats_score_before"] == 25
-    assert result["ats_score_after"] == 40
+    assert result["ats_score_after"] == 80
     assert result["ats_score_detail"]["raw"]["fit_score"] == -12
     assert result["ats_score_detail"]["raw"]["ats_score_before"] == 25
-    assert result["ats_score_detail"]["raw"]["ats_score_after"] == 40
+    assert result["ats_score_detail"]["raw"]["ats_score_after"] == 80
     assert result["ats_score_detail"]["structure"]["after"] == 70
     assert "bullet_diff" in result
     assert 0 <= result["fit_score"] <= 100
     assert 0 <= result["ats_score_after"] <= 100
     assert low_ats.score < REFINE_SCORE_THRESHOLD
 
+
+@pytest.mark.asyncio
+async def test_pipeline_refine_cap_hits_max_passes(caplog):
+    """When ATS stays below threshold, refine at most MAX_REFINE_PASSES and log."""
+    pipeline = TailorPipeline.__new__(TailorPipeline)
+    pipeline.flash_model = "test-flash"
+    pipeline.pro_model = "test-pro"
+
+    jd = JDAnalysis(
+        role_title="Role",
+        role_family="Eng",
+        seniority="mid",
+        must_haves=["Python"],
+        keywords=["Python"],
+        responsibilities=["Build"],
+        summary="eng",
+    )
+    evidence = EvidenceMap(
+        items=[EvidenceItem(requirement="Python", support=EvidenceSupport.PARTIAL)],
+        gaps=[],
+    )
+    fit = FitVerdict(fit_score=55, fit_label=FitLabel.STRETCH, rationale="stretch", gap_list=[])
+    low_ats = ATSScoreResult(score=30, critique="low")
+    resume = {
+        "name": "T",
+        "email": "t@x.com",
+        "headline": "Engineer",
+        "summary": "Built things with measurable impact across products and teams for years.",
+        "past_experience": [],
+        "skills": {},
+    }
+
+    pipeline.analyze_jd = AsyncMock(return_value=jd)
+    pipeline.map_evidence = AsyncMock(return_value=evidence)
+    import app.services.job.tailor_pipeline as tp
+
+    original = tp.compute_fit_verdict_and_raw
+    tp.compute_fit_verdict_and_raw = MagicMock(return_value=(fit, 55))
+
+    async def fake_score(*_a, purpose: str = "", **_k):
+        meta = {"llm_raw": 30, "llm_clamped": 30, "structure": 40, "blended": 30}
+        return low_ats, meta
+
+    pipeline.score_resume = AsyncMock(side_effect=fake_score)
+    pipeline.write_resume = AsyncMock(return_value=dict(resume))
+    pipeline.refine_resume = AsyncMock(return_value=dict(resume))
+    pipeline.guardrail_specificity = AsyncMock(
+        return_value=BulletQualityResult(passed=True, issues=[], critique="")
+    )
+    pipeline.build_gap_roadmap = AsyncMock(return_value=None)
+
+    try:
+        with caplog.at_level("WARNING"):
+            result = await pipeline.run(
+                profile_info={"name": "T", "email": "t@x.com"},
+                job_description={"text": "Python"},
+                reference_id="job-cap",
+            )
+    finally:
+        tp.compute_fit_verdict_and_raw = original
+
+    assert pipeline.refine_resume.await_count == MAX_REFINE_PASSES
+    assert result["ats_score_after"] == 30
+    assert any("refine_cap_hit" in r.message for r in caplog.records)
 
 def test_split_profile_bullets():
     assert split_profile_bullets("Built APIs\n• Cut latency 40%\n- Shipped GraphQL") == [
@@ -485,15 +564,17 @@ async def test_guardrail_fail_triggers_one_rewrite():
     assert result["gap_roadmap"] is None  # STRONG skips roadmap
 
 
-def test_write_mode_block_strong_vs_transferable():
+def test_write_mode_block_strong_stretch_transferable():
     strong = write_mode_block(FitLabel.STRONG)
     mismatch = write_mode_block(FitLabel.MISMATCH)
     stretch = write_mode_block("STRETCH")
-    assert "STRONG" in strong
-    assert "TRANSFERABLE-ONLY" in mismatch
-    assert "TRANSFERABLE-ONLY" in stretch
+    assert strong.startswith("## Write mode: STRONG")
+    assert stretch.startswith("## Write mode: STRETCH")
+    assert mismatch.startswith("## Write mode: TRANSFERABLE-ONLY")
     assert "Full keyword weave" in strong
+    assert "Genuine reach" in stretch
     assert "Lighter keyword injection" in mismatch
+    assert "Mismatch" in mismatch or "mismatch" in mismatch.lower()
 
 
 @pytest.mark.asyncio
@@ -572,7 +653,7 @@ def test_tailored_resume_schema_and_latex_from_fixture():
     latex = build_resume(info)
     assert "Summary" in latex
     assert info.headline in latex or "textit" in latex
-    assert "Security / Auth" in latex or not info.skills.security
+    assert "Security / Auth" in latex or not info.skills.domain_relevant
     docx = build_docx_bytes(info)
     assert docx[:2] == b"PK"  # zip/docx
 

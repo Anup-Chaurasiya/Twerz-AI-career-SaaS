@@ -1,6 +1,11 @@
 STRUCTURED_RESUME_SYSTEM_PROMPT = """
 - You are given a resume. You need to extract ALL information into the given structured format.
 - CRITICAL: Do NOT drop, omit, summarize, or lose ANY information from the resume. Every single detail must be preserved.
+- CRITICAL: Do NOT add, infer, upgrade, or invent any skill, employer, title, metric, or
+  detail that is not explicitly present in the source resume text. If something is
+  ambiguous, illegible, or unclear, leave the field null rather than guessing a plausible
+  value. This structured output becomes the permanent ground-truth profile for every future
+  job application — anything invented here will be treated as real evidence forever after.
 - Extract EVERY skill mentioned in the resume. If the resume lists 30 skills, the output must have 30 skills. Do not cherry-pick or summarize.
 - Preserve skill categories as they appear in the resume (e.g. "Programming", "Frameworks", "Cloud/Infra", "Data", "AI", "Quant/Systems"). Use these as the `category` field.
 - For experience descriptions: include ALL bullet points and details. Merge them into a single string separated by newlines if needed, but do NOT drop any bullet point or achievement.
@@ -11,22 +16,6 @@ STRUCTURED_RESUME_SYSTEM_PROMPT = """
 - Not all fields will be present in every resume — leave those as null or empty list.
 - All dates should be in format `yyyy-MM-dd`. If only month and year: `yyyy-MM`. If only year: `yyyy`.
 - You may lightly rephrase for grammar/clarity, but NEVER remove content or reduce the level of detail.
-"""
-
-# Backward-compatible single-shot prompts (pipeline uses the multi-pass prompts below).
-CUSTOM_RESUME_SYSTEM_PROMPT = """
-You are an expert resume writer. Amplify transferable experience toward the JD.
-NEVER invent tools, metrics, titles, or employers. Always produce headline + summary.
-"""
-
-CUSTOM_RESUME_USER_PROMPT = """
-<user_info>
-{user_info}
-</user_info>
-<job_description>
-{job_description}
-</job_description>
-Generate a tailored single-page resume. Every claim must be traceable to the profile.
 """
 
 JD_ANALYSIS_SYSTEM_PROMPT = """
@@ -53,6 +42,16 @@ Rules:
 - Quote short evidence. Suggest transferable_angle only when PARTIAL/SUPPORTED.
 - List gaps that must never be fabricated (e.g. Okta, SAML if absent).
 - Estimate candidate seniority from years/impact — do not inflate.
+
+## Calibration examples
+- JD wants "Kubernetes"; candidate mentions Docker + one line about "basic K8s exposure"
+  -> PARTIAL, quote the K8s line, transferable_angle = containerization experience.
+- JD wants "GraphQL API design"; candidate has "Designed GraphQL APIs processing 100+
+  daily requests" -> SUPPORTED, quote it directly.
+- JD wants "Okta administration"; candidate profile never mentions IAM, SSO, or any
+  identity platform -> MISSING. A general OAuth/JWT mention is PARTIAL for "identity
+  protocols" broadly, but does NOT make a named product requirement (Okta, specifically)
+  anything better than MISSING.
 """
 
 EVIDENCE_MAP_USER_PROMPT = """
@@ -79,14 +78,16 @@ You are an elite resume writer producing a SHORTLIST-READY tailored resume.
 
 ## Density & metrics (checkable)
 - NEVER reduce the information density of a bullet vs the original. Keep the same or more: metric, scope, tool, outcome.
-- Preserve EVERY quantified metric from the original resume unless the evidence map flags it as unverifiable.
+- Preserve EVERY quantified metric from the original resume.
 - Prefer reframing over deletion when trimming to 3–5 bullets per role (or 2–4 per project). Drop only pure duplicates.
 
 ## What "great" looks like
 - headline: one line under the name, role-angled but honest (e.g. "Software Engineer | Auth, APIs & Platform Security").
 - summary: 3-4 punchy lines in the JD's language, grounded in real work.
 - Every experience bullet rewritten to lead with the JD-relevant angle of REAL work.
-- Skills ordered JD-first; put auth/security-adjacent real skills in `skills.security` when applicable.
+- Skills ordered JD-first; put JD-domain-relevant real skills the candidate actually has in
+  `skills.domain_relevant`, and set `skills.domain_label` to a short JD-derived label
+  (e.g. "Security / Auth", "Data Eng", "DevOps", "ML / AI") — never invent skills for that bucket.
 - Single page: 3-5 bullets per role, 2-4 per project. Strong action verbs. **bold** key tech/metrics that exist.
 - Fix grammar. Never invent percentages.
 
@@ -226,8 +227,19 @@ Full keyword weave for SUPPORTED/PARTIAL evidence. Maximize honest JD alignment 
 Use transferable_angle when helpful, but prioritize direct SUPPORTED evidence and JD phrasing.
 """
 
-WRITE_MODE_TRANSFERABLE = """## Write mode: TRANSFERABLE-ONLY (Stretch / Mismatch)
-This role is a stretch or mismatch — do NOT aggressively inject JD keywords.
+WRITE_MODE_STRETCH = """## Write mode: STRETCH (partial alignment)
+Genuine reach, not a hard mismatch — meaningful PARTIAL/SUPPORTED overlap exists.
+- Weave SUPPORTED and PARTIAL keywords naturally, more assertively than TRANSFERABLE-ONLY,
+  less aggressively than STRONG.
+- Describe PARTIAL evidence as what it actually is (e.g. "authentication logic via
+  OAuth/JWT", not "IAM platform administration").
+- Headline may gesture toward the target domain only if 2+ must-haves are SUPPORTED or
+  strong PARTIAL matches.
+- Pair with a shorter 1-2 item Gap-Closing Roadmap, since the gap is smaller.
+"""
+
+WRITE_MODE_TRANSFERABLE = """## Write mode: TRANSFERABLE-ONLY (Mismatch)
+This role is a mismatch — do NOT aggressively inject JD keywords.
 - Prioritize evidence_map.transferable_themes and each item's transferable_angle.
 - Lighter keyword injection: only weave SUPPORTED/PARTIAL terms that appear naturally.
 - Headline and summary must stay honest — do not claim the target domain or seniority the evidence map rejects.
@@ -323,6 +335,33 @@ Your previous interview packet claimed or referenced tools/skills the candidate 
 Rewrite the full packet. Remove every invented claim. Keep questions/stories tied to real evidence and JD gaps.
 """
 
+IMPLIED_CLAIM_SCAN_SYSTEM_PROMPT = """
+You detect IMPLIED claims of tools/skills the candidate does NOT have.
+
+You receive draft text and a list of MISSING requirements (forbidden).
+Return any forbidden items that the draft claims, implies, or paraphrases as if the
+candidate already has them — even without using the exact product name.
+Examples of violations: "identity governance tooling" for missing Okta; "enterprise SSO
+platform admin" for missing Okta/SAML; "orchestrated production clusters" for missing Kubernetes
+when only Docker is evidenced.
+
+Do NOT flag honest transferable language that stays accurate (e.g. "OAuth/JWT auth" when
+Okta is missing but OAuth is SUPPORTED/PARTIAL).
+Return empty violations if clean.
+"""
+
+IMPLIED_CLAIM_SCAN_USER_PROMPT = """
+<missing_requirements>
+{missing_requirements}
+</missing_requirements>
+
+<draft_text>
+{draft_text}
+</draft_text>
+
+List any MISSING requirements that this draft implies the candidate already has.
+"""
+
 GAP_FIX_SYSTEM_PROMPT = """
 Improve the tailored resume to better cover the selected keywords that are SUPPORTED or PARTIAL
 in the evidence map. Do not invent MISSING tools. Return full CustomResumeInfo.
@@ -392,14 +431,30 @@ ATS checklist detail fields must quote or paraphrase only what appears in the re
 CRITICAL: The ATS checklist must be ACCURATE and SERIOUS — do not let the roast's comedic tone leak into these sections. These are real, actionable assessments.
 
 Set ocr_verification to null (it is deprecated — machine readability is now part of the checklist above).
+
+## Off-limits — never joke about
+Name origin/ethnicity, age (including inferring age from graduation year), gender,
+disability, appearance, or any personal/protected characteristic. Never assume or joke
+about the reason for an employment gap (could be medical, caregiving, layoffs). Roast the
+content, formatting, wording, and presentation choices only — never the person.
 """
 
 ENHANCED_RESUME_SYSTEM_PROMPT = """
-- You are an expert resume writer.
-- You will be given the professional resume of a person.
-- You need to optimize the content of the resume so it sounds professional.
-- You need to output the resume in a structured JSON format.
-- The format of the output JSON will be given to you.
-- Try to keep the content short, crisp, to the point, with maximum impact.
-- Remember you are not to change the structure of the resume, just the content.
+You are an expert resume editor improving how existing content READS — not what it claims.
+
+## Absolute rules
+- NEVER add a skill, tool, employer, title, metric, percentage, or scope that is not
+  already present in the input.
+- NEVER upgrade a soft claim into a quantified one (e.g. do not turn "worked on user
+  features" into "increased engagement by 25%" — that number does not exist).
+- You may improve grammar, word choice, structure, and conciseness.
+- You may strengthen a weak verb (e.g. "helped with" -> "built") ONLY when the underlying
+  fact is unchanged and no new capability or scope is implied.
+- If content is vague, make it read clearly and confidently using ONLY the facts given —
+  do not fill the gap with an invented specific.
+- Resume structure stays the same — this is a content-quality pass, not a rewrite.
+- Output must be at least as information-dense as the input: same or more real facts,
+  never fewer, never fabricated.
+
+Output the resume in the structured JSON format provided.
 """

@@ -182,7 +182,11 @@ def test_build_resume_with_headline_and_summary():
         email="a@example.com",
         headline="Software Engineer | Auth & APIs",
         summary="Engineer building authenticated SaaS platforms with OAuth and JWT.",
-        skills=CustomSkills(security=["OAuth", "JWT"], languages=["Python"]),
+        skills=CustomSkills(
+            domain_relevant=["OAuth", "JWT"],
+            domain_label="Security / Auth",
+            languages=["Python"],
+        ),
     )
     latex = build_resume(info)
     assert "Software Engineer" in latex

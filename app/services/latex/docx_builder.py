@@ -116,8 +116,9 @@ def build_docx_bytes(resume: CustomResumeInfo | dict) -> bytes:
         skill_lines.append("Frameworks: " + ", ".join(skills.frameworks))
     if skills.databases:
         skill_lines.append("Databases: " + ", ".join(skills.databases))
-    if skills.security:
-        skill_lines.append("Security / Auth: " + ", ".join(skills.security))
+    if skills.domain_relevant:
+        label = skills.domain_label or "Domain"
+        skill_lines.append(f"{label}: " + ", ".join(skills.domain_relevant))
     if skills.other_technologies:
         skill_lines.append("Other: " + ", ".join(skills.other_technologies))
     if skill_lines:

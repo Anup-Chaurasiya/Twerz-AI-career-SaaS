@@ -79,9 +79,7 @@ class EvidenceMap(BaseModel):
 
 
 class ATSScoreResult(BaseModel):
-    # Unbounded at schema level so LLM out-of-range values can be clamped
-    # (clamp-over-reject) in TailorPipeline._coerce_ats_score before DB write.
-    score: int = Field(..., description="Estimated ATS score; pipeline clamps to 0-100")
+    score: int = Field(..., ge=0, le=100, description="Estimated ATS score 0-100")
     matched_keywords: List[str] = Field(default_factory=list)
     missing_keywords: List[str] = Field(default_factory=list)
     strengths: List[str] = Field(default_factory=list)
@@ -144,3 +142,18 @@ class InterviewPacket(BaseModel):
     )
     elevator_pitch: str = Field(default="", description="60-second pitch")
     gaps_to_prepare: List[str] = Field(default_factory=list)
+
+
+class ImpliedClaimViolation(BaseModel):
+    requirement: str = Field(..., description="MISSING requirement that was implied")
+    excerpt: str = Field(
+        default="",
+        description="Short excerpt from the draft that implies the claim",
+    )
+
+
+class ImpliedClaimScan(BaseModel):
+    violations: List[ImpliedClaimViolation] = Field(
+        default_factory=list,
+        description="Implied claims of MISSING tools/skills in the draft",
+    )

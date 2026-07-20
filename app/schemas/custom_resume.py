@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field
-from typing import List, Optional
+from pydantic import BaseModel, Field, model_validator
+from typing import Any, List, Optional
 
 
 class CustomLink(BaseModel):
@@ -25,11 +25,31 @@ class CustomSkills(BaseModel):
     languages: List[str] = Field(default=[], title="List of languages")
     frameworks: List[str] = Field(default=[], title="List of frameworks")
     databases: List[str] = Field(default=[], title="List of databases")
-    security: List[str] = Field(
+    domain_relevant: List[str] = Field(
         default=[],
-        title="Security, auth, IAM, compliance, and related skills the candidate actually has",
+        title="JD-domain-relevant skills the candidate actually has (auth, data eng, DevOps, etc.)",
+    )
+    domain_label: str = Field(
+        default="Domain",
+        title="Short label for the domain_relevant skills bucket (e.g. Security / Auth, Data Eng)",
     )
     other_technologies: List[str] = Field(default=[], title="List of other technologies")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_security_to_domain_relevant(cls, data: Any) -> Any:
+        """Accept stored JSON that still uses skills.security."""
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+        if "domain_relevant" not in out and "security" in out:
+            out["domain_relevant"] = out.pop("security") or []
+            if not out.get("domain_label"):
+                out["domain_label"] = "Security / Auth"
+        elif "security" in out:
+            # Prefer domain_relevant; drop legacy key
+            out.pop("security", None)
+        return out
 
 
 class CustomEducation(BaseModel):

@@ -32,3 +32,23 @@ def test_custom_resume_info_with_experience():
     assert len(info.past_experience) == 1
     assert len(info.past_experience[0].description) == 2
     assert "Python" in info.skills.languages
+
+
+def test_custom_skills_legacy_security_key():
+    skills = CustomSkills.model_validate(
+        {"security": ["OAuth", "JWT"], "languages": ["Python"]}
+    )
+    assert skills.domain_relevant == ["OAuth", "JWT"]
+    assert skills.domain_label == "Security / Auth"
+    assert "Python" in skills.languages
+
+
+def test_custom_skills_domain_relevant():
+    skills = CustomSkills(
+        domain_relevant=["Spark", "Airflow"],
+        domain_label="Data Eng",
+        languages=["Python"],
+    )
+    assert skills.domain_label == "Data Eng"
+    info = CustomResumeInfo(name="A", email="a@x.com", skills=skills)
+    assert info.skills.domain_relevant == ["Spark", "Airflow"]

@@ -64,9 +64,16 @@ async def test_cover_letter_honesty_reprompts_then_redacts():
         "transferable_themes": [],
     }
     dirty = {"cover_letter": "I bring deep Okta expertise to your team."}
-    clean = {"cover_letter": "I bring deep Python expertise to your team."}
     llm = AsyncMock()
-    llm.run_inference = AsyncMock(side_effect=[dirty, dirty])  # still dirty after repair → redact
+    # generate → repair (substring hits); implied scans return empty via side_effect slots
+    llm.run_inference = AsyncMock(
+        side_effect=[
+            dirty,
+            {"violations": []},  # implied scan after generate
+            dirty,  # still dirty after repair → redact
+            {"violations": []},  # implied scan after repair
+        ]
+    )
 
     with patch("app.services.job.tailor_pipeline.LLMInference", return_value=llm):
         pipe = TailorPipeline()
@@ -76,7 +83,7 @@ async def test_cover_letter_honesty_reprompts_then_redacts():
             evidence_map=evidence,
         )
     assert "okta" not in letter.lower()
-    assert llm.run_inference.await_count == 2
+    assert llm.run_inference.await_count == 4
 
 
 @pytest.mark.asyncio

@@ -99,7 +99,7 @@ def _add_skills(resume_latex: str, resume_info: CustomResumeInfo) -> str:
         skills.languages
         or skills.frameworks
         or skills.databases
-        or skills.security
+        or skills.domain_relevant
         or skills.other_technologies
     )
     if not has_skills:
@@ -114,8 +114,9 @@ def _add_skills(resume_latex: str, resume_info: CustomResumeInfo) -> str:
         section += f"\\textbf{{Frameworks:}} & {', '.join(skills.frameworks)} \\\\"
     if skills.databases:
         section += f"\\textbf{{Databases:}} & {', '.join(skills.databases)} \\\\"
-    if skills.security:
-        section += f"\\textbf{{Security / Auth:}} & {', '.join(skills.security)} \\\\"
+    if skills.domain_relevant:
+        label = (skills.domain_label or "Domain").replace(":", "")
+        section += f"\\textbf{{{label}:}} & {', '.join(skills.domain_relevant)} \\\\"
     if skills.other_technologies:
         section += f"\\textbf{{Platforms/Other Technologies:}} & {', '.join(skills.other_technologies)} \\\\"
 

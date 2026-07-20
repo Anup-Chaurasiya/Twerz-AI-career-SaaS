@@ -7,7 +7,13 @@ from app.models.profile import Profile, ProfileStatus
 from app.schemas.resume import ResumeInfo
 from app.services.ocr.extractor import PDFExtractor
 from app.services.ai.inference import LLMInference
-from app.services.ai.prompts import STRUCTURED_RESUME_SYSTEM_PROMPT, ENHANCED_RESUME_SYSTEM_PROMPT
+from app.services.ai.prompts import (
+    STRUCTURED_RESUME_SYSTEM_PROMPT,
+    ENHANCED_RESUME_SYSTEM_PROMPT,
+    BULLET_QUALITY_SYSTEM_PROMPT,
+    BULLET_QUALITY_USER_PROMPT,
+)
+from app.schemas.tailor import BulletQualityResult, EvidenceMap
 from app.config import get_settings
 from app.exceptions import ProfileNotFoundError
 from logging import getLogger
@@ -16,6 +22,40 @@ logger = getLogger(__name__)
 
 # OCR text longer than this with empty experience → sparse parse warning
 _SPARSE_OCR_MIN_CHARS = 200
+
+
+def _resume_info_as_dict(result: object) -> dict:
+    if hasattr(result, "model_dump"):
+        return result.model_dump(mode="json")
+    if isinstance(result, dict):
+        return result
+    return {}
+
+
+async def _enhance_density_check(
+    llm: LLMInference,
+    original: dict,
+    enhanced: dict,
+    *,
+    user_id: str,
+    reference_id: str,
+) -> BulletQualityResult:
+    """Reuse bullet-quality guardrail to catch fabrication / density loss on enhance."""
+    raw = await llm.run_inference(
+        system_prompt=BULLET_QUALITY_SYSTEM_PROMPT,
+        inputs=[
+            BULLET_QUALITY_USER_PROMPT.format(
+                evidence_map=json.dumps(EvidenceMap().model_dump(mode="json")),
+                user_info=json.dumps(original),
+                tailored_resume=json.dumps(enhanced),
+            )
+        ],
+        structured_output_schema=BulletQualityResult,
+        user_id=user_id,
+        purpose="profile_enhance_density",
+        reference_id=reference_id,
+    )
+    return BulletQualityResult.model_validate(raw)
 
 
 def _completeness_warning(result: dict | object, *, ocr_text_len: int) -> str | None:
@@ -203,17 +243,47 @@ class ProfileService:
             raise UsageLimitExceeded("You've enhanced this profile 3 times today. Try again tomorrow.")
         
         llm = LLMInference(model_name=self.flash_model)
+        original = profile.resume_info or {}
+        if hasattr(original, "model_dump"):
+            original = original.model_dump(mode="json")
         result = await llm.run_inference(
             system_prompt=ENHANCED_RESUME_SYSTEM_PROMPT,
-            inputs=[json.dumps(profile.resume_info or {})],
+            inputs=[json.dumps(original)],
             structured_output_schema=ResumeInfo,
             user_id=profile.user_id,
             purpose="profile_enhancement",
             reference_id=str(profile_id),
         )
-        
-        # Store original for potential reset
-        profile.resume_info = result
+        enhanced = _resume_info_as_dict(result)
+        quality = await _enhance_density_check(
+            llm,
+            original if isinstance(original, dict) else {},
+            enhanced,
+            user_id=profile.user_id,
+            reference_id=str(profile_id),
+        )
+        if not quality.passed:
+            logger.warning(
+                "Profile enhance density check failed profile_id=%s — re-enhancing once",
+                profile_id,
+            )
+            critique = quality.critique or json.dumps(quality.model_dump(mode="json"))
+            result = await llm.run_inference(
+                system_prompt=ENHANCED_RESUME_SYSTEM_PROMPT,
+                inputs=[
+                    json.dumps(original),
+                    f"Previous enhancement failed honesty/density checks. Fix these issues "
+                    f"without inventing facts:\n{critique}\n\nReturn a corrected ResumeInfo.",
+                ],
+                structured_output_schema=ResumeInfo,
+                user_id=profile.user_id,
+                purpose="profile_enhancement_repair",
+                reference_id=str(profile_id),
+            )
+            enhanced = _resume_info_as_dict(result)
+
+        # Store enhanced (original lives in prior versions / user can re-upload)
+        profile.resume_info = enhanced
         profile.enhance_count_today = enhance_count + 1
         
         await db.commit()
