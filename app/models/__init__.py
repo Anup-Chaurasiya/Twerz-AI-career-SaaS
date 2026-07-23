@@ -13,6 +13,13 @@ from app.models.credit import (
     CreditTransaction, PromoCode, PromoRedemption,
     TransactionType, PromoType,
 )
+from app.models.score_calibration import ScoreCalibration
+from app.models.admin_audit_log import AdminAuditLog
+from app.models.referral_flag import ReferralFlag
+from app.models.referral_payout_review import ReferralPayoutReview, ReferralPayoutStatus
+from app.models.public_request_log import PublicRequestLog
+from app.models.data_request_log import DataRequestLog
+from app.models.golden_matrix_run import GoldenMatrixRun
 
 __all__ = [
     "Base", "TimestampMixin", "User", "Profile", "Job",
@@ -21,4 +28,7 @@ __all__ = [
     "CreditPack", "TimePassTier", "UserCredit", "UserTimePass",
     "CreditTransaction", "PromoCode", "PromoRedemption",
     "TransactionType", "PromoType",
+    "ScoreCalibration",
+    "AdminAuditLog", "ReferralFlag", "ReferralPayoutReview", "ReferralPayoutStatus", "PublicRequestLog",
+    "DataRequestLog", "GoldenMatrixRun",
 ]

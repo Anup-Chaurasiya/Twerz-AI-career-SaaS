@@ -1,0 +1,49 @@
+{
+  "name": "Anup Chaurasiya",
+  "email": "anup@example.com",
+  "mobile_number": "+91-9000000000",
+  "headline": "Software Engineer | Auth, APIs & Platform Security",
+  "summary": "Software engineer with hands-on experience building authenticated SaaS platforms, API authorization, and access-controlled product workflows. Comfortable with OAuth/JWT session design and GraphQL/REST APIs. Seeking to grow deeper into identity and access problems.",
+  "past_experience": [
+    {
+      "company_name": "Accountant AI",
+      "role": "Software Engineer",
+      "start_date": "Jan 2025",
+      "end_date": "Present",
+      "description": [
+        "Designed **OAuth/JWT** authentication and session flows for a multi-user AI SaaS platform",
+        "Built access-controlled GraphQL and REST APIs for candidate pipelines and admin workflows",
+        "Implemented proctoring and role-gated features reducing unauthorized access risk in hiring flows"
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "QuickBlog",
+      "link": "https://github.com/example/quickblog",
+      "description": [
+        "Shipped RBAC-protected blogging platform with authenticated user roles"
+      ]
+    }
+  ],
+  "skills": {
+    "languages": ["Python", "JavaScript", "TypeScript", "GraphQL"],
+    "frameworks": ["React", "Node.js", "Django"],
+    "databases": ["PostgreSQL", "Redis"],
+    "security": ["OAuth", "JWT", "RBAC", "API authorization"],
+    "other_technologies": ["Docker", "Celery"]
+  },
+  "educations": [
+    {
+      "degree": "B.Tech CSE",
+      "institution": "ABES Institute of Technology",
+      "start_date": "2021",
+      "end_date": "2025"
+    }
+  ],
+  "achievements": [],
+  "certifications": [],
+  "links": [],
+  "patents": [],
+  "papers": []
+}

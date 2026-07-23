@@ -1,7 +1,7 @@
 import asyncio
 import math
 from logging import getLogger
-from fastapi import APIRouter, Depends, UploadFile, File, Query
+from fastapi import APIRouter, Depends, UploadFile, File, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.session import get_db
 from app.background import create_tracked_task
@@ -136,6 +136,25 @@ async def enhance_profile(
 ):
     profile = await service.enhance_profile(db, profile_id, current_user.id)
     return {"id": profile.id, "resume_info": profile.resume_info}
+
+
+@router.post("/{profile_id}/linkedin-optimize")
+async def linkedin_optimize(
+    profile_id: int,
+    payload: dict = Body(default_factory=dict),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate LinkedIn headline, About text, and skills list for a profile.
+
+    Optionally accepts `target_jd` in body JSON to angle optimization toward a target role.
+    """
+    target_jd = payload.get("target_jd")
+    result = await service.linkedin_optimize(
+        db, profile_id, current_user.id, target_jd=target_jd
+    )
+    return result
+
 
 
 @router.delete("/{profile_id}")

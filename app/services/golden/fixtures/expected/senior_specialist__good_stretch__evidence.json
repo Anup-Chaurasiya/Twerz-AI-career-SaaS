@@ -1,0 +1,65 @@
+{
+  "jd_analysis": {
+    "role_title": "Staff Identity Architect",
+    "company": "ShieldOps",
+    "role_family": "IAM/Security",
+    "seniority": "staff",
+    "must_haves": [
+      "Okta",
+      "SAML",
+      "OIDC",
+      "PKI",
+      "Zero-trust strategy"
+    ],
+    "nice_to_haves": [],
+    "keywords": [
+      "federation"
+    ],
+    "responsibilities": [
+      "Strategy"
+    ],
+    "summary": "Staff identity"
+  },
+  "evidence_map": {
+    "items": [
+      {
+        "requirement": "Okta",
+        "support": "SUPPORTED",
+        "evidence_quote": "Okta",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "SAML",
+        "support": "SUPPORTED",
+        "evidence_quote": "SAML",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "OIDC",
+        "support": "SUPPORTED",
+        "evidence_quote": "OIDC",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "PKI",
+        "support": "PARTIAL",
+        "evidence_quote": "PKI workflows",
+        "transferable_angle": "Certs"
+      },
+      {
+        "requirement": "Zero-trust strategy",
+        "support": "MISSING",
+        "evidence_quote": null,
+        "transferable_angle": null
+      }
+    ],
+    "candidate_seniority_estimate": "senior",
+    "transferable_themes": [
+      "IAM",
+      "SSO"
+    ],
+    "gaps": [
+      "Zero-trust strategy"
+    ]
+  }
+}

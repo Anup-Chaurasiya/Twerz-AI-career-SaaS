@@ -22,6 +22,8 @@ const nextConfig: NextConfig = {
       { source: '/admin/:path*', destination: `${api}/admin/:path*` },
       { source: '/notifications/:path*', destination: `${api}/notifications/:path*` },
       { source: '/notifications', destination: `${api}/notifications` },
+      { source: '/analytics/:path*', destination: `${api}/analytics/:path*` },
+      { source: '/public/:path*', destination: `${api}/public/:path*` },
       { source: '/account/:path*', destination: `${api}/account/:path*` },
       { source: '/account', destination: `${api}/account` },
       { source: '/extension/:path*', destination: `${api}/extension/:path*` },

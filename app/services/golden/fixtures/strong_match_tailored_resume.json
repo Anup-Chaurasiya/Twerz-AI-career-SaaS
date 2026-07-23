@@ -1,0 +1,49 @@
+{
+  "name": "Anup Chaurasiya",
+  "email": "anup@example.com",
+  "mobile_number": "+91-9000000000",
+  "headline": "Full Stack Engineer | React • Node.js • GraphQL • AI SaaS",
+  "summary": "Full Stack Engineer building production AI SaaS with React, Node/Django, GraphQL, and PostgreSQL. Shipped published Shopify app features and high-throughput APIs with measurable impact.",
+  "past_experience": [
+    {
+      "company_name": "Accountant AI",
+      "role": "Software Engineer",
+      "start_date": "Jan 2025",
+      "end_date": "Present",
+      "description": [
+        "Built AI hiring platform features in **React** and **GraphQL/REST**, processing **100+** daily requests",
+        "Shipped Celery/Redis workflows and Dockerized services for reliable background jobs",
+        "Designed upsell widgets for a live Shopify app using Admin and Storefront GraphQL APIs"
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "QuickBlog",
+      "link": "https://github.com/example/quickblog",
+      "description": [
+        "MERN + LLM blogging platform with rich-text editor and RBAC"
+      ]
+    }
+  ],
+  "skills": {
+    "languages": ["JavaScript", "TypeScript", "Python", "GraphQL"],
+    "frameworks": ["React", "Node.js", "Django"],
+    "databases": ["PostgreSQL", "Redis"],
+    "security": ["OAuth", "JWT"],
+    "other_technologies": ["Docker", "Celery", "OpenAI API"]
+  },
+  "educations": [
+    {
+      "degree": "B.Tech CSE",
+      "institution": "ABES Institute of Technology",
+      "start_date": "2021",
+      "end_date": "2025"
+    }
+  ],
+  "achievements": [],
+  "certifications": [],
+  "links": [],
+  "patents": [],
+  "papers": []
+}

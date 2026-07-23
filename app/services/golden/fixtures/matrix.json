@@ -1,0 +1,142 @@
+{
+  "rubric": [
+    "Fit score sanity vs expected band/label",
+    "ATS score movement when generation runs",
+    "Bullet specificity vs original (no regression)",
+    "Transferable framing and/or gap roadmap on Stretch/Mismatch",
+    "No invented forbidden tools on mismatch cells"
+  ],
+  "cells": [
+    {
+      "persona": "junior_generalist",
+      "jd_key": "strong_match",
+      "expected_fit_label": "STRONG",
+      "expected_fit_score_min": 70,
+      "expected_fit_score_max": 100,
+      "expect_gap_roadmap": false,
+      "forbidden_tools": [],
+      "notes": "Junior FS vs junior FS JD"
+    },
+    {
+      "persona": "junior_generalist",
+      "jd_key": "good_stretch",
+      "expected_fit_label": "STRETCH",
+      "expected_fit_score_min": 55,
+      "expected_fit_score_max": 75,
+      "expect_gap_roadmap": true,
+      "forbidden_tools": [],
+      "notes": "Partial Docker + mid seniority"
+    },
+    {
+      "persona": "junior_generalist",
+      "jd_key": "hard_stretch",
+      "expected_fit_label": "STRETCH",
+      "expected_fit_score_min": 40,
+      "expected_fit_score_max": 55,
+      "expect_gap_roadmap": true,
+      "forbidden_tools": [],
+      "notes": "Seniority gap"
+    },
+    {
+      "persona": "junior_generalist",
+      "jd_key": "mismatch",
+      "expected_fit_label": "MISMATCH",
+      "expected_fit_score_min": 0,
+      "expected_fit_score_max": 40,
+      "expect_gap_roadmap": true,
+      "forbidden_tools": [
+        "okta",
+        "saml",
+        "oidc",
+        "cyberark",
+        "azure ad"
+      ],
+      "notes": "Junior FS vs Senior IAM"
+    },
+    {
+      "persona": "senior_specialist",
+      "jd_key": "strong_match",
+      "expected_fit_label": "STRONG",
+      "expected_fit_score_min": 70,
+      "expected_fit_score_max": 100,
+      "expect_gap_roadmap": false,
+      "forbidden_tools": [],
+      "notes": "Senior IAM match"
+    },
+    {
+      "persona": "senior_specialist",
+      "jd_key": "good_stretch",
+      "expected_fit_label": "STRETCH",
+      "expected_fit_score_min": 55,
+      "expected_fit_score_max": 75,
+      "expect_gap_roadmap": true,
+      "forbidden_tools": [],
+      "notes": "Staff stretch"
+    },
+    {
+      "persona": "senior_specialist",
+      "jd_key": "hard_stretch",
+      "expected_fit_label": "STRETCH",
+      "expected_fit_score_min": 40,
+      "expected_fit_score_max": 55,
+      "expect_gap_roadmap": true,
+      "forbidden_tools": [],
+      "notes": "Platform-adjacent"
+    },
+    {
+      "persona": "senior_specialist",
+      "jd_key": "mismatch",
+      "expected_fit_label": "MISMATCH",
+      "expected_fit_score_min": 0,
+      "expected_fit_score_max": 40,
+      "expect_gap_roadmap": true,
+      "forbidden_tools": [],
+      "notes": "IAM vs PM"
+    },
+    {
+      "persona": "career_switcher",
+      "jd_key": "strong_match",
+      "expected_fit_label": "STRONG",
+      "expected_fit_score_min": 70,
+      "expected_fit_score_max": 100,
+      "expect_gap_roadmap": false,
+      "forbidden_tools": [],
+      "notes": "In-lane analytics"
+    },
+    {
+      "persona": "career_switcher",
+      "jd_key": "good_stretch",
+      "expected_fit_label": "STRETCH",
+      "expected_fit_score_min": 55,
+      "expected_fit_score_max": 75,
+      "expect_gap_roadmap": true,
+      "forbidden_tools": [],
+      "notes": "Data\u2192backend"
+    },
+    {
+      "persona": "career_switcher",
+      "jd_key": "hard_stretch",
+      "expected_fit_label": "STRETCH",
+      "expected_fit_score_min": 40,
+      "expected_fit_score_max": 55,
+      "expect_gap_roadmap": true,
+      "forbidden_tools": [],
+      "notes": "Senior SWE with React gap"
+    },
+    {
+      "persona": "career_switcher",
+      "jd_key": "mismatch",
+      "expected_fit_label": "MISMATCH",
+      "expected_fit_score_min": 0,
+      "expected_fit_score_max": 40,
+      "expect_gap_roadmap": true,
+      "forbidden_tools": [
+        "okta",
+        "saml",
+        "oidc",
+        "cyberark"
+      ],
+      "notes": "Analyst vs Senior IAM"
+    }
+  ]
+}

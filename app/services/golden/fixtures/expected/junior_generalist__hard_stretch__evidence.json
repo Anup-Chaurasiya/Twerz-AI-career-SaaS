@@ -1,0 +1,64 @@
+{
+  "jd_analysis": {
+    "role_title": "Senior Full Stack Engineer",
+    "company": "ScaleStack",
+    "role_family": "Full-Stack",
+    "seniority": "senior",
+    "must_haves": [
+      "React",
+      "Node.js",
+      "PostgreSQL",
+      "System design",
+      "Mentoring"
+    ],
+    "nice_to_haves": [],
+    "keywords": [
+      "React"
+    ],
+    "responsibilities": [
+      "Scale"
+    ],
+    "summary": "Senior FS"
+  },
+  "evidence_map": {
+    "items": [
+      {
+        "requirement": "React",
+        "support": "SUPPORTED",
+        "evidence_quote": "React",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "Node.js",
+        "support": "SUPPORTED",
+        "evidence_quote": "Node",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "PostgreSQL",
+        "support": "PARTIAL",
+        "evidence_quote": "Postgres projects",
+        "transferable_angle": "DB familiarity"
+      },
+      {
+        "requirement": "System design",
+        "support": "PARTIAL",
+        "evidence_quote": "SaaS APIs",
+        "transferable_angle": "Small-scale architecture"
+      },
+      {
+        "requirement": "Mentoring",
+        "support": "MISSING",
+        "evidence_quote": null,
+        "transferable_angle": null
+      }
+    ],
+    "candidate_seniority_estimate": "junior",
+    "transferable_themes": [
+      "Full-stack"
+    ],
+    "gaps": [
+      "Mentoring"
+    ]
+  }
+}

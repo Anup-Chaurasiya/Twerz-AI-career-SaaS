@@ -1,0 +1,67 @@
+{
+  "jd_analysis": {
+    "role_title": "Staff Platform Engineer",
+    "company": "PlatformOne",
+    "role_family": "Platform",
+    "seniority": "staff",
+    "must_haves": [
+      "Kubernetes",
+      "Terraform",
+      "CI/CD",
+      "Developer experience",
+      "On-call ownership"
+    ],
+    "nice_to_haves": [],
+    "keywords": [
+      "k8s"
+    ],
+    "responsibilities": [
+      "Platform"
+    ],
+    "summary": "Staff platform"
+  },
+  "evidence_map": {
+    "items": [
+      {
+        "requirement": "Kubernetes",
+        "support": "SUPPORTED",
+        "evidence_quote": "Kubernetes skill",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "Terraform",
+        "support": "SUPPORTED",
+        "evidence_quote": "Terraform identity modules",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "CI/CD",
+        "support": "MISSING",
+        "evidence_quote": null,
+        "transferable_angle": null
+      },
+      {
+        "requirement": "Developer experience",
+        "support": "MISSING",
+        "evidence_quote": null,
+        "transferable_angle": null
+      },
+      {
+        "requirement": "On-call ownership",
+        "support": "PARTIAL",
+        "evidence_quote": "Led IAM production ops",
+        "transferable_angle": "Prod ownership"
+      }
+    ],
+    "candidate_seniority_estimate": "senior",
+    "transferable_themes": [
+      "Terraform",
+      "Infra",
+      "Prod ops"
+    ],
+    "gaps": [
+      "CI/CD",
+      "Developer experience"
+    ]
+  }
+}

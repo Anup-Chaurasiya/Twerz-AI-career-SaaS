@@ -56,6 +56,7 @@ class Job(TimestampMixin, Base):
     resume_versions: Mapped[list | None] = mapped_column(JSON, nullable=True)
     cover_letter: Mapped[str | None] = mapped_column(Text, nullable=True)
     interview_packet: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    pdf_verified_readable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     # Application tracker (Phase 2)
     application_status: Mapped[ApplicationStatus] = mapped_column(
@@ -65,6 +66,10 @@ class Job(TimestampMixin, Base):
     follow_up_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
     follow_up_notified_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
     application_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Referral & networking (Phase 3)
+    known_contacts: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    applied_via: Mapped[str | None] = mapped_column(String(32), nullable=True)  # cold | referral | recruiter_outreach
 
     user = relationship("User", back_populates="jobs")
     profile = relationship("Profile", back_populates="jobs")

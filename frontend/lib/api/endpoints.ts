@@ -7,7 +7,10 @@ import {
 } from '@/types';
 
 export const authApi = {
-  getGoogleLoginUrl: () => client.get<LoginResponse>('/auth/google/login'),
+  getGoogleLoginUrl: (ref?: string) =>
+    client.get<LoginResponse>('/auth/google/login', {
+      params: ref ? { ref } : undefined,
+    }),
   getMe: () => client.get<User>('/auth/me'),
   refresh: () => client.post<{ access_token: string }>('/auth/refresh'),
   completeOnboarding: () =>
@@ -85,6 +88,7 @@ export const jobsApi = {
       application_status?: string;
       application_notes?: string;
       follow_up_at?: string | null;
+      applied_via?: string | null;
     }
   ) => client.patch(`/jobs/${id}/application`, payload),
   updateCustomResume: (id: number, customResumeData: ResumeInfo) =>
@@ -99,6 +103,22 @@ export const jobsApi = {
   },
   getChatHistory: (id: number) =>
     client.get<{ messages: ChatMessage[] }>(`/jobs/${id}/chat/history`),
+  // Phase 3: Networking
+  generateOutreachMessage: (id: number, payload: {
+    message_type: 'known_contact' | 'cold_linkedin' | 'referral_request';
+    contact_name?: string;
+    contact_role?: string;
+    relationship_context?: string;
+  }) => client.post<{ outreach_message: string; outreach_type: string }>(`/jobs/${id}/outreach-message`, {
+    outreach_type: payload.message_type,
+    contact_info: {
+      name: payload.contact_name,
+      role: payload.contact_role,
+      relationship: payload.relationship_context,
+    },
+  }),
+  updateContacts: (id: number, contacts: Array<{ name: string; role?: string; relationship?: string; email?: string; linkedin?: string }>) =>
+    client.put<{ known_contacts: unknown; job_id: number }>(`/jobs/${id}/contacts`, contacts),
 };
 
 export const roastsApi = {
@@ -212,6 +232,35 @@ export const adminApi = {
       top_os: Array<{ name: string; count: number }>;
       views_by_day: Array<{ date: string; count: number }>;
     }>('/admin/share-analytics/summary'),
+  getUserDetail: (userId: string) => client.get<import('@/types').AdminUserDetail>(`/admin/users/${userId}/detail`),
+  listAuditLog: (page = 1, size = 50, params?: { admin_user_id?: string; target_user_id?: string; action?: string }) => {
+    const q = new URLSearchParams({ page: String(page), size: String(size) });
+    if (params?.admin_user_id) q.set('admin_user_id', params.admin_user_id);
+    if (params?.target_user_id) q.set('target_user_id', params.target_user_id);
+    if (params?.action) q.set('action', params.action);
+    return client.get<import('@/types').PaginatedResponse<import('@/types').AdminAuditLogEntry>>(`/admin/audit-log?${q}`);
+  },
+  listFlaggedReferrals: (page = 1, size = 50, status = 'pending') =>
+    client.get<import('@/types').PaginatedResponse<Record<string, unknown>>>(`/admin/referrals/flagged?page=${page}&size=${size}&status=${status}`),
+  approveReferral: (reviewId: number) =>
+    client.post<{ success: boolean }>(`/admin/referrals/${reviewId}/approve`),
+  rejectReferral: (reviewId: number) =>
+    client.post<{ success: boolean }>(`/admin/referrals/${reviewId}/reject`),
+  getCalibration: () =>
+    client.get<{ rows: import('@/types').CalibrationRow[]; min_sample_size: number }>('/admin/calibration'),
+  computeCalibration: () => client.post('/admin/calibration/compute'),
+  getPublicUsage: () => client.get<Record<string, unknown>>('/admin/public-usage'),
+  getHealthMetrics: () => client.get<import('@/types').HealthMetrics>('/admin/health-metrics'),
+  testAlert: () => client.post<{ success: boolean; message: string }>('/admin/alerts/test'),
+  runGoldenMatrix: () => client.post<{ success: boolean; run_id?: number; status?: string; message?: string }>('/admin/golden-matrix/run'),
+  getGoldenMatrixStatus: () => client.get<Record<string, unknown>>('/admin/golden-matrix/status'),
+  getLlmCosts: (days = 7) => client.get<{ days: number; by_purpose: Array<{ purpose: string; request_count: number; estimated_cost_usd: number }> }>(`/admin/llm-costs?days=${days}`),
+  getFreeTierUsage: () => client.get<Record<string, number>>('/admin/free-tier-usage'),
+  listDataRequests: (page = 1, size = 50) =>
+    client.get<import('@/types').PaginatedResponse<Record<string, unknown>>>(`/admin/data-requests?page=${page}&size=${size}`),
+  getFlaggedAccounts: () => client.get<Record<string, unknown>>('/admin/accounts/flagged'),
+  getOpsLive: () => client.get<import('@/types').OpsLiveData>('/admin/ops/live'),
+  getRetentionCohorts: (weeks = 8) => client.get<import('@/types').CohortRetentionData>(`/admin/retention/cohorts?weeks=${weeks}`),
 };
 
 export const healthApi = {
@@ -232,4 +281,31 @@ export const notificationsApi = {
       }>;
     }>(`/notifications?unread_only=${unreadOnly}`),
   markRead: (id: number) => client.post<{ success: boolean }>(`/notifications/${id}/read`),
+};
+
+// Phase 4: Analytics
+export const analyticsApi = {
+  getMyAnalytics: () =>
+    client.get<{
+      total_jobs: number;
+      total_applied: number;
+      sufficient_data: boolean;
+      by_band: Array<{
+        fit_label: string;
+        total_jobs: number;
+        applied_jobs: number;
+        interview_jobs: number;
+        offer_jobs: number;
+        application_rate: number;
+        interview_rate: number;
+        offer_rate: number;
+      }>;
+      platform_benchmarks: Array<{
+        fit_label: string;
+        sample_size: number;
+        interview_rate: number;
+        offer_rate: number;
+      }>;
+      nudge_message: string;
+    }>('/analytics/me'),
 };

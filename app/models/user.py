@@ -19,9 +19,16 @@ class User(TimestampMixin, Base):
     is_super_admin: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
     signup_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
     signup_share_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    referral_code: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True, index=True)
+    referred_by_user_id: Mapped[str | None] = mapped_column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    referral_bonus_granted: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
+    referral_bonus_status: Mapped[str] = mapped_column(String(16), server_default="none", default="none")
+    # none | paid | held | denied — held = payout blocked pending admin review
+    signup_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     tenant_id: Mapped[str | None] = mapped_column(
         String, ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True, index=True
     )
+
 
     profiles = relationship("Profile", back_populates="user")
     jobs = relationship("Job", back_populates="user")

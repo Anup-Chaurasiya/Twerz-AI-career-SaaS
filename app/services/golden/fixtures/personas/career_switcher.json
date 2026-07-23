@@ -1,0 +1,40 @@
+{
+  "name": "Rahul Mehta",
+  "email": "rahul@example.com",
+  "mobile_number": "+91-9777000002",
+  "summary": "Data analyst transitioning into software engineering. Strong SQL/Python analytics background with growing API and automation skills.",
+  "skills": [
+    {"name": "Python", "category": "Languages"},
+    {"name": "SQL", "category": "Languages"},
+    {"name": "pandas", "category": "Data"},
+    {"name": "dbt", "category": "Data"},
+    {"name": "PostgreSQL", "category": "Databases"},
+    {"name": "Tableau", "category": "Data"},
+    {"name": "Airflow", "category": "Data"},
+    {"name": "Git", "category": "Tools"}
+  ],
+  "past_experience": [
+    {
+      "company_name": "RetailMetrics",
+      "role": "Data Analyst",
+      "start_date": "2022-06",
+      "end_date": null,
+      "description": "Built Python/pandas pipelines cleaning 50M+ retail events into PostgreSQL.\nOwned dbt models and Tableau dashboards for revenue ops.\nAutomated weekly reports with Airflow DAGs and Slack alerts.\nWrote SQL for cohort retention and funnel analysis."
+    }
+  ],
+  "projects": [
+    {
+      "name": "CSV-to-API",
+      "description": "Small FastAPI service exposing cleaned CSV metrics with JWT auth.",
+      "link": "https://github.com/example/csv-to-api"
+    }
+  ],
+  "educations": [
+    {
+      "institution": "Delhi University",
+      "degree": "B.Sc Statistics",
+      "start_date": "2018",
+      "end_date": "2021"
+    }
+  ]
+}

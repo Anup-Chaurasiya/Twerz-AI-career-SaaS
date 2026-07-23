@@ -1,0 +1,67 @@
+{
+  "jd_analysis": {
+    "role_title": "Senior Product Manager",
+    "company": "ConsumerApp Co",
+    "role_family": "Product",
+    "seniority": "senior",
+    "must_haves": [
+      "Roadmap ownership",
+      "User research",
+      "A/B testing",
+      "Stakeholder management",
+      "Growth metrics"
+    ],
+    "nice_to_haves": [],
+    "keywords": [
+      "PM"
+    ],
+    "responsibilities": [
+      "Roadmap"
+    ],
+    "summary": "Senior PM"
+  },
+  "evidence_map": {
+    "items": [
+      {
+        "requirement": "Roadmap ownership",
+        "support": "MISSING",
+        "evidence_quote": null,
+        "transferable_angle": null
+      },
+      {
+        "requirement": "User research",
+        "support": "MISSING",
+        "evidence_quote": null,
+        "transferable_angle": null
+      },
+      {
+        "requirement": "A/B testing",
+        "support": "MISSING",
+        "evidence_quote": null,
+        "transferable_angle": null
+      },
+      {
+        "requirement": "Stakeholder management",
+        "support": "PARTIAL",
+        "evidence_quote": "Cross-team IAM",
+        "transferable_angle": "Tech stakeholders"
+      },
+      {
+        "requirement": "Growth metrics",
+        "support": "MISSING",
+        "evidence_quote": null,
+        "transferable_angle": null
+      }
+    ],
+    "candidate_seniority_estimate": "senior",
+    "transferable_themes": [
+      "Cross-team programs"
+    ],
+    "gaps": [
+      "Roadmap ownership",
+      "User research",
+      "A/B testing",
+      "Growth metrics"
+    ]
+  }
+}

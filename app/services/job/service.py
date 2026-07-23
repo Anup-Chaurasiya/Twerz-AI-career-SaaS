@@ -125,6 +125,49 @@ async def _background_gcs_upload(pdf_bytes: bytes, user_id: str, job_id: int) ->
             await db.commit()
 
 
+def _verify_pdf_readable_sync(pdf_bytes: bytes, job_custom_resume: dict | None) -> bool:
+    """Check PDF machine-readability by re-extracting text with pdfplumber.
+
+    Returns True if:
+      (a) at least some text can be extracted, AND
+      (b) at least one of name/email from the resume is present in the extracted text.
+
+    This runs synchronously and is called via asyncio.to_thread.
+    """
+    try:
+        import io
+        import pdfplumber  # already a project dependency (used in OCR extractor)
+
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            pages_text = []
+            for page in pdf.pages:
+                t = page.extract_text()
+                if t:
+                    pages_text.append(t)
+
+        if not pages_text:
+            logger.warning("PDF readability check: no text extracted at all")
+            return False
+
+        full_text = "\n".join(pages_text).lower()
+
+        if job_custom_resume:
+            # Check contact info presence
+            name = (job_custom_resume.get("name") or "").strip().lower()
+            email = (job_custom_resume.get("email") or "").strip().lower()
+            if name and name not in full_text:
+                logger.warning("PDF readability check: name '%s' not found in extracted text", name)
+                return False
+            if email and email not in full_text:
+                logger.warning("PDF readability check: email '%s' not found in extracted text", email)
+                return False
+
+        return True
+    except Exception as exc:
+        logger.warning("PDF readability check failed with exception: %s", exc)
+        return False
+
+
 class JobService:
     def __init__(self):
         settings = get_settings()
@@ -248,9 +291,28 @@ class JobService:
             total_ms = int((time.monotonic() - t_start) * 1000)
             logger.info(f"[job:{job_id}] Phase 1 COMPLETE total={total_ms}ms {'(SLOW >60s)' if total_ms > 60000 else ''}")
 
+            # Phase 5 — Grant referral bonus after first successful resume generation
+            try:
+                from app.services.credit.service import CreditService
+                credit_svc = CreditService()
+                bonus_granted = await credit_svc.grant_referral_bonus_if_eligible(db, user_id)
+                if bonus_granted:
+                    logger.info(f"[job:{job_id}] Referral bonus granted for user {user_id}")
+            except Exception:
+                logger.exception("Referral bonus check failed for user %s", user_id)
+
         except Exception as e:
             total_ms = int((time.monotonic() - t_start) * 1000)
             logger.exception(f"[job:{job_id}] Phase 1 FAILED after {total_ms}ms: {e}")
+            try:
+                from app.services.alerting import alert
+                await alert(
+                    f"Phase 1 resume generation failed for job {job_id}",
+                    level="error",
+                    context={"job_id": job_id, "user_id": user_id, "error": str(e)},
+                )
+            except Exception:
+                logger.debug("Alert dispatch failed for job %s phase 1", job_id, exc_info=True)
             await db.rollback()
             try:
                 result = await db.execute(select(Job).where(Job.id == job_id))
@@ -259,6 +321,11 @@ class JobService:
                     job.status = JobStatus.FAILED
                     await db.commit()
                     await _publish_job_progress(job_id, "FAILED", f"Resume generation failed: {e}")
+                    try:
+                        from app.services.admin.threshold_alerts import maybe_alert_on_error_rate_spike
+                        await maybe_alert_on_error_rate_spike(db)
+                    except Exception:
+                        logger.debug("Threshold alert check failed", exc_info=True)
             except Exception:
                 logger.exception(f"Failed to mark job {job_id} as FAILED")
             raise
@@ -306,6 +373,43 @@ class JobService:
             job.resume_latex_code = latex_code
             job.pdf_gcs_path = str(local_path)
             job.status = JobStatus.READY
+
+            # Phase 1: verify PDF is machine-readable
+            t0 = time.monotonic()
+            verified = await asyncio.to_thread(
+                _verify_pdf_readable_sync, pdf_bytes, job.custom_resume_data
+            )
+            if not verified:
+                logger.warning(
+                    f"[job:{job_id}] PDF readability check FAILED — attempting one re-compile"
+                )
+                # One automatic retry: rebuild LaTeX + recompile
+                try:
+                    pdf_bytes_retry = await compile_latex(latex_code)
+                    verified_retry = await asyncio.to_thread(
+                        _verify_pdf_readable_sync, pdf_bytes_retry, job.custom_resume_data
+                    )
+                    if verified_retry:
+                        pdf_bytes = pdf_bytes_retry
+                        await asyncio.to_thread(local_path.write_bytes, pdf_bytes)
+                        logger.info(f"[job:{job_id}] PDF readability re-compile succeeded")
+                    else:
+                        logger.error(
+                            f"[job:{job_id}] PDF still failed readability after re-compile — "
+                            "marking pdf_verified_readable=False"
+                        )
+                    verified = verified_retry
+                except Exception as retry_exc:
+                    logger.error(
+                        f"[job:{job_id}] PDF re-compile attempt failed: {retry_exc}"
+                    )
+
+            job.pdf_verified_readable = verified
+            logger.info(
+                f"[job:{job_id}] PDF readability: {'PASS' if verified else 'FAIL'} "
+                f"({int((time.monotonic() - t0) * 1000)}ms)"
+            )
+
             await db.commit()
             await _publish_job_progress(job_id, "READY", "PDF ready")
 
@@ -318,6 +422,15 @@ class JobService:
         except Exception as e:
             total_ms = int((time.monotonic() - t_start) * 1000)
             logger.exception(f"[job:{job_id}] Phase 2 FAILED after {total_ms}ms: {e}")
+            try:
+                from app.services.alerting import alert
+                await alert(
+                    f"Phase 2 PDF generation failed for job {job_id}",
+                    level="error",
+                    context={"job_id": job_id, "user_id": user_id, "error": str(e)},
+                )
+            except Exception:
+                logger.debug("Alert dispatch failed for job %s phase 2", job_id, exc_info=True)
             
             # Extract error log if it's a LaTeX compilation error
             from app.exceptions import LaTeXCompilationError
@@ -352,6 +465,12 @@ class JobService:
                                 else f"PDF generation failed: {e}"
                             ),
                         )
+                        if job.status == JobStatus.FAILED:
+                            try:
+                                from app.services.admin.threshold_alerts import maybe_alert_on_error_rate_spike
+                                await maybe_alert_on_error_rate_spike(db)
+                            except Exception:
+                                logger.debug("Threshold alert check failed", exc_info=True)
                 except Exception:
                     logger.exception(f"Failed to mark job {job_id} as FAILED")
             else:
@@ -515,6 +634,53 @@ class JobService:
         await db.refresh(job)
         return job
 
+    async def generate_outreach_message(
+        self,
+        db: AsyncSession,
+        job_id: int,
+        user_id: str,
+        *,
+        contact_info: dict | None = None,
+        outreach_type: str = "known_contact",
+    ) -> str:
+        from app.config import get_settings
+        from app.services.auth.rate_limits import enforce_daily_llm_limit
+
+        settings = get_settings()
+
+        job = await self._get_job(db, job_id, user_id)
+        if not job.evidence_map:
+            raise ValueError("Generate a tailored resume first (needs evidence map)")
+
+        await enforce_daily_llm_limit(
+            db,
+            user_id,
+            purpose="generate_outreach_message",
+            limit=settings.OUTREACH_DAILY_LIMIT,
+            label="outreach message generation",
+        )
+
+        profile = await db.get(Profile, job.profile_id)
+        profile_info = (profile.resume_info if profile else {}) or {}
+        return await self.pipeline.generate_outreach_message(
+            profile_info=profile_info,
+            job_description=job.job_description or {},
+            evidence_map=job.evidence_map,
+            contact_info=contact_info,
+            outreach_type=outreach_type,
+            user_id=user_id,
+            reference_id=str(job_id),
+        )
+
+    async def update_known_contacts(
+        self, db: AsyncSession, job_id: int, user_id: str, contacts: list[dict]
+    ) -> Job:
+        job = await self._get_job(db, job_id, user_id)
+        job.known_contacts = contacts
+        await db.commit()
+        await db.refresh(job)
+        return job
+
     async def update_application_status(
         self,
         db: AsyncSession,
@@ -524,6 +690,7 @@ class JobService:
         application_status: str | None = None,
         notes: str | None = None,
         follow_up_at=None,
+        applied_via: str | None = None,
     ) -> Job:
         from datetime import datetime, timezone
         from app.models.job import ApplicationStatus
@@ -533,6 +700,8 @@ class JobService:
             job.application_status = ApplicationStatus(application_status)
             if application_status == "APPLIED" and not job.applied_at:
                 job.applied_at = datetime.now(timezone.utc)
+        if applied_via is not None:
+            job.applied_via = applied_via
         if notes is not None:
             job.application_notes = notes
         if follow_up_at is not None:

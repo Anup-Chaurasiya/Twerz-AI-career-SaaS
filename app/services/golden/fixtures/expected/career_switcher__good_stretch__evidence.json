@@ -1,0 +1,65 @@
+{
+  "jd_analysis": {
+    "role_title": "Backend Engineer",
+    "company": "APIForge",
+    "role_family": "Backend",
+    "seniority": "mid",
+    "must_haves": [
+      "Python",
+      "REST APIs",
+      "PostgreSQL",
+      "Docker",
+      "Background jobs"
+    ],
+    "nice_to_haves": [],
+    "keywords": [
+      "FastAPI"
+    ],
+    "responsibilities": [
+      "Backend"
+    ],
+    "summary": "Mid backend"
+  },
+  "evidence_map": {
+    "items": [
+      {
+        "requirement": "Python",
+        "support": "SUPPORTED",
+        "evidence_quote": "Python",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "REST APIs",
+        "support": "SUPPORTED",
+        "evidence_quote": "FastAPI project",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "PostgreSQL",
+        "support": "SUPPORTED",
+        "evidence_quote": "PostgreSQL",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "Docker",
+        "support": "MISSING",
+        "evidence_quote": null,
+        "transferable_angle": null
+      },
+      {
+        "requirement": "Background jobs",
+        "support": "PARTIAL",
+        "evidence_quote": "Airflow DAGs",
+        "transferable_angle": "Orchestration"
+      }
+    ],
+    "candidate_seniority_estimate": "junior",
+    "transferable_themes": [
+      "Python",
+      "Pipelines"
+    ],
+    "gaps": [
+      "Docker"
+    ]
+  }
+}

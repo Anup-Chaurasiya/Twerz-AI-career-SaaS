@@ -82,6 +82,7 @@ async def list_jobs(
                 "ats_score_after": j.ats_score_after,
                 "evidence_counts": evidence_counts_from_map(j.evidence_map),
                 "application_status": j.application_status.value if j.application_status else "SAVED",
+                "applied_via": j.applied_via,
                 "follow_up_at": j.follow_up_at.isoformat() if j.follow_up_at else None,
                 "created_at": j.created_at.isoformat(),
                 "updated_at": j.updated_at.isoformat(),
@@ -241,6 +242,7 @@ async def get_job(
         "status": job.status.value,
         "gcs_upload_failed": job.gcs_upload_failed,
         "pdf_error_log": job.pdf_error_log,
+        "pdf_verified_readable": job.pdf_verified_readable,
         "jd_analysis": job.jd_analysis,
         "evidence_map": job.evidence_map,
         "fit_score": job.fit_score,
@@ -260,6 +262,8 @@ async def get_job(
         ],
         "cover_letter": job.cover_letter,
         "interview_packet": job.interview_packet,
+        "known_contacts": job.known_contacts or [],
+        "applied_via": job.applied_via,
         "application_status": job.application_status.value if job.application_status else "SAVED",
         "applied_at": job.applied_at.isoformat() if job.applied_at else None,
         "follow_up_at": job.follow_up_at.isoformat() if job.follow_up_at else None,
@@ -384,13 +388,58 @@ async def update_application(
         application_status=payload.get("application_status"),
         notes=payload.get("application_notes"),
         follow_up_at=follow_up,
+        applied_via=payload.get("applied_via"),
     )
     return {
         "application_status": job.application_status.value,
+        "applied_via": job.applied_via,
         "applied_at": job.applied_at.isoformat() if job.applied_at else None,
         "follow_up_at": job.follow_up_at.isoformat() if job.follow_up_at else None,
         "application_notes": job.application_notes,
     }
+
+
+@router.post("/{job_id}/outreach-message", status_code=200)
+async def generate_outreach_message(
+    job_id: int,
+    payload: dict = Body(default_factory=dict),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate an honest warm outreach or referral request message.
+
+    outreach_type options: 'known_contact', 'cold_linkedin', 'referral_request'
+    """
+    outreach_type = payload.get("outreach_type", "known_contact")
+    if outreach_type not in ("known_contact", "cold_linkedin", "referral_request"):
+        raise ValueError("outreach_type must be one of: known_contact, cold_linkedin, referral_request")
+    contact_info = payload.get("contact_info")
+    message = await service.generate_outreach_message(
+        db,
+        job_id,
+        current_user.id,
+        contact_info=contact_info,
+        outreach_type=outreach_type,
+    )
+    return {"outreach_message": message, "outreach_type": outreach_type}
+
+
+@router.put("/{job_id}/contacts", status_code=200)
+async def update_known_contacts(
+    job_id: int,
+    payload: list[dict] | dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update user-entered known contacts for a job application."""
+    if isinstance(payload, dict):
+        contacts = payload.get("known_contacts", [])
+    else:
+        contacts = payload
+    if not isinstance(contacts, list):
+        raise ValueError("contacts must be a list of contact objects")
+    job = await service.update_known_contacts(db, job_id, current_user.id, contacts)
+    return {"known_contacts": job.known_contacts, "job_id": job.id}
 
 
 @router.get("/{job_id}/docx")

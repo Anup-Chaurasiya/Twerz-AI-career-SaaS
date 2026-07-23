@@ -1,0 +1,67 @@
+{
+  "jd_analysis": {
+    "role_title": "Senior Software Engineer",
+    "company": "WebScale",
+    "role_family": "Full-Stack",
+    "seniority": "senior",
+    "must_haves": [
+      "Python",
+      "SQL",
+      "PostgreSQL",
+      "REST APIs",
+      "React"
+    ],
+    "nice_to_haves": [],
+    "keywords": [
+      "system design"
+    ],
+    "responsibilities": [
+      "Product features"
+    ],
+    "summary": "Senior SWE"
+  },
+  "evidence_map": {
+    "items": [
+      {
+        "requirement": "Python",
+        "support": "SUPPORTED",
+        "evidence_quote": "Python",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "SQL",
+        "support": "SUPPORTED",
+        "evidence_quote": "SQL",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "PostgreSQL",
+        "support": "SUPPORTED",
+        "evidence_quote": "PostgreSQL",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "REST APIs",
+        "support": "PARTIAL",
+        "evidence_quote": "FastAPI project",
+        "transferable_angle": "API project"
+      },
+      {
+        "requirement": "React",
+        "support": "MISSING",
+        "evidence_quote": null,
+        "transferable_angle": null
+      }
+    ],
+    "candidate_seniority_estimate": "junior",
+    "transferable_themes": [
+      "Python",
+      "SQL",
+      "APIs"
+    ],
+    "gaps": [
+      "React",
+      "Senior product ownership"
+    ]
+  }
+}

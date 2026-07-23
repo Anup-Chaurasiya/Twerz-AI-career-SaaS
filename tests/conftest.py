@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 
 from app.models.base import Base
 from app.models import user, profile, job, token_usage, tenant, roast, roast_view, credit, notification, subscription  # noqa: F401
+from app.models import admin_audit_log, referral_flag, referral_payout_review, public_request_log, data_request_log, golden_matrix_run  # noqa: F401
 from app.main import create_app
 from app.database.session import get_db
 from app.dependencies import get_current_user, get_super_admin

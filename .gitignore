@@ -50,11 +50,10 @@ htmlcov/
 # Generated PDFs (local storage)
 data/
 
-# Legacy (pre-refactor)
-app_/
-Auth/
-Database/
-SecretManager/
+# Legacy (pre-refactor) — anchored so app/services/auth/ is not ignored
+/Auth/
+/Database/
+/SecretManager/
 OutputPdfs/
 Test_files/
 testing/
@@ -70,6 +69,7 @@ localKeys1.py
 credentials/
 *.json
 !pyproject.toml
+!app/services/golden/fixtures/**/*.json
 
 # Scrapped data (LinkedIn leads, user lists, keys)
 scrapped-data/

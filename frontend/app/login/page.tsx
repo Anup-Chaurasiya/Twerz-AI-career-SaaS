@@ -12,6 +12,24 @@ const BOOT_LINES = [
   { text: '> awaiting authentication...', cls: 'warn' },
 ] as const;
 
+/** Persist OAuth JWT before any useEffect (avoids race with AuthInitializer.fetchMe). */
+function persistOAuthTokenFromUrl(): boolean {
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+  let token = params.get('token') || params.get('access_token');
+  if (!token && window.location.hash) {
+    const hash = window.location.hash.startsWith('#')
+      ? window.location.hash.slice(1)
+      : window.location.hash;
+    const hashParams = new URLSearchParams(hash);
+    token = hashParams.get('token') || hashParams.get('access_token');
+  }
+  if (!token) return false;
+  localStorage.setItem('token', token);
+  window.history.replaceState({}, '', '/login');
+  return true;
+}
+
 export default function LoginPage() {
   const { isLoggedIn, isLoading } = useAuthStore();
   const router = useRouter();
@@ -19,6 +37,7 @@ export default function LoginPage() {
   const [lines, setLines] = useState<{ text: string; cls: string }[]>([]);
   const [loginLoading, setLoginLoading] = useState(false);
   const [error, setError] = useState('');
+  const [oauthTokenHandled] = useState(() => persistOAuthTokenFromUrl());
 
   // Terminal boot animation — run once per visit (not tied to auth state)
   useEffect(() => {
@@ -43,67 +62,61 @@ export default function LoginPage() {
     };
   }, []);
 
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    document.body.style.height = '100dvh';
-    return () => {
-      document.body.style.overflow = '';
-      document.body.style.height = '';
-    };
-  }, []);
-
-  // OAuth callback + redirect if already logged in
+  // Capture marketing/referral params + handle OAuth callback / existing session
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const utm = params.get('utm_source');
     const shareId = params.get('share_id');
+    const ref = params.get('ref');
     if (utm) {
       sessionStorage.setItem('signup_utm_source', utm);
       if (shareId) sessionStorage.setItem('signup_share_id', shareId);
     }
+    if (ref) {
+      sessionStorage.setItem('signup_referral_code', ref);
+    }
 
-    let token = params.get('token') || params.get('access_token');
-    if (!token && window.location.hash.includes('access_token=')) {
-      const hashQuery = window.location.hash.split('?')[1] || '';
-      token = new URLSearchParams(hashQuery).get('access_token');
-    }
-    if (token) {
-      localStorage.setItem('token', token);
-      window.history.replaceState({}, '', '/login');
-      useAuthStore.getState().fetchMe().then(async () => {
-        const source = sessionStorage.getItem('signup_utm_source');
-        const sid = sessionStorage.getItem('signup_share_id');
-        if (source) {
-          try {
-            await authApi.setAttribution({ source, share_id: sid });
-            sessionStorage.removeItem('signup_utm_source');
-            sessionStorage.removeItem('signup_share_id');
-          } catch {
-            /* ignore */
-          }
-        }
-        router.push('/dashboard');
-      });
-      return;
-    }
-    if (!isLoading && isLoggedIn) {
+    const finishLoginRedirect = async () => {
       const source = sessionStorage.getItem('signup_utm_source');
       const sid = sessionStorage.getItem('signup_share_id');
       if (source) {
-        authApi.setAttribution({ source, share_id: sid }).then(() => {
+        try {
+          await authApi.setAttribution({ source, share_id: sid });
           sessionStorage.removeItem('signup_utm_source');
           sessionStorage.removeItem('signup_share_id');
-        }).catch(() => {});
+        } catch {
+          /* ignore */
+        }
       }
-      router.push('/dashboard');
+      if (useAuthStore.getState().isLoggedIn) {
+        router.push('/dashboard');
+      }
+    };
+
+    const restoreSession = () => {
+      useAuthStore.getState().fetchMe({ force: true }).then(finishLoginRedirect);
+    };
+
+    if (oauthTokenHandled) {
+      restoreSession();
+      sessionStorage.removeItem('signup_referral_code');
+      return;
     }
-  }, [isLoading, isLoggedIn, router]);
+    if (localStorage.getItem('token')) {
+      restoreSession();
+      return;
+    }
+    if (!isLoading && isLoggedIn) {
+      finishLoginRedirect();
+    }
+  }, [oauthTokenHandled, isLoading, isLoggedIn, router]);
 
   const handleLogin = async () => {
     setLoginLoading(true);
     setError('');
     try {
-      const res = await authApi.getGoogleLoginUrl();
+      const ref = sessionStorage.getItem('signup_referral_code') || undefined;
+      const res = await authApi.getGoogleLoginUrl(ref);
       window.location.href = res.data.url;
     } catch {
       setError('Failed to connect. Please try again.');
@@ -112,12 +125,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--deep)', position: 'relative', overflow: 'hidden' }}>
-      <div className="dot-grid" aria-hidden />
-      <div className="scanline-overlay" aria-hidden />
-      <div className="ambient-orb" style={{ width: 400, height: 400, top: -100, right: -50, background: 'rgba(251,65,0,0.05)' }} aria-hidden />
-      <div className="ambient-orb" style={{ width: 300, height: 300, bottom: -50, left: -50, background: 'rgba(1,169,219,0.04)', animationDirection: 'alternate-reverse' }} aria-hidden />
-
+    <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--deep)', position: 'relative' }}>
       <div style={{ position: 'relative', zIndex: 2, width: '100%', maxWidth: 440, padding: '0 24px' }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>

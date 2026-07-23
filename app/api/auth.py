@@ -1,5 +1,5 @@
 from datetime import datetime, date, timezone
-from fastapi import APIRouter, Depends, Request, Header
+from fastapi import APIRouter, Depends, Request, Header, Query, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -9,6 +9,8 @@ from app.models.user import User
 from app.models.tenant import Tenant, TenantDomainRule
 from app.models.credit import UserCredit
 from app.services.auth import google_oauth
+from app.services.auth.google_oauth import OAUTH_CSRF_COOKIE
+from app.services.auth.referral import ensure_user_referral_code, generate_unique_referral_code
 from typing import Optional
 from app.services.auth.jwt_handler import create_access_token, decode_expired_token
 from app.dependencies import get_current_user
@@ -27,9 +29,41 @@ def _get_redirect_uri() -> str:
     return f"{base}/auth/google/callback"
 
 
+async def _resolve_referrer_id(db: AsyncSession, ref: str | None) -> str | None:
+    if not ref:
+        return None
+    referrer_result = await db.execute(
+        select(User).where(User.referral_code == ref.strip())
+    )
+    referrer = referrer_result.scalar_one_or_none()
+    if referrer:
+        logger.info("Referral code matched referrer %s (code: %s)", referrer.id, ref)
+        return referrer.id
+    return None
+
+
+from app.utils.client_ip import client_ip as _client_ip
+
+
 @router.get("/google/login")
-async def google_login():
-    url = google_oauth.get_login_url(_get_redirect_uri())
+async def google_login(
+    response: Response,
+    ref: Optional[str] = Query(default=None, max_length=32),
+):
+    """Return Google OAuth URL. Optional `ref` referral code is embedded in OAuth state."""
+    settings = get_settings()
+    csrf = google_oauth.new_oauth_csrf_token()
+    state = google_oauth.encode_oauth_state(ref=ref, csrf=csrf)
+    url = google_oauth.get_login_url(_get_redirect_uri(), state=state)
+    response.set_cookie(
+        key=OAUTH_CSRF_COOKIE,
+        value=csrf,
+        httponly=True,
+        secure=settings.ENVIRONMENT.upper() != "DEV",
+        samesite="lax",
+        max_age=600,
+        path="/auth",
+    )
     return {"url": url}
 
 
@@ -38,14 +72,25 @@ async def google_callback(
     code: str,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    state: Optional[str] = None,
+    ref: Optional[str] = None,  # legacy fallback only
 ):
     redirect_uri = _get_redirect_uri()
+    state_data = google_oauth.decode_oauth_state(state)
+    cookie_csrf = request.cookies.get(OAUTH_CSRF_COOKIE)
+    state_csrf = (state_data.get("csrf") or "").strip()
+    if not cookie_csrf or not state_csrf or cookie_csrf != state_csrf:
+        logger.warning("OAuth callback rejected: CSRF state mismatch")
+        raise AuthenticationError("Invalid OAuth state")
+
     try:
         tokens = await google_oauth.exchange_code(code, redirect_uri)
         user_info = await google_oauth.get_user_info(tokens["access_token"])
     except Exception as e:
         logger.exception(f"Google OAuth exchange failed: {e}")
         raise AuthenticationError("Failed to authenticate with Google")
+
+    referral_code = (state_data.get("ref") or ref or "").strip() or None
 
     google_id = user_info["id"]
     email = user_info["email"]
@@ -56,7 +101,6 @@ async def google_callback(
     user = result.scalar_one_or_none()
 
     if not user:
-        # Check domain rules for auto-assignment
         email_domain = email.split("@")[-1].lower() if "@" in email else ""
         tenant_id = None
         if email_domain:
@@ -67,6 +111,10 @@ async def google_callback(
             if rule:
                 tenant_id = rule.tenant_id
 
+        referred_by_user_id = await _resolve_referrer_id(db, referral_code)
+        new_referral_code = await generate_unique_referral_code(db)
+        signup_ip = _client_ip(request)
+
         user = User(
             google_id=google_id,
             email=email,
@@ -75,12 +123,17 @@ async def google_callback(
             consent_accepted=True,
             consent_accepted_at=datetime.now(timezone.utc),
             tenant_id=tenant_id,
+            referral_code=new_referral_code,
+            referred_by_user_id=referred_by_user_id,
+            signup_ip=signup_ip,
         )
         db.add(user)
-        await db.flush()  # flush to get user.id
-        await db.refresh(user)
+        await db.flush()
 
-        # Create UserCredit row for new user (same transaction)
+        # Prevent self-referral if codes ever collide
+        if user.referred_by_user_id == user.id:
+            user.referred_by_user_id = None
+
         user_credit = UserCredit(
             user_id=user.id,
             balance=0,
@@ -89,11 +142,17 @@ async def google_callback(
         )
         db.add(user_credit)
         await db.commit()
+
+        logger.info(
+            "New user created: %s, referral_code: %s, referred_by: %s",
+            email,
+            new_referral_code,
+            user.referred_by_user_id,
+        )
     else:
         user.name = name
         user.picture_url = picture
 
-        # Re-check domain rules for users with no tenant (rule may have been added after signup)
         if not user.tenant_id:
             email_domain = email.split("@")[-1].lower() if "@" in email else ""
             if email_domain:
@@ -104,13 +163,16 @@ async def google_callback(
                 if rule:
                     user.tenant_id = rule.tenant_id
 
+        await ensure_user_referral_code(db, user)
         await db.commit()
 
     jwt_token = create_access_token(user.id, user.email)
 
     settings = get_settings()
     frontend_url = settings.FRONTEND_URL.rstrip("/")
-    return RedirectResponse(url=f"{frontend_url}/login?token={jwt_token}")
+    redirect = RedirectResponse(url=f"{frontend_url}/login#token={jwt_token}")
+    redirect.delete_cookie(OAUTH_CSRF_COOKIE, path="/auth")
+    return redirect
 
 
 @router.post("/refresh")
@@ -135,21 +197,21 @@ async def get_me(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get current user information including onboarding status.
-    
-    Returns is_new_user=True if user was created within the last 5 minutes.
-    This helps frontend show welcome flows only to brand new users.
-    """
+    """Get current user information including onboarding status and referral code."""
     tenant_name = None
     if current_user.tenant_id:
         tenant = await db.get(Tenant, current_user.tenant_id)
         if tenant:
             tenant_name = tenant.name
-    
-    # Check if user is "new" (created in last 5 minutes)
+
+    assigned = await ensure_user_referral_code(db, current_user)
+    if assigned:
+        await db.commit()
+        await db.refresh(current_user)
+
     time_since_creation = datetime.now(timezone.utc) - current_user.created_at
-    is_new_user = time_since_creation.total_seconds() < 300  # 5 minutes
-    
+    is_new_user = time_since_creation.total_seconds() < 300
+
     return {
         "id": current_user.id,
         "email": current_user.email,
@@ -161,6 +223,7 @@ async def get_me(
         "is_super_admin": current_user.is_super_admin,
         "tenant_id": current_user.tenant_id,
         "tenant_name": tenant_name,
+        "referral_code": current_user.referral_code,
     }
 
 
@@ -169,10 +232,7 @@ async def complete_onboarding(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Mark onboarding as completed for the current user.
-    
-    Called after user completes the welcome flow (uploads resume, sees tutorial, etc.)
-    """
+    """Mark onboarding as completed for the current user."""
     user = await db.get(User, current_user.id)
     if not user:
         raise AuthenticationError("User not found")

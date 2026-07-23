@@ -35,6 +35,17 @@ class Settings(BaseSettings):
 
     # Credits
     DAILY_FREE_CREDITS: int = 3
+    REFERRAL_BONUS_CREDITS: int = 2  # bonus credits granted to both accounts on first successful generation
+    REFERRAL_VELOCITY_MAX: int = 5  # max referral bonus grants per referrer in velocity window
+    REFERRAL_VELOCITY_WINDOW_HOURS: int = 1
+
+    # Automatic ops alerting (Phase C)
+    ALERT_ERROR_RATE_THRESHOLD_PCT: float = 25.0  # alert if 1h failure rate exceeds this
+    ALERT_ERROR_RATE_MIN_JOBS_1H: int = 5  # need at least this many jobs in window
+    ALERT_ERROR_RATE_COOLDOWN_MINUTES: int = 60  # debounce repeat alerts
+
+    # Calibration (Phase 2 — Outcome Feedback Loop)
+    CALIBRATION_MIN_SAMPLE: int = 10  # exclude bands with fewer jobs than this
 
     # Storage
     GCS_BUCKET: str = "your-gcs-bucket"
@@ -43,12 +54,20 @@ class Settings(BaseSettings):
     # LaTeX
     LATEX_BIN_PATH: str = "/Library/TeX/texbin"
 
-    # App
-    ENVIRONMENT: str = "DEV"
+    # App & Reliability (Phase 7)
+    ENVIRONMENT: str = "DEV"  # DEV, staging, or production
     FRONTEND_URL: str = "http://localhost:8000"
-    # OAuth callback hits the API; set when UI runs elsewhere (e.g. Next.js :3000)
     API_BASE_URL: str = ""
+    TRUST_PROXY_HEADERS: bool = False  # set True in production behind Cloud Run / LB
     DEV_AUTH_BYPASS: bool = False
+    SENTRY_DSN: str = ""
+    ALERT_WEBHOOK_URL: str = ""
+    REDIS_URL: str = ""  # redis://localhost:6379 or redis://user:password@host:port/db
+    RATE_LIMIT_PUBLIC_RPM: int = 30  # 30 req/min per IP on public endpoints
+    PUBLIC_UPLOAD_MAX_BYTES: int = 5_000_000  # 5 MB cap for unauthenticated uploads
+    LINKEDIN_OPTIMIZE_DAILY_LIMIT: int = 5  # free LinkedIn optimize calls per user per day
+    OUTREACH_DAILY_LIMIT: int = 10  # outreach messages per user per day
+
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
@@ -70,6 +89,13 @@ def get_settings() -> Settings:
     return settings
 
 
+_JWT_SECRET_PLACEHOLDERS = frozenset({
+    "",
+    "change-this-secret",
+    "change_me",
+    "your-jwt-secret",
+})
+
 _API_KEY_PLACEHOLDERS = frozenset({
     "",
     "your-gemini-api-key",
@@ -89,6 +115,12 @@ def _is_real_key(key: str) -> bool:
 def is_gemini_configured(settings: Settings | None = None) -> bool:
     """True when a real Gemini API key is set (not a placeholder)."""
     return _is_real_key((settings or get_settings()).GEMINI_API_KEY)
+
+
+def is_jwt_secret_production_ready(settings: Settings | None = None) -> bool:
+    """True when JWT_SECRET is set to a non-placeholder value."""
+    secret = (settings or get_settings()).JWT_SECRET.strip()
+    return secret not in _JWT_SECRET_PLACEHOLDERS and len(secret) >= 32
 
 
 def is_llm_configured(settings: Settings | None = None) -> bool:

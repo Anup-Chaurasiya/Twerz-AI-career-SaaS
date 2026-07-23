@@ -16,6 +16,7 @@ import asyncio
 import sys
 import time
 import uuid
+import os
 
 # Colors for terminal output
 GREEN = "\033[92m"
@@ -169,14 +170,78 @@ async def check_gcs():
         report("GCS bucket", False, str(e)[:80], elapsed)
 
 
+async def check_golden_matrix():
+    """Optional deploy gate — run golden JD matrix (live LLM). Set RUN_GOLDEN_MATRIX=1."""
+    t0 = time.monotonic()
+    try:
+        from app.services.job.tailor_pipeline import TailorPipeline
+        from app.services.golden.loader import cell_id, load_jd, load_persona, matrix_cells
+        from app.services.golden.invariants import (
+            assert_evidence_categories_sum, assert_roadmap_policy, assert_scores_in_range,
+        )
+
+        pipeline = TailorPipeline()
+        failures = []
+        for cell in matrix_cells():
+            cid = cell_id(cell)
+            try:
+                result = await pipeline.analyze_fit_only(
+                    profile_info=load_persona(cell["persona"]),
+                    job_description=load_jd(cell["persona"], cell["jd_key"]),
+                    user_id="preflight-golden",
+                    reference_id=cid,
+                )
+                assert_scores_in_range(result, allow_missing_ats=True)
+                assert_evidence_categories_sum(result["evidence_map"])
+                assert_roadmap_policy(result["fit_label"], result.get("gap_roadmap"))
+                if result["fit_label"] != cell["expected_fit_label"]:
+                    failures.append(f"{cid}: label mismatch")
+            except Exception as exc:
+                failures.append(f"{cid}: {exc}")
+
+        elapsed = (time.monotonic() - t0) * 1000
+        if failures:
+            report("Golden JD matrix", False, "; ".join(failures[:3]), elapsed)
+        else:
+            report("Golden JD matrix", True, f"{len(list(matrix_cells()))} cells OK", elapsed)
+    except Exception as e:
+        elapsed = (time.monotonic() - t0) * 1000
+        report("Golden JD matrix", False, str(e)[:80], elapsed)
+
+
+async def check_jwt_secret():
+    """Reject placeholder JWT secrets in non-dev environments."""
+    from app.config import get_settings, is_jwt_secret_production_ready
+
+    settings = get_settings()
+    t0 = time.monotonic()
+    if settings.ENVIRONMENT.upper() == "DEV":
+        report("JWT secret", True, "Skipped in DEV", (time.monotonic() - t0) * 1000)
+        return
+    if is_jwt_secret_production_ready(settings):
+        report("JWT secret", True, "Strong secret configured", (time.monotonic() - t0) * 1000)
+    else:
+        report(
+            "JWT secret",
+            False,
+            "Set JWT_SECRET to a random string with at least 32 characters",
+            (time.monotonic() - t0) * 1000,
+        )
+
+
 async def main():
     print(f"\n{BOLD}ATS Beater — Pre-flight Check{RESET}\n")
 
     await check_database()
+    await check_jwt_secret()
     # Run LLM checks in parallel
     await asyncio.gather(check_llm_flash(), check_llm_pro())
     await check_latex()
     await check_gcs()
+
+    # Optional: run golden JD matrix regression (requires live LLM, blocks deploy on failure)
+    if os.environ.get("RUN_GOLDEN_MATRIX") == "1":
+        await check_golden_matrix()
 
     # Summary
     passed = sum(1 for _, p, _, _ in results if p)

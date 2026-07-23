@@ -7,6 +7,7 @@ import { Job, ChatMessage } from '@/types';
 import { getStatusColor, getStatusLabel } from '@/lib/utils';
 import { useProgressSSE, ProgressEvent } from '@/lib/hooks/useProgressSSE';
 import { useCreditStore } from '@/lib/stores/creditStore';
+import JobDetailTabs from '@/components/JobDetailTabs';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -1104,6 +1105,15 @@ export default function JobDetailPage() {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {(job.status === 'READY' || job.status === 'RESUME_GENERATED') && job.evidence_map && (
+          <div className="widget-card" style={{ marginBottom: 24, padding: 20 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', marginBottom: 12, letterSpacing: 1 }}>
+              NETWORKING & APPLICATION
+            </div>
+            <JobDetailTabs job={job} />
           </div>
         )}
 

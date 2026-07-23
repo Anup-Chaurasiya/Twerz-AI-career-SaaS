@@ -48,6 +48,8 @@ from app.services.ai.prompts import (
     INTERVIEW_PACKET_USER_PROMPT,
     JD_ANALYSIS_SYSTEM_PROMPT,
     JD_ANALYSIS_USER_PROMPT,
+    OUTREACH_MESSAGE_SYSTEM_PROMPT,
+    OUTREACH_MESSAGE_USER_PROMPT,
     WRITE_MODE_STRETCH,
     WRITE_MODE_STRONG,
     WRITE_MODE_TRANSFERABLE,
@@ -1197,6 +1199,50 @@ class TailorPipeline:
                 redact = list(dict.fromkeys(hits2 + find_forbidden_in_obj(packet, forbidden)))
                 packet = _redact_packet(packet, redact)
         return packet
+
+    async def generate_outreach_message(
+        self,
+        *,
+        profile_info: dict,
+        job_description: dict,
+        evidence_map: dict,
+        contact_info: dict | None = None,
+        outreach_type: str = "known_contact",
+        user_id: str = "",
+        reference_id: str = "",
+    ) -> str:
+        """Generate honest warm outreach message (known contact, cold LinkedIn, or referral template)."""
+        jd_str = json.dumps(job_description, ensure_ascii=False)
+        ev_str = json.dumps(evidence_map, ensure_ascii=False)
+        prof_str = json.dumps(profile_info, ensure_ascii=False)
+        contact_str = json.dumps(contact_info or {}, ensure_ascii=False)
+
+        user_prompt = OUTREACH_MESSAGE_USER_PROMPT.format(
+            job_description=jd_str,
+            evidence_map=ev_str,
+            user_info=prof_str,
+            contact_info=contact_str,
+            outreach_type=outreach_type,
+        )
+
+        res = await self.llm.raw_call(
+            model=self.pro_model,
+            messages=[
+                {"role": "system", "content": OUTREACH_MESSAGE_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            user_id=user_id,
+            purpose="generate_outreach_message",
+            reference_id=reference_id,
+        )
+        msg_text = (res.content or "").strip()
+
+        # Honesty check: strip any forbidden tools marked MISSING
+        forbidden = forbidden_tools_from_evidence(evidence_map)
+        if forbidden:
+            msg_text = strip_forbidden_mentions(msg_text, list(forbidden))
+
+        return msg_text
 
 
 def _redact_packet(packet: dict, hits: list[str]) -> dict:

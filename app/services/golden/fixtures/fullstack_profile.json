@@ -1,0 +1,40 @@
+{
+  "name": "Anup Chaurasiya",
+  "email": "anup@example.com",
+  "mobile_number": "+91-9000000000",
+  "summary": "Full Stack Engineer with production experience building AI-powered SaaS products.",
+  "skills": [
+    {"name": "React", "category": "Frameworks"},
+    {"name": "Node.js", "category": "Frameworks"},
+    {"name": "Django", "category": "Frameworks"},
+    {"name": "GraphQL", "category": "Languages"},
+    {"name": "PostgreSQL", "category": "Databases"},
+    {"name": "Docker", "category": "Cloud/Infra"},
+    {"name": "OAuth", "category": "Security"},
+    {"name": "JWT", "category": "Security"}
+  ],
+  "past_experience": [
+    {
+      "company_name": "Accountant AI",
+      "role": "Software Engineer",
+      "start_date": "2025-01",
+      "end_date": null,
+      "description": "Built AI hiring platform APIs with GraphQL/REST.\nImplemented OAuth/JWT authentication for user sessions.\nEngineered voice bots and Celery workflows."
+    }
+  ],
+  "projects": [
+    {
+      "name": "QuickBlog",
+      "description": "MERN blogging platform with LLM integration and RBAC.",
+      "link": "https://github.com/example/quickblog"
+    }
+  ],
+  "educations": [
+    {
+      "institution": "ABES Institute of Technology",
+      "degree": "B.Tech CSE",
+      "start_date": "2021",
+      "end_date": "2025"
+    }
+  ]
+}

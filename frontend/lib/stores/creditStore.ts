@@ -9,16 +9,28 @@ interface CreditState {
   setBalance: (balance: CreditBalance) => void;
 }
 
-export const useCreditStore = create<CreditState>((set) => ({
+let fetchBalanceInFlight: Promise<void> | null = null;
+
+export const useCreditStore = create<CreditState>((set, get) => ({
   balance: null,
   isLoading: false,
   fetchBalance: async () => {
-    set({ isLoading: true });
+    if (fetchBalanceInFlight) return fetchBalanceInFlight;
+
+    fetchBalanceInFlight = (async () => {
+      set({ isLoading: true });
+      try {
+        const res = await creditsApi.getBalance();
+        set({ balance: res.data, isLoading: false });
+      } catch {
+        set({ balance: get().balance, isLoading: false });
+      }
+    })();
+
     try {
-      const res = await creditsApi.getBalance();
-      set({ balance: res.data, isLoading: false });
-    } catch {
-      set({ isLoading: false });
+      await fetchBalanceInFlight;
+    } finally {
+      fetchBalanceInFlight = null;
     }
   },
   setBalance: (balance: CreditBalance) => set({ balance }),

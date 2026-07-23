@@ -12,6 +12,7 @@ export interface User {
   tenant_name?: string;
   signup_source?: string | null;
   signup_share_id?: string | null;
+  referral_code?: string;
 }
 
 export interface LoginResponse {
@@ -179,8 +180,17 @@ export interface Job {
   } | null;
   application_status?: 'SAVED' | 'APPLIED' | 'INTERVIEW' | 'OFFER' | 'REJECTED' | 'WITHDRAWN' | string;
   applied_at?: string | null;
+  applied_via?: 'cold' | 'referral' | 'recruiter_outreach' | string | null;
   follow_up_at?: string | null;
+  follow_up_notified_at?: string | null;
   application_notes?: string | null;
+  known_contacts?: Array<{
+    name: string;
+    role?: string;
+    relationship?: string;
+    email?: string;
+    linkedin?: string;
+  }> | null;
 }
 
 export interface JobCreatePayload {
@@ -406,4 +416,104 @@ export interface PaginatedResponse<T> {
 export interface APIError {
   detail: string;
   status?: number;
+}
+
+export interface AdminUserDetail {
+  account: {
+    id: string;
+    email: string;
+    name: string;
+    is_super_admin: boolean;
+    tenant_id?: string;
+    tenant_name?: string;
+    signup_source?: string;
+    signup_ip?: string;
+    onboarding_completed: boolean;
+    created_at: string;
+  };
+  jobs: Array<{
+    id: number;
+    status: string;
+    fit_score?: number;
+    fit_label?: string;
+    ats_score_before?: number;
+    ats_score_after?: number;
+    application_status?: string;
+    applied_via?: string;
+    pdf_verified_readable?: boolean;
+    pdf_error_log?: string;
+    created_at: string;
+  }>;
+  roasts: Array<{ id: number; status: string; share_id?: string; created_at: string }>;
+  referrals: {
+    referral_code?: string;
+    referred_count: number;
+    referred_by?: { id: string; email: string; name: string };
+    bonus_granted: boolean;
+    bonus_status?: string;
+    referral_transactions: Array<{ id: number; amount: number; description?: string; created_at: string }>;
+  };
+  credits: {
+    balance: number;
+    daily_free_remaining: number;
+    active_time_pass?: { tier_name: string; starts_at: string; expires_at: string };
+    recent_transactions: Array<{ id: number; amount: number; type: string; description?: string; created_at: string }>;
+  };
+  financials: {
+    total_llm_cost_usd: number;
+    total_revenue_paise: number;
+    cost_negative: boolean;
+  };
+  failures: {
+    failed_jobs: Array<{ id: number; status: string; pdf_error_log?: string; pdf_verified_readable?: boolean; created_at: string }>;
+    refund_transactions: Array<{ id: number; amount: number; description?: string; created_at: string }>;
+  };
+}
+
+export interface AdminAuditLogEntry {
+  id: number;
+  admin_user_id?: string;
+  admin_email?: string;
+  action: string;
+  target_type: string;
+  target_id?: string;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+  note?: string;
+  created_at: string;
+}
+
+export interface CalibrationRow {
+  fit_label: string;
+  ats_bucket: string;
+  sample_size: number;
+  application_rate: number;
+  interview_rate: number;
+  offer_rate: number;
+  below_threshold: boolean;
+}
+
+export interface HealthMetrics {
+  windows: {
+    '24h': { total_jobs: number; phase1_failures: number; pdf_failures: number; unreadable_pdfs: number; refund_count: number; refund_rate_pct: number };
+    '7d': { total_jobs: number; phase1_failures: number; pdf_failures: number; unreadable_pdfs: number; refund_count: number; refund_rate_pct: number };
+  };
+  models: { llm_flash_model: string; llm_pro_model: string };
+  golden_matrix?: { is_running: boolean; last_run?: Record<string, unknown> };
+}
+
+export interface OpsLiveData {
+  timestamp: string;
+  jobs_generating_count: number;
+  jobs_generating: Array<{ id: number; user_id: string; status: string; created_at: string }>;
+  signups_today: number;
+  revenue_credits_today: number;
+  error_rate_1h_pct: number;
+  jobs_last_hour: number;
+  failures_last_hour: number;
+}
+
+export interface CohortRetentionData {
+  cohorts: Array<{ cohort_week: string; signup_count: number; retention: number[] }>;
+  week_labels: string[];
 }

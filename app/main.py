@@ -24,6 +24,62 @@ from app.exceptions import (
 
 logger = logging.getLogger(__name__)
 
+
+def _initialize_sentry():
+    """Initialize Sentry error tracking if SENTRY_DSN is configured.
+    
+    Captures exceptions, errors, and performance traces. Runs before app startup.
+    No-op if SENTRY_DSN is empty or not set.
+    """
+    settings = get_settings()
+    if not settings.SENTRY_DSN:
+        logger.info("Sentry not configured (SENTRY_DSN empty) — skipping initialization")
+        return
+    
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+        from sentry_sdk.integrations.asyncio import AsyncioIntegration
+        
+        sentry_sdk.init(
+            dsn=settings.SENTRY_DSN,
+            # Environment helps separate dev/staging/production traces
+            environment=settings.ENVIRONMENT if hasattr(settings, 'ENVIRONMENT') else "production",
+            # Sample 10% of transactions for performance monitoring (adjust as needed)
+            traces_sample_rate=0.1,
+            # Capture 100% of errors (not sampled)
+            # You can add release tracking here: release="atsbeater@1.0.0"
+            integrations=[
+                FastApiIntegration(transaction_style="endpoint"),
+                SqlalchemyIntegration(),
+                AsyncioIntegration(),
+            ],
+            # Add custom tags for better filtering
+            before_send=lambda event, hint: _before_send_sentry(event, hint),
+        )
+        logger.info("Sentry initialized successfully (DSN configured)")
+    except ImportError:
+        logger.warning("Sentry SDK not installed. Install with: uv add sentry-sdk")
+    except Exception as e:
+        logger.error("Failed to initialize Sentry: %s", e, exc_info=True)
+
+
+def _before_send_sentry(event, hint):
+    """Filter or enrich Sentry events before sending.
+    
+    Use this to:
+    - Scrub PII from error contexts
+    - Drop noisy errors (e.g. health check failures)
+    - Add custom tags
+    """
+    # Example: scrub email from error messages
+    if event.get("message"):
+        import re
+        event["message"] = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '[EMAIL]', event["message"])
+    
+    return event
+
 from app.background import active_tasks
 
 
@@ -98,8 +154,10 @@ async def _recover_stuck_items():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ── Startup ──
-    logger.info("Starting up")
+    """Application lifespan: startup and shutdown logic."""
+    _initialize_sentry()
+    _configure_access_log_filters()
+
     try:
         await _recover_stuck_items()
     except Exception:
@@ -107,9 +165,6 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # ── Shutdown ──
-    # Cloud Run sends SIGTERM then SIGKILL after 10s.
-    # Leave 2s buffer for engine disposal → wait up to 8s for tasks.
     if active_tasks:
         logger.info("Shutting down — waiting for %d background task(s)", len(active_tasks))
         _, pending = await asyncio.wait(active_tasks, timeout=8)
@@ -157,19 +212,70 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Domain redirect: send old Cloud Run URLs to the custom domain
-    custom_domain = settings.FRONTEND_URL.replace("https://", "").replace("http://", "") if settings.FRONTEND_URL else ""
+    from app.middleware.redis_rate_limit import RedisRateLimitMiddleware, InMemoryRateLimitMiddleware
+
+    redis_url = (settings.REDIS_URL or "").strip()
+    if redis_url:
+        app.add_middleware(RedisRateLimitMiddleware)
+        logger.info("Using Redis-backed rate limiter (production mode)")
+    else:
+        app.add_middleware(InMemoryRateLimitMiddleware)
+        if settings.ENVIRONMENT.upper() != "DEV":
+            logger.warning(
+                "REDIS_URL not set — using in-memory rate limiter. "
+                "Configure Redis for production multi-instance deployments."
+            )
+
+
+    custom_domain = (
+        settings.FRONTEND_URL.replace("https://", "").replace("http://", "")
+        if settings.FRONTEND_URL
+        else ""
+    )
+
+    # Domain redirect: send browser hits on legacy *.run.app to the custom frontend.
+    # API routes must never be redirected to the Next.js host (OAuth, webhooks, etc.).
+
+    _API_ROUTE_PREFIXES = (
+        "/auth",
+        "/profiles",
+        "/jobs",
+        "/credits",
+        "/payments",
+        "/admin",
+        "/public",
+        "/roasts",
+        "/analytics",
+        "/account",
+        "/notifications",
+        "/progress",
+        "/privacy",
+        "/health",
+        "/graphql",
+        "/landing",
+        "/extension",
+    )
+
+    def _is_api_path(path: str) -> bool:
+        if path == "/health":
+            return True
+        return any(path == prefix or path.startswith(f"{prefix}/") for prefix in _API_ROUTE_PREFIXES)
 
     @app.middleware("http")
     async def redirect_to_custom_domain(request: Request, call_next):
         host = request.headers.get("host", "")
-        # Only redirect Cloud Run URLs (*.run.app) to custom domain
-        if host.endswith(".run.app") and request.url.path != "/health":
-            target = f"https://{custom_domain}{request.url.path}"
-            if request.url.query:
-                target += f"?{request.url.query}"
-            return RedirectResponse(url=target, status_code=301)
-        return await call_next(request)
+        path = request.url.path
+        if not host.endswith(".run.app") or _is_api_path(path):
+            return await call_next(request)
+
+        accept = request.headers.get("accept", "")
+        if path != "/" and "text/html" not in accept:
+            return await call_next(request)
+
+        target = f"https://{custom_domain}{path or '/'}"
+        if request.url.query:
+            target += f"?{request.url.query}"
+        return RedirectResponse(url=target, status_code=301)
 
     # Exception handlers
     @app.exception_handler(ProfileNotFoundError)
@@ -266,6 +372,32 @@ body{{background:#0a0f1e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height
     async def health():
         return {"status": "ok"}
 
+    # Privacy & India DPDP Act compliance (Phase 7)
+    @app.get("/privacy/dpdp")
+    async def dpdp_privacy_notice():
+        """India DPDP Act (Digital Personal Data Protection Act, 2023) notice.
+
+        Documents data principal rights for Indian job seekers whose resumes carry PII:
+        - Right to access, summary of personal data processed, and identity of data fiduciaries
+        - Right to correction, completion, and erasure (GDPR export/delete endpoints reuse)
+        - Right to grievance redressal via support email
+        """
+        return {
+            "title": "India DPDP Act (2023) Privacy Notice & Data Principal Rights",
+            "data_fiduciary": "Cydratech (ATS Beater)",
+            "purpose": "Automated resume parsing, tailoring, ATS keyword optimization, and PDF generation.",
+            "data_processed": ["Name", "Email", "Phone", "Employment history", "Education", "Skills", "PDF Resumes"],
+            "rights": {
+                "right_to_access": "Available via GET /auth/me and GET /profiles/",
+                "right_to_correction": "Available via PUT /profiles/{id} and PUT /jobs/{id}/custom-resume",
+                "right_to_erasure": "Available via DELETE /profiles/{id} and account deletion flow",
+                "grievance_contact": "privacy@cydratech.com",
+            },
+            "data_retention": "UserData is retained until explicit deletion by the user.",
+            "notice_version": "2026-07-23",
+        }
+
+
     # Mount routers
     from app.api.auth import router as auth_router
     from app.api.profiles import router as profiles_router
@@ -274,6 +406,7 @@ body{{background:#0a0f1e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height
     from app.api.payments import router as payments_router
     from app.api.progress import router as progress_router
     from app.api.admin import router as admin_router
+    from app.api.admin_monitoring import router as admin_monitoring_router
     from app.api.roasts import router as roasts_router
     from app.api.chat import router as chat_router
     from app.api.profile_chat import router as profile_chat_router
@@ -285,14 +418,20 @@ body{{background:#0a0f1e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height
     app.include_router(payments_router)
     app.include_router(progress_router)
     app.include_router(admin_router)
+    app.include_router(admin_monitoring_router)
     app.include_router(roasts_router)
     app.include_router(chat_router)
     app.include_router(profile_chat_router)
 
     from app.api.account import router as account_router
     from app.api.extension import router as extension_router
+    from app.api.analytics import router as analytics_router
+    from app.api.public import router as public_router
     app.include_router(account_router)
     app.include_router(extension_router)
+    app.include_router(analytics_router)
+    app.include_router(public_router)
+
 
     # Legacy landing URL → Next.js frontend
     @app.get("/landing")

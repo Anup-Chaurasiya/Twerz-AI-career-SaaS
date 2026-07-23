@@ -1,0 +1,62 @@
+{
+  "jd_analysis": {
+    "role_title": "Analytics Engineer",
+    "company": "DataBridge",
+    "role_family": "Data",
+    "seniority": "junior",
+    "must_haves": [
+      "SQL",
+      "Python",
+      "dbt",
+      "PostgreSQL",
+      "Data modeling"
+    ],
+    "nice_to_haves": [],
+    "keywords": [
+      "Airflow"
+    ],
+    "responsibilities": [
+      "Analytics tables"
+    ],
+    "summary": "Analytics eng"
+  },
+  "evidence_map": {
+    "items": [
+      {
+        "requirement": "SQL",
+        "support": "SUPPORTED",
+        "evidence_quote": "SQL",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "Python",
+        "support": "SUPPORTED",
+        "evidence_quote": "Python",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "dbt",
+        "support": "SUPPORTED",
+        "evidence_quote": "dbt",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "PostgreSQL",
+        "support": "SUPPORTED",
+        "evidence_quote": "PostgreSQL",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "Data modeling",
+        "support": "SUPPORTED",
+        "evidence_quote": "dbt models",
+        "transferable_angle": null
+      }
+    ],
+    "candidate_seniority_estimate": "junior",
+    "transferable_themes": [
+      "Analytics"
+    ],
+    "gaps": []
+  }
+}

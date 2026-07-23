@@ -152,14 +152,15 @@ resume.cls                 # LaTeX document class — copied into temp dir at co
 |--------|------|-------------|
 | GET | `/health` | Health check |
 | GET | `/auth/google/login` | Returns OAuth URL |
-| GET | `/auth/google/callback` | Exchanges code, redirects with JWT |
-| GET | `/auth/me` | Current user info |
+| GET | `/auth/google/callback?ref=CODE` | Exchanges code, tracks referrer, redirects with JWT |
+| GET | `/auth/me` | Current user info (includes `referral_code`) |
 | POST | `/profiles/upload` | Upload PDF (202, processes in background) |
 | GET | `/profiles/` | List user's profiles |
 | GET | `/profiles/{id}` | Get profile with resume_info |
 | GET | `/profiles/{id}/status` | Poll processing status |
 | PUT | `/profiles/{id}` | Update resume_info |
-| POST | `/profiles/{id}/enhance` | AI-enhance profile |
+| POST | `/profiles/{id}/enhance` | AI-enhance profile (rate limited: 3/day per profile) |
+| POST | `/profiles/{id}/linkedin-optimize` | Generate LinkedIn headline, About, Skills |
 | DELETE | `/profiles/{id}` | Soft delete |
 | POST | `/jobs/` | Create job (needs profile_id + job_description) |
 | POST | `/jobs/{id}/generate-resume` | Trigger Phase 1 (202, deducts credit) |
@@ -169,6 +170,10 @@ resume.cls                 # LaTeX document class — copied into temp dir at co
 | PUT | `/jobs/{id}/custom-resume` | Edit before PDF generation |
 | GET | `/jobs/{id}/pdf` | Download PDF |
 | GET | `/jobs/` | List user's jobs |
+| POST | `/jobs/{id}/outreach-message` | Generate warm outreach (known_contact / cold_linkedin / referral_request) |
+| PUT | `/jobs/{id}/contacts` | Save known contacts for networking |
+| PATCH | `/jobs/{id}/application` | Update application_status with applied_via tracking |
+| GET | `/analytics/me` | Personal conversion rates + platform benchmarks |
 | GET | `/credits/packs` | List active credit packs + time passes (public) |
 | GET | `/credits/me` | Current balance + daily free + active pass |
 | GET | `/credits/history` | Paginated transaction history |
@@ -176,8 +181,10 @@ resume.cls                 # LaTeX document class — copied into temp dir at co
 | POST | `/payments/create-order` | Create Razorpay order for pack/pass |
 | POST | `/payments/verify` | Verify payment signature, credit account |
 | POST | `/payments/webhook` | Razorpay webhook (payment.captured safety net) |
+| POST | `/public/ats-check` | No-auth ATS structure check (rate-limited: 30/min per IP) |
+| GET | `/public/stats` | Anonymized success wall stats (total resumes, avg improvement) |
 | GET | `/landing` | Redirects to `FRONTEND_URL` (Next.js landing) |
-| * | `/admin/*` | Full CRUD: tenants, users, domain-rules, credit-packs, time-pass-tiers, promo-codes, transactions, credits/grant |
+| * | `/admin/*` | Full CRUD: tenants, users, domain-rules, credit-packs, time-pass-tiers, promo-codes, transactions, credits/grant, calibration |
 
 ## Important Patterns
 
@@ -233,12 +240,73 @@ Environment variables are documented in `.env.example`.
 - **New User Detection**: `is_new_user` flag in `/auth/me` (true if created < 5 minutes ago)
 - **Empty State Support**: All list endpoints return `is_empty` flag for frontend guidance
 
+### Phase 1-7: NEXT.md Market-Leading Roadmap Implementation ✅
+
+#### Phase 1 — Trust & Verification Hardening ✅
+- Anti-fabrication language in prompts (structured + enhanced)
+- Score field constraints (0-100 validation with Pydantic)
+- PDF machine-readability verification after generation
+- Golden matrix invariant adjusted for near-ceiling scores (≥90)
+
+#### Phase 2 — Outcome Feedback Loop & Calibrated Scoring ✅
+- `ScoreCalibration` table tracking conversion rates by fit_label × ats_bucket
+- Admin endpoints: `GET /admin/calibration`, `POST /admin/calibration/compute`
+- Application → Interview → Offer rate aggregation
+- Sample size filtering to avoid noisy conclusions
+
+#### Phase 3 — Referral & Warm-Intro Assist ✅
+- `known_contacts` (JSON) and `applied_via` (cold/referral/recruiter_outreach) on jobs
+- Outreach message generation: `POST /jobs/{id}/outreach-message`
+  - 3 modes: known_contact, cold_linkedin, referral_request
+  - Same evidence-grounding rules as cover letters (no fabrication)
+- Contact management: `PUT /jobs/{id}/contacts`
+- Application tracking with referral source
+
+#### Phase 4 — Personal Analytics & Proof-of-Value Dashboard ✅
+- `GET /analytics/me` — personal conversion rates by fit_label band
+- Platform benchmark comparison (uses Phase 2 calibration data)
+- Actionable nudge messages ("3x more likely to interview when Fit ≥ 70")
+- Empty state handling for new users
+
+#### Phase 5 — Public Growth Engine ✅
+- **Referral Program**: User-to-user referrals with bonus credits
+  - Unique `referral_code` generated on signup (8-char URL-safe token)
+  - OAuth callback accepts `?ref=CODE` query param to track referrer
+  - `grant_referral_bonus_if_eligible()` triggered after first successful generation
+  - Bonus credits (configurable via `REFERRAL_BONUS_CREDITS=2`) granted to both accounts
+  - Idempotent via `referral_bonus_granted` flag
+- **Public ATS Check**: `POST /public/ats-check` — no-auth PDF structure check
+  - 8-point ATS parseability checklist (reuses ROAST_SYSTEM_PROMPT Part 2)
+  - Rate-limited per IP (30 req/min default)
+  - Returns score estimate + CTA to sign up
+- **Success Wall Stats**: `GET /public/stats` — anonymized aggregate metrics
+  - Total resumes tailored, roasts completed, average ATS score improvement
+  - Powers landing page social proof
+
+#### Phase 6 — LinkedIn Profile Optimizer ✅
+- `POST /profiles/{id}/linkedin-optimize` — generates LinkedIn-optimized content
+  - Headline, About section, Skills list
+  - Optional JD-flavored optimization (same evidence-grounding rules)
+  - Stateless generation (user copies manually, no LinkedIn API required)
+
+#### Phase 7 — Reliability, Observability & India Compliance ✅
+- **Rate Limiting**: IP-based rate limiter for public endpoints (`/public/*`, `/roasts/shared/*`)
+  - In-memory sliding window (60s), configurable via `RATE_LIMIT_PUBLIC_RPM=30`
+  - Returns HTTP 429 with `Retry-After` header
+- **Alerting**: Helper for Sentry + webhook notifications (Slack-compatible)
+  - `SENTRY_DSN` and `ALERT_WEBHOOK_URL` config (graceful no-op when unset)
+- **DPDP Act Compliance**: India privacy notice endpoint (`GET /privacy`)
+
 ### Database Migrations Applied
 ```bash
 j1k2l3m4n5o6 - Profile enhance rate limit fields
 k2l3m4n5o6p7 - PDF error log column
 l3m4n5o6p7q8 - GCS upload failed flag
 m4n5o6p7q8r9 - Onboarding completed flag
+t1u2v3w4x5y6 - PDF verified readable (Phase 1)
+u2v3w4x5y6z7 - Score calibrations table (Phase 2)
+v3w4x5y6z7a8 - Referral & networking fields on jobs (Phase 3)
+x5y6z7a8b9c0 - User referral fields (Phase 5)
 ```
 
 ### API Endpoint Updates

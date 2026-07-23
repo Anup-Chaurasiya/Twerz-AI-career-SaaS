@@ -1,0 +1,47 @@
+{
+  "name": "Priya Sharma",
+  "email": "priya@example.com",
+  "mobile_number": "+91-9888000001",
+  "summary": "Senior Identity Engineer with 7+ years building enterprise IAM, SSO, and privileged access platforms.",
+  "skills": [
+    {"name": "Okta", "category": "Security"},
+    {"name": "SAML", "category": "Security"},
+    {"name": "OIDC", "category": "Security"},
+    {"name": "Azure AD", "category": "Security"},
+    {"name": "PKI", "category": "Security"},
+    {"name": "Python", "category": "Languages"},
+    {"name": "Terraform", "category": "Cloud/Infra"},
+    {"name": "Kubernetes", "category": "Cloud/Infra"}
+  ],
+  "past_experience": [
+    {
+      "company_name": "SecureGate",
+      "role": "Senior IAM Engineer",
+      "start_date": "2019-03",
+      "end_date": null,
+      "description": "Owned Okta workforce identity for 12k employees including SAML/OIDC SSO.\nDesigned Azure AD hybrid join and lifecycle automation.\nBuilt PKI certificate issuance workflows and PAM break-glass controls.\nLed Terraform modules for identity infrastructure."
+    },
+    {
+      "company_name": "CloudId",
+      "role": "IAM Engineer",
+      "start_date": "2016-01",
+      "end_date": "2019-02",
+      "description": "Implemented SAML integrations for 40+ SaaS apps.\nAutomated user provisioning with SCIM and custom Python jobs."
+    }
+  ],
+  "projects": [
+    {
+      "name": "SSO Lab",
+      "description": "Open-source SAML SP demo with Okta and Keycloak.",
+      "link": "https://github.com/example/sso-lab"
+    }
+  ],
+  "educations": [
+    {
+      "institution": "IIT Delhi",
+      "degree": "B.Tech Computer Science",
+      "start_date": "2012",
+      "end_date": "2016"
+    }
+  ]
+}

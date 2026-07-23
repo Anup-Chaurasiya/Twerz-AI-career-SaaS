@@ -12,7 +12,10 @@ from app.services.ai.prompts import (
     ENHANCED_RESUME_SYSTEM_PROMPT,
     BULLET_QUALITY_SYSTEM_PROMPT,
     BULLET_QUALITY_USER_PROMPT,
+    LINKEDIN_OPTIMIZE_SYSTEM_PROMPT,
+    LINKEDIN_OPTIMIZE_USER_PROMPT,
 )
+from app.schemas.profile import LinkedInOptimizeResult
 from app.schemas.tailor import BulletQualityResult, EvidenceMap
 from app.config import get_settings
 from app.exceptions import ProfileNotFoundError
@@ -294,3 +297,49 @@ class ProfileService:
         profile = await self.get_profile(db, profile_id, user_id)
         profile.is_active = False
         await db.commit()
+
+    async def linkedin_optimize(
+        self,
+        db: AsyncSession,
+        profile_id: int,
+        user_id: str,
+        target_jd: dict | str | None = None,
+    ) -> dict:
+        """Generate LinkedIn headline, About summary, and skills list for a profile."""
+        from app.services.auth.rate_limits import enforce_daily_llm_limit
+
+        settings = get_settings()
+        profile = await self.get_profile(db, profile_id, user_id)
+        if not profile.resume_info:
+            raise ValueError(f"Profile {profile_id} has no structured resume data")
+
+        await enforce_daily_llm_limit(
+            db,
+            user_id,
+            purpose="linkedin_optimize",
+            limit=settings.LINKEDIN_OPTIMIZE_DAILY_LIMIT,
+            label="LinkedIn optimization",
+        )
+
+        llm = LLMInference()
+        user_info_str = json.dumps(profile.resume_info, ensure_ascii=False)
+        jd_str = json.dumps(target_jd, ensure_ascii=False) if isinstance(target_jd, dict) else (target_jd or "")
+
+        prompt = LINKEDIN_OPTIMIZE_USER_PROMPT.format(
+            user_info=user_info_str,
+            job_description=jd_str,
+        )
+
+        result = await llm.run_inference(
+            system_prompt=LINKEDIN_OPTIMIZE_SYSTEM_PROMPT,
+            inputs=[prompt],
+            structured_output_schema=LinkedInOptimizeResult,
+            model=settings.LLM_PRO_MODEL,
+            user_id=user_id,
+            purpose="linkedin_optimize",
+            reference_id=str(profile_id),
+        )
+
+        if hasattr(result, "model_dump"):
+            return result.model_dump(mode="json")
+        return result

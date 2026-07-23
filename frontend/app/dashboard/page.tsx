@@ -15,11 +15,16 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     Promise.all([profilesApi.list(1, 5), jobsApi.list(1, 5)]).then(([p, j]) => {
+      if (cancelled) return;
       setProfiles(p.data.items);
       setJobs(j.data.items);
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
   }, []);
 
   const kpis = [

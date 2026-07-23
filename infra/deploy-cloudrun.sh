@@ -66,7 +66,8 @@ SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" \
 echo "Service URL: ${SERVICE_URL}"
 
 echo ""
-echo "NEXT STEPS:"
+echo "  Optional deploy gate: RUN_GOLDEN_MATRIX=1 uv run python infra/preflight.py"
+echo "  (blocks deploy if golden JD matrix fails — requires live LLM key)"
 echo "  1. Update FRONTEND_URL in .env.yaml to: ${SERVICE_URL}"
 echo "  2. Update Google OAuth redirect URI to: ${SERVICE_URL}/auth/google/callback"
 echo "  3. Run migrations (one-time):"

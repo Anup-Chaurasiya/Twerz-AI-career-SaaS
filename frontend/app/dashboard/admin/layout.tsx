@@ -19,11 +19,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const tabs = [
     { name: 'Overview', href: '/dashboard/admin' },
+    { name: 'Ops', href: '/dashboard/admin/ops' },
     { name: 'Users', href: '/dashboard/admin/users' },
+    { name: 'Audit Log', href: '/dashboard/admin/audit-log' },
+    { name: 'Referrals', href: '/dashboard/admin/referrals' },
+    { name: 'Calibration', href: '/dashboard/admin/calibration' },
+    { name: 'Costs', href: '/dashboard/admin/costs' },
+    { name: 'Compliance', href: '/dashboard/admin/compliance' },
     { name: 'Tenants', href: '/dashboard/admin/tenants' },
     { name: 'Credit Config', href: '/dashboard/admin/credits' },
     { name: 'Share Analytics', href: '/dashboard/admin/share-analytics' },
   ];
+
+  const isActive = (href: string) => pathname === href || (href !== '/dashboard/admin' && pathname.startsWith(href));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -31,9 +39,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 28 }}>🛡️</span> Admin Console
         </h1>
-        <div style={{ display: 'flex', gap: 24, marginTop: 16 }}>
+        <div style={{ display: 'flex', gap: 20, marginTop: 16, overflowX: 'auto', paddingBottom: 2 }}>
           {tabs.map(tab => (
-            <Link key={tab.name} href={tab.href} style={{ paddingBottom: 12, borderBottom: `2px solid ${pathname === tab.href ? 'var(--teal)' : 'transparent'}`, color: pathname === tab.href ? 'var(--text-primary)' : 'var(--text-dim)', fontSize: 13, fontWeight: pathname === tab.href ? 600 : 400, textDecoration: 'none', transition: 'all 0.2s ease' }}>
+            <Link key={tab.name} href={tab.href} style={{ paddingBottom: 12, borderBottom: `2px solid ${isActive(tab.href) ? 'var(--teal)' : 'transparent'}`, color: isActive(tab.href) ? 'var(--text-primary)' : 'var(--text-dim)', fontSize: 13, fontWeight: isActive(tab.href) ? 600 : 400, textDecoration: 'none', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
               {tab.name}
             </Link>
           ))}

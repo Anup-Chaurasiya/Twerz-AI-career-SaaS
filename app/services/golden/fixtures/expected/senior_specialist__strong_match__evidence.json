@@ -1,0 +1,63 @@
+{
+  "jd_analysis": {
+    "role_title": "Senior IAM Engineer",
+    "company": "DigiMoksha",
+    "role_family": "IAM/Security",
+    "seniority": "senior",
+    "must_haves": [
+      "Okta",
+      "SAML",
+      "OIDC",
+      "Azure AD",
+      "IAM architecture"
+    ],
+    "nice_to_haves": [],
+    "keywords": [
+      "Okta"
+    ],
+    "responsibilities": [
+      "SSO"
+    ],
+    "summary": "Senior IAM"
+  },
+  "evidence_map": {
+    "items": [
+      {
+        "requirement": "Okta",
+        "support": "SUPPORTED",
+        "evidence_quote": "Okta",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "SAML",
+        "support": "SUPPORTED",
+        "evidence_quote": "SAML",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "OIDC",
+        "support": "SUPPORTED",
+        "evidence_quote": "OIDC",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "Azure AD",
+        "support": "SUPPORTED",
+        "evidence_quote": "Azure AD",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "IAM architecture",
+        "support": "SUPPORTED",
+        "evidence_quote": "Enterprise IAM",
+        "transferable_angle": null
+      }
+    ],
+    "candidate_seniority_estimate": "senior",
+    "transferable_themes": [
+      "SSO",
+      "PKI"
+    ],
+    "gaps": []
+  }
+}

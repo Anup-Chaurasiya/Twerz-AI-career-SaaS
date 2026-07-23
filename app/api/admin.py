@@ -35,6 +35,7 @@ from app.schemas.credit import (
     AdminGrantRequest, AdminTransactionResponse,
 )
 from app.services.credit.service import CreditService
+from app.services.admin.audit import log_admin_action
 from app.config import get_settings
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -50,6 +51,10 @@ def _paginate(items, total, page, size):
         "pages": math.ceil(total / size) if total > 0 else 1,
         "limit": size,
     }
+
+
+def _promo_type_str(promo_type) -> str:
+    return promo_type.value if hasattr(promo_type, "value") else str(promo_type)
 
 
 # ── Overview helpers ──────────────────────────────────────────────
@@ -278,10 +283,15 @@ async def admin_overview(
 async def create_tenant(
     body: TenantCreate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_super_admin),
+    admin: User = Depends(get_super_admin),
 ):
     tenant = Tenant(name=body.name)
     db.add(tenant)
+    await db.flush()
+    await log_admin_action(
+        db, admin_user_id=admin.id, action="tenant_create", target_type="tenant",
+        target_id=tenant.id, after={"name": tenant.name},
+    )
     await db.commit()
     await db.refresh(tenant)
     return TenantResponse(
@@ -329,12 +339,17 @@ async def rename_tenant(
     tenant_id: str,
     body: TenantUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_super_admin),
+    admin: User = Depends(get_super_admin),
 ):
     tenant = await db.get(Tenant, tenant_id)
     if not tenant:
         raise NotFoundError(f"Tenant {tenant_id} not found")
+    before = {"name": tenant.name}
     tenant.name = body.name
+    await log_admin_action(
+        db, admin_user_id=admin.id, action="tenant_update", target_type="tenant",
+        target_id=tenant_id, before=before, after={"name": tenant.name},
+    )
     await db.commit()
     await db.refresh(tenant)
     count_result = await db.execute(
@@ -350,11 +365,16 @@ async def rename_tenant(
 async def delete_tenant(
     tenant_id: str,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_super_admin),
+    admin: User = Depends(get_super_admin),
 ):
     tenant = await db.get(Tenant, tenant_id)
     if not tenant:
         raise NotFoundError(f"Tenant {tenant_id} not found")
+    before = {"name": tenant.name}
+    await log_admin_action(
+        db, admin_user_id=admin.id, action="tenant_delete", target_type="tenant",
+        target_id=tenant_id, before=before,
+    )
     await db.delete(tenant)
     await db.commit()
 
@@ -444,7 +464,7 @@ async def assign_user_tenant(
     user_id: str,
     body: AssignTenantRequest,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_super_admin),
+    admin: User = Depends(get_super_admin),
 ):
     user = await db.get(User, user_id)
     if not user:
@@ -453,7 +473,12 @@ async def assign_user_tenant(
         tenant = await db.get(Tenant, body.tenant_id)
         if not tenant:
             raise NotFoundError(f"Tenant {body.tenant_id} not found")
+    before = {"tenant_id": user.tenant_id}
     user.tenant_id = body.tenant_id
+    await log_admin_action(
+        db, admin_user_id=admin.id, action="tenant_assign", target_type="user",
+        target_id=user_id, before=before, after={"tenant_id": body.tenant_id},
+    )
     await db.commit()
     return {"status": "ok", "user_id": user_id, "tenant_id": body.tenant_id}
 
@@ -506,7 +531,7 @@ async def list_domain_rules(
 async def create_domain_rule(
     body: DomainRuleCreate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_super_admin),
+    admin: User = Depends(get_super_admin),
 ):
     tenant = await db.get(Tenant, body.tenant_id)
     if not tenant:
@@ -518,6 +543,11 @@ async def create_domain_rule(
         raise ValueError(f"Domain rule for '{body.domain}' already exists")
     rule = TenantDomainRule(domain=body.domain, tenant_id=body.tenant_id)
     db.add(rule)
+    await db.flush()
+    await log_admin_action(
+        db, admin_user_id=admin.id, action="domain_rule_create", target_type="domain_rule",
+        target_id=str(rule.id), after={"domain": rule.domain, "tenant_id": rule.tenant_id},
+    )
     await db.commit()
     await db.refresh(rule)
     return DomainRuleResponse(
@@ -533,11 +563,16 @@ async def create_domain_rule(
 async def delete_domain_rule(
     rule_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_super_admin),
+    admin: User = Depends(get_super_admin),
 ):
     rule = await db.get(TenantDomainRule, rule_id)
     if not rule:
         raise NotFoundError(f"Domain rule {rule_id} not found")
+    before = {"domain": rule.domain, "tenant_id": rule.tenant_id}
+    await log_admin_action(
+        db, admin_user_id=admin.id, action="domain_rule_delete", target_type="domain_rule",
+        target_id=str(rule_id), before=before,
+    )
     await db.delete(rule)
     await db.commit()
 
@@ -578,10 +613,15 @@ async def list_credit_packs(
 async def create_credit_pack(
     body: CreditPackCreate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_super_admin),
+    admin: User = Depends(get_super_admin),
 ):
     pack = CreditPack(**body.model_dump())
     db.add(pack)
+    await db.flush()
+    await log_admin_action(
+        db, admin_user_id=admin.id, action="credit_pack_create", target_type="credit_pack",
+        target_id=str(pack.id), after=body.model_dump(),
+    )
     await db.commit()
     await db.refresh(pack)
     return {
@@ -596,13 +636,19 @@ async def update_credit_pack(
     pack_id: int,
     body: CreditPackUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_super_admin),
+    admin: User = Depends(get_super_admin),
 ):
     pack = await db.get(CreditPack, pack_id)
     if not pack:
         raise NotFoundError(f"Credit pack {pack_id} not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
+    before = {"name": pack.name, "credits": pack.credits, "price_paise": pack.price_paise, "is_active": pack.is_active}
+    updates = body.model_dump(exclude_unset=True)
+    for field, value in updates.items():
         setattr(pack, field, value)
+    await log_admin_action(
+        db, admin_user_id=admin.id, action="credit_pack_update", target_type="credit_pack",
+        target_id=str(pack_id), before=before, after=updates,
+    )
     await db.commit()
     await db.refresh(pack)
     return {
@@ -616,11 +662,16 @@ async def update_credit_pack(
 async def delete_credit_pack(
     pack_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_super_admin),
+    admin: User = Depends(get_super_admin),
 ):
     pack = await db.get(CreditPack, pack_id)
     if not pack:
         raise NotFoundError(f"Credit pack {pack_id} not found")
+    before = {"name": pack.name, "credits": pack.credits}
+    await log_admin_action(
+        db, admin_user_id=admin.id, action="credit_pack_delete", target_type="credit_pack",
+        target_id=str(pack_id), before=before,
+    )
     await db.delete(pack)
     await db.commit()
 
@@ -661,10 +712,15 @@ async def list_time_pass_tiers(
 async def create_time_pass_tier(
     body: TimePassTierCreate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_super_admin),
+    admin: User = Depends(get_super_admin),
 ):
     tier = TimePassTier(**body.model_dump())
     db.add(tier)
+    await db.flush()
+    await log_admin_action(
+        db, admin_user_id=admin.id, action="time_pass_create", target_type="time_pass_tier",
+        target_id=str(tier.id), after=body.model_dump(),
+    )
     await db.commit()
     await db.refresh(tier)
     return {
@@ -679,13 +735,19 @@ async def update_time_pass_tier(
     tier_id: int,
     body: TimePassTierUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_super_admin),
+    admin: User = Depends(get_super_admin),
 ):
     tier = await db.get(TimePassTier, tier_id)
     if not tier:
         raise NotFoundError(f"Time pass tier {tier_id} not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
+    before = {"name": tier.name, "duration_days": tier.duration_days, "price_paise": tier.price_paise}
+    updates = body.model_dump(exclude_unset=True)
+    for field, value in updates.items():
         setattr(tier, field, value)
+    await log_admin_action(
+        db, admin_user_id=admin.id, action="time_pass_update", target_type="time_pass_tier",
+        target_id=str(tier_id), before=before, after=updates,
+    )
     await db.commit()
     await db.refresh(tier)
     return {
@@ -699,11 +761,16 @@ async def update_time_pass_tier(
 async def delete_time_pass_tier(
     tier_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_super_admin),
+    admin: User = Depends(get_super_admin),
 ):
     tier = await db.get(TimePassTier, tier_id)
     if not tier:
         raise NotFoundError(f"Time pass tier {tier_id} not found")
+    before = {"name": tier.name}
+    await log_admin_action(
+        db, admin_user_id=admin.id, action="time_pass_delete", target_type="time_pass_tier",
+        target_id=str(tier_id), before=before,
+    )
     try:
         await db.delete(tier)
         await db.commit()
@@ -738,7 +805,7 @@ async def list_promo_codes(
     )
     items = [
         {
-            "id": p.id, "code": p.code, "type": p.type.value,
+            "id": p.id, "code": p.code, "type": _promo_type_str(p.type),
             "value": p.value, "max_redemptions": p.max_redemptions,
             "current_redemptions": p.current_redemptions,
             "is_active": p.is_active,
@@ -754,7 +821,7 @@ async def list_promo_codes(
 async def create_promo_code(
     body: PromoCodeCreate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_super_admin),
+    admin: User = Depends(get_super_admin),
 ):
     # Check uniqueness
     existing = await db.execute(
@@ -765,10 +832,15 @@ async def create_promo_code(
 
     promo = PromoCode(**body.model_dump())
     db.add(promo)
+    await db.flush()
+    await log_admin_action(
+        db, admin_user_id=admin.id, action="promo_create", target_type="promo_code",
+        target_id=str(promo.id), after={"code": promo.code, "type": _promo_type_str(promo.type)},
+    )
     await db.commit()
     await db.refresh(promo)
     return {
-        "id": promo.id, "code": promo.code, "type": promo.type.value,
+        "id": promo.id, "code": promo.code, "type": _promo_type_str(promo.type),
         "value": promo.value, "max_redemptions": promo.max_redemptions,
         "current_redemptions": promo.current_redemptions,
         "is_active": promo.is_active,
@@ -782,17 +854,23 @@ async def update_promo_code(
     promo_id: int,
     body: PromoCodeUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_super_admin),
+    admin: User = Depends(get_super_admin),
 ):
     promo = await db.get(PromoCode, promo_id)
     if not promo:
         raise NotFoundError(f"Promo code {promo_id} not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
+    before = {"code": promo.code, "is_active": promo.is_active, "max_redemptions": promo.max_redemptions}
+    updates = body.model_dump(exclude_unset=True)
+    for field, value in updates.items():
         setattr(promo, field, value)
+    await log_admin_action(
+        db, admin_user_id=admin.id, action="promo_update", target_type="promo_code",
+        target_id=str(promo_id), before=before, after=updates,
+    )
     await db.commit()
     await db.refresh(promo)
     return {
-        "id": promo.id, "code": promo.code, "type": promo.type.value,
+        "id": promo.id, "code": promo.code, "type": _promo_type_str(promo.type),
         "value": promo.value, "max_redemptions": promo.max_redemptions,
         "current_redemptions": promo.current_redemptions,
         "is_active": promo.is_active,
@@ -805,11 +883,16 @@ async def update_promo_code(
 async def delete_promo_code(
     promo_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_super_admin),
+    admin: User = Depends(get_super_admin),
 ):
     promo = await db.get(PromoCode, promo_id)
     if not promo:
         raise NotFoundError(f"Promo code {promo_id} not found")
+    before = {"code": promo.code}
+    await log_admin_action(
+        db, admin_user_id=admin.id, action="promo_delete", target_type="promo_code",
+        target_id=str(promo_id), before=before,
+    )
     await db.delete(promo)
     await db.commit()
 
@@ -820,7 +903,7 @@ async def delete_promo_code(
 async def admin_grant_credits(
     body: AdminGrantRequest,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_super_admin),
+    admin: User = Depends(get_super_admin),
 ):
     user = await db.get(User, body.user_id)
     if not user:
@@ -828,6 +911,11 @@ async def admin_grant_credits(
     uc = await credit_service.add_credits(
         db, body.user_id, body.amount, TransactionType.ADMIN_GRANT,
         description=body.description or f"Admin grant: {body.amount} credits",
+    )
+    await log_admin_action(
+        db, admin_user_id=admin.id, action="credit_grant", target_type="user",
+        target_id=body.user_id,
+        after={"amount": body.amount, "new_balance": uc.balance, "description": body.description},
     )
     await db.commit()
     return {"status": "ok", "user_id": body.user_id, "new_balance": uc.balance}
@@ -1076,4 +1164,67 @@ async def share_analytics_summary(
         "top_browsers": top_browsers,
         "top_os": top_os,
         "views_by_day": views_by_day,
+    }
+
+
+# ── Score Calibration (Phase 2 — Outcome Feedback Loop) ──────────────────────
+
+@router.get("/calibration")
+async def get_calibration(
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(get_super_admin),
+):
+    """Return calibration rows including below-threshold bands for charting."""
+    from app.services.calibration.service import CalibrationService
+    settings = get_settings()
+    svc = CalibrationService()
+    stored = await svc.get_calibration(db)
+    rows = [
+        {**r, "below_threshold": r["sample_size"] < settings.CALIBRATION_MIN_SAMPLE}
+        for r in stored
+    ]
+    return {
+        "rows": rows,
+        "total": len(rows),
+        "min_sample_size": settings.CALIBRATION_MIN_SAMPLE,
+    }
+
+
+@router.post("/calibration/compute")
+async def compute_calibration(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_super_admin),
+):
+    """Trigger a fresh score calibration computation.
+
+    Aggregates all jobs with fit_label set and computes application,
+    interview, and offer conversion rates per fit_label × ATS bucket.
+    Bands below CALIBRATION_MIN_SAMPLE are excluded from storage.
+
+    Returns all computed bands (including excluded ones with below_threshold=True)
+    so admins can see where the data is too sparse for reliable conclusions.
+    """
+    from app.services.calibration.service import CalibrationService
+    from app.config import get_settings
+    settings = get_settings()
+    svc = CalibrationService()
+    computed = await svc.compute_and_store(db, min_sample_size=settings.CALIBRATION_MIN_SAMPLE)
+
+    stored = [r for r in computed if r["sample_size"] >= settings.CALIBRATION_MIN_SAMPLE]
+    excluded = [r for r in computed if r["sample_size"] < settings.CALIBRATION_MIN_SAMPLE]
+    await log_admin_action(
+        db, admin_user_id=admin.id, action="calibration_compute", target_type="system",
+        target_id="calibration",
+        after={"stored_bands": len(stored), "excluded_bands": len(excluded)},
+    )
+    await db.commit()
+    return {
+        "success": True,
+        "stored_bands": len(stored),
+        "excluded_bands": len(excluded),
+        "min_sample_size": settings.CALIBRATION_MIN_SAMPLE,
+        "rows": [
+            {**r, "below_threshold": r["sample_size"] < settings.CALIBRATION_MIN_SAMPLE}
+            for r in computed
+        ],
     }

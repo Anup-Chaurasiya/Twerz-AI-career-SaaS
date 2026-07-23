@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { adminApi } from '@/lib/api/endpoints';
 import { AdminUser, Tenant } from '@/types';
 import { formatDate } from '@/lib/utils';
@@ -75,13 +76,15 @@ export default function AdminUsersPage() {
               </thead>
               <tbody>
                 {users.map(u => (
-                  <tr key={u.id}>
-                    <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{u.name}</td>
+                  <tr key={u.id} style={{ cursor: 'pointer' }} onClick={() => window.location.href = `/dashboard/admin/users/${u.id}`}>
+                    <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                      <Link href={`/dashboard/admin/users/${u.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>{u.name}</Link>
+                    </td>
                     <td>{u.email}</td>
                     <td><span className={`badge ${u.is_super_admin ? 'badge-processing' : 'badge-ready'}`}>{u.is_super_admin ? 'Admin' : 'User'}</span></td>
                     <td>{tenants.find(t => t.id === u.tenant_id)?.name || 'Default'}</td>
                     <td>{formatDate(u.created_at)}</td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
                       <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 11, color: 'var(--teal)' }} onClick={() => { setSelectedUser(u); setShowCreditsModal(true); }}>
                         ⚡ Grant Credits
                       </button>

@@ -612,3 +612,69 @@ class CreditService:
         )
         db.add(txn)
         return txn
+
+    async def grant_referral_bonus_if_eligible(
+        self, db: AsyncSession, user_id: str
+    ) -> bool:
+        """Grant referral bonus after first successful generation.
+
+        Fraud signals hold payout until admin approves. Idempotent via referral_bonus_status.
+        Returns True only when credits were granted immediately (not held).
+        """
+        result = await db.execute(select(User).where(User.id == user_id).with_for_update())
+        user = result.scalar_one_or_none()
+        if not user or not user.referred_by_user_id:
+            return False
+
+        # Legacy + new status guard
+        if user.referral_bonus_status != "none":
+            return False
+        if user.referral_bonus_granted:
+            return False
+
+        referrer_id = user.referred_by_user_id
+        if referrer_id == user_id:
+            user.referral_bonus_granted = True
+            user.referral_bonus_status = "denied"
+            await db.commit()
+            return False
+
+        settings = get_settings()
+        bonus_amount = settings.REFERRAL_BONUS_CREDITS
+
+        from app.services.referral.fraud import detect_referral_signals, create_payout_hold
+
+        signals = await detect_referral_signals(
+            db, referrer_id=referrer_id, referred_id=user_id,
+        )
+
+        if signals:
+            await create_payout_hold(
+                db,
+                referrer_id=referrer_id,
+                referred_id=user_id,
+                signals=signals,
+                bonus_amount=bonus_amount,
+            )
+            user.referral_bonus_granted = True
+            user.referral_bonus_status = "held"
+            await db.commit()
+            logger.warning(
+                "Referral bonus HELD pending review for %s (referrer %s) signals=%s",
+                user_id, referrer_id, signals,
+            )
+            return False
+
+        from app.services.referral.payout import apply_referral_bonus_credits
+        await apply_referral_bonus_credits(
+            db,
+            referred_id=user_id,
+            referrer_id=referrer_id,
+            bonus_amount=bonus_amount,
+        )
+        user.referral_bonus_granted = True
+        user.referral_bonus_status = "paid"
+        await db.commit()
+        logger.info("Granted referral bonus (%d credits) to %s and referrer %s", bonus_amount, user_id, referrer_id)
+        return True
+

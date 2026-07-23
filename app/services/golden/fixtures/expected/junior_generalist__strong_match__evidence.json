@@ -1,0 +1,62 @@
+{
+  "jd_analysis": {
+    "role_title": "Full Stack Engineer",
+    "company": "Acme Labs",
+    "role_family": "Full-Stack",
+    "seniority": "junior",
+    "must_haves": [
+      "React",
+      "Node.js",
+      "PostgreSQL",
+      "REST APIs",
+      "GraphQL"
+    ],
+    "nice_to_haves": [],
+    "keywords": [
+      "React"
+    ],
+    "responsibilities": [
+      "Build SaaS"
+    ],
+    "summary": "Junior FS"
+  },
+  "evidence_map": {
+    "items": [
+      {
+        "requirement": "React",
+        "support": "SUPPORTED",
+        "evidence_quote": "React",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "Node.js",
+        "support": "SUPPORTED",
+        "evidence_quote": "Node",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "PostgreSQL",
+        "support": "SUPPORTED",
+        "evidence_quote": "Postgres",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "REST APIs",
+        "support": "SUPPORTED",
+        "evidence_quote": "REST",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "GraphQL",
+        "support": "SUPPORTED",
+        "evidence_quote": "GraphQL",
+        "transferable_angle": null
+      }
+    ],
+    "candidate_seniority_estimate": "junior",
+    "transferable_themes": [
+      "Full-stack"
+    ],
+    "gaps": []
+  }
+}

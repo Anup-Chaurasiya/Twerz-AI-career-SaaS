@@ -1,0 +1,65 @@
+{
+  "jd_analysis": {
+    "role_title": "Backend Engineer (AI Integration)",
+    "company": "NeuronWorks",
+    "role_family": "Backend",
+    "seniority": "mid",
+    "must_haves": [
+      "Python or Node",
+      "REST APIs",
+      "PostgreSQL",
+      "Background workers",
+      "Docker"
+    ],
+    "nice_to_haves": [],
+    "keywords": [
+      "Celery"
+    ],
+    "responsibilities": [
+      "LLM APIs"
+    ],
+    "summary": "Mid backend AI"
+  },
+  "evidence_map": {
+    "items": [
+      {
+        "requirement": "Python or Node",
+        "support": "SUPPORTED",
+        "evidence_quote": "Node/Django",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "REST APIs",
+        "support": "SUPPORTED",
+        "evidence_quote": "REST",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "PostgreSQL",
+        "support": "SUPPORTED",
+        "evidence_quote": "Postgres",
+        "transferable_angle": null
+      },
+      {
+        "requirement": "Background workers",
+        "support": "PARTIAL",
+        "evidence_quote": "Celery",
+        "transferable_angle": "Celery jobs"
+      },
+      {
+        "requirement": "Docker",
+        "support": "MISSING",
+        "evidence_quote": null,
+        "transferable_angle": null
+      }
+    ],
+    "candidate_seniority_estimate": "junior",
+    "transferable_themes": [
+      "APIs",
+      "Celery"
+    ],
+    "gaps": [
+      "Docker"
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 """Account export / delete and notifications."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,13 +13,14 @@ from app.models.roast import Roast
 from app.models.credit import UserCredit, UserTimePass, CreditTransaction, PromoRedemption
 from app.models.notification import Notification
 from app.models.subscription import UserSubscription
+from app.models.data_request_log import DataRequestLog
 from app.services.notifications.service import NotificationService
 
 router = APIRouter(tags=["account"])
 notify_service = NotificationService()
 
 
-@router.get("/notifications")
+from app.utils.client_ip import client_ip as _client_ip
 async def list_notifications(
     unread_only: bool = False,
     db: AsyncSession = Depends(get_db),
@@ -61,10 +62,17 @@ async def mark_notification_read(
 
 @router.get("/account/export")
 async def export_account(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """GDPR-style data export for the current user."""
+    db.add(DataRequestLog(
+        user_id=current_user.id,
+        action="export",
+        ip=_client_ip(request),
+    ))
+    await db.flush()
     profiles = (
         await db.execute(select(Profile).where(Profile.user_id == current_user.id))
     ).scalars().all()
@@ -75,7 +83,7 @@ async def export_account(
         await db.execute(select(Roast).where(Roast.user_id == current_user.id))
     ).scalars().all()
 
-    return {
+    payload = {
         "user": {
             "id": current_user.id,
             "email": current_user.email,
@@ -106,15 +114,20 @@ async def export_account(
         ],
         "roasts": [{"id": r.id, "status": r.status.value, "share_id": getattr(r, "share_id", None)} for r in roasts],
     }
+    await db.commit()
+    return payload
 
 
 @router.delete("/account")
 async def delete_account(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Hard-delete user data (profiles, jobs, credits, notifications) then the user."""
     uid = current_user.id
+    db.add(DataRequestLog(user_id=uid, action="delete", ip=_client_ip(request)))
+    await db.flush()
     await db.execute(delete(Notification).where(Notification.user_id == uid))
     await db.execute(delete(UserSubscription).where(UserSubscription.user_id == uid))
     await db.execute(delete(PromoRedemption).where(PromoRedemption.user_id == uid))
