@@ -11,9 +11,88 @@ from app.schemas.tailor import EvidenceItem, EvidenceMap, EvidenceSupport
 
 QUOTE_MATCH_THRESHOLD = 0.72
 
+# Common English / JD boilerplate — never treat as forbidden tool tokens.
+_GENERIC_FORBIDDEN_STOPWORDS = frozenset({
+    "ability", "abilities", "algorithms", "analytical", "and", "architecture", "are",
+    "attitude", "automation", "bangalore", "basic", "commute", "data", "excellent",
+    "exceptional", "experience", "flowcharts", "for", "frameworks", "has", "have",
+    "integration", "issues", "its", "karnataka", "limitations", "management", "models",
+    "monitoring", "performance", "pipelines", "problem", "problem-solving", "relocate",
+    "skills", "software", "solving", "structures", "system", "teamwork", "testing", "the",
+    "time", "troubleshooting", "understanding", "unit", "weaknesses", "with",
+    "workarounds", "your", "our", "will", "must", "should", "years", "year",
+    "good", "strong", "working", "work", "using", "used", "including", "related",
+})
 
-def forbidden_tools_from_evidence(evidence_map: EvidenceMap | dict | None) -> set[str]:
-    """Extract tool/title tokens from MISSING evidence items."""
+# JD soft-skill / prose requirement prefixes — not named-tool requirements.
+_SOFT_SKILL_REQ_PREFIXES = (
+    "experience with",
+    "experience in",
+    "experience working",
+    "strong understanding",
+    "solid understanding",
+    "good understanding",
+    "understanding of",
+    "knowledge of",
+    "familiarity with",
+    "proficiency in",
+    "ability to",
+    "excellent",
+    "exceptional",
+    "demonstrated",
+    "proven",
+)
+
+# Short tokens that are still meaningful missing tools/skills when flagged MISSING.
+_KNOWN_TECH_TOKENS = frozenset({
+    "aws", "gcp", "jwt", "jvm", "mvc", "oidc", "okta", "rest", "saml", "sql",
+    "api", "apis", "css", "html", "xml", "git", "ci", "cd", "jpa", "orm",
+})
+
+
+def _is_soft_skill_jd_requirement(req: str) -> bool:
+    """True when a MISSING requirement is JD prose/soft-skill wording, not a named tool."""
+    lower = (req or "").strip().lower()
+    if not lower:
+        return False
+    if any(lower.startswith(p) for p in _SOFT_SKILL_REQ_PREFIXES):
+        return True
+    if any(p in lower for p in (" skills", " abilities", "problem-solving", "problem solving")):
+        return True
+    # Long requirements with no capitalized proper-noun token are almost always JD prose.
+    words = re.findall(r"\b[A-Za-z][A-Za-z0-9.+#/-]{1,40}\b", req)
+    if len(words) >= 4 and not any(
+        w[0].isupper() and w.lower() not in _GENERIC_FORBIDDEN_STOPWORDS for w in words
+    ):
+        return True
+    return False
+
+
+def _is_distinctive_forbidden_token(tok: str, *, original_req: str) -> bool:
+    """True if token is a tool/skill name worth scanning — not generic JD prose."""
+    t = tok.lower().strip()
+    if len(t) < 3 or t in _GENERIC_FORBIDDEN_STOPWORDS:
+        return False
+    if t in _KNOWN_TECH_TOKENS:
+        return True
+    if re.search(r"[0-9.+#/-]", tok):
+        return True
+    # Soft-skill JD lines: only flag capitalized product/framework names (Spring, Kubernetes).
+    if _is_soft_skill_jd_requirement(original_req):
+        for m in re.finditer(r"\b[A-Za-z][A-Za-z0-9.+#/-]{1,40}\b", original_req):
+            if m.group(0).lower() == t and m.group(0)[0].isupper() and t not in _GENERIC_FORBIDDEN_STOPWORDS:
+                return True
+        return False
+    # Token appeared capitalized in the requirement (Spring, Kubernetes, …)
+    for m in re.finditer(r"\b[A-Za-z][A-Za-z0-9.+#/-]{1,40}\b", original_req):
+        if m.group(0).lower() == t and m.group(0)[0].isupper():
+            return True
+    # Longer uncommon tokens are usually tools (postgres, kubernetes, …)
+    return len(t) >= 6
+
+
+def forbidden_tool_tokens_from_evidence(evidence_map: EvidenceMap | dict | None) -> set[str]:
+    """Distinctive tool/skill tokens from MISSING items — safe for resume substring scans."""
     if not evidence_map:
         return set()
     if isinstance(evidence_map, dict):
@@ -31,12 +110,72 @@ def forbidden_tools_from_evidence(evidence_map: EvidenceMap | dict | None) -> se
         req = (item.requirement or "").strip()
         if not req:
             continue
-        # Keep multi-word requirements and significant tokens (Okta, SAML, etc.)
-        forbidden.add(req.lower())
         for tok in re.findall(r"[A-Za-z][A-Za-z0-9.+#/-]{1,40}", req):
-            if len(tok) >= 3:
+            if _is_distinctive_forbidden_token(tok, original_req=req):
                 forbidden.add(tok.lower())
     return forbidden
+
+
+def forbidden_tools_from_evidence(evidence_map: EvidenceMap | dict | None) -> set[str]:
+    """Forbidden terms for cover letters / outreach: distinctive tokens + short tool phrases."""
+    tokens = forbidden_tool_tokens_from_evidence(evidence_map)
+    if not evidence_map:
+        return tokens
+    if isinstance(evidence_map, dict):
+        evidence_map = EvidenceMap.model_validate(evidence_map)
+    forbidden = set(tokens)
+    for item in evidence_map.items or []:
+        support = item.support
+        if not isinstance(support, EvidenceSupport):
+            try:
+                support = EvidenceSupport(support)
+            except ValueError:
+                continue
+        if support != EvidenceSupport.MISSING:
+            continue
+        req = (item.requirement or "").strip()
+        if not req:
+            continue
+        words = req.split()
+        # Short noun-phrase requirements (Okta, Azure AD, Ping Identity) — not full JD sentences.
+        if len(words) <= 4 and not req.lower().startswith(
+            ("experience", "ability", "excellent", "basic", "teamwork", "knowledge")
+        ):
+            forbidden.add(req.lower())
+    return forbidden
+
+
+def filter_resume_honesty_hits(hits: list[str], evidence_map: EvidenceMap | dict | None) -> list[str]:
+    """Drop generic tokens and JD boilerplate from resume honesty hits."""
+    if not hits:
+        return []
+    tokens = forbidden_tool_tokens_from_evidence(evidence_map)
+    actionable: list[str] = []
+    seen: set[str] = set()
+    for hit in hits:
+        h = (hit or "").strip()
+        if not h:
+            continue
+        key = h.lower()
+        if key in seen or key in _GENERIC_FORBIDDEN_STOPWORDS:
+            continue
+        # Implied-claim scan returns full JD soft-skill requirement lines — not actionable.
+        # Named-tool violations are caught by substring scans (short token hits below).
+        if _is_soft_skill_jd_requirement(h):
+            continue
+        # Long JD requirement lines: only flag if they contain a distinctive missing token.
+        if len(h) > 20:
+            if tokens and any(
+                re.search(rf"(?<![a-z0-9]){re.escape(t)}(?![a-z0-9])", key) for t in tokens
+            ):
+                seen.add(key)
+                actionable.append(h)
+            continue
+        # Short hits must match a distinctive missing token.
+        if key in tokens:
+            seen.add(key)
+            actionable.append(h)
+    return actionable
 
 
 def find_forbidden_in_text(text: str, forbidden: set[str] | list[str]) -> list[str]:
@@ -153,6 +292,15 @@ def verify_evidence_quotes(
     if unverified == 0:
         return evidence_map, 0
     return evidence_map.model_copy(update={"items": new_items}), unverified
+
+
+def missing_requirements_for_implied_scan(evidence_map: EvidenceMap | dict | None) -> list[str]:
+    """MISSING requirements for implied-claim scan — excludes JD soft-skill boilerplate."""
+    return [
+        r
+        for r in missing_requirements_list(evidence_map)
+        if not _is_soft_skill_jd_requirement(r)
+    ]
 
 
 def missing_requirements_list(evidence_map: EvidenceMap | dict | None) -> list[str]:

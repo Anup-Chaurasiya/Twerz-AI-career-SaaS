@@ -38,3 +38,22 @@ def test_roast_off_limits():
 def test_legacy_single_shot_prompts_removed():
     assert not hasattr(prompts, "CUSTOM_RESUME_SYSTEM_PROMPT")
     assert not hasattr(prompts, "CUSTOM_RESUME_USER_PROMPT")
+
+
+def test_resume_plan_prompts_exist_and_are_grounded():
+    assert "Resume Planner" in prompts.RESUME_PLAN_SYSTEM_PROMPT
+    assert "never invent" in prompts.RESUME_PLAN_SYSTEM_PROMPT.lower()
+    assert "{jd_analysis}" in prompts.RESUME_PLAN_USER_PROMPT
+    assert "{evidence_map}" in prompts.RESUME_PLAN_USER_PROMPT
+    assert "{user_info}" in prompts.RESUME_PLAN_USER_PROMPT
+
+
+def test_recruiter_review_prompts_exist_and_forbid_new_claims():
+    assert "Senior Engineering Recruiter" in prompts.RECRUITER_REVIEW_SYSTEM_PROMPT
+    assert "Never suggest adding" in prompts.RECRUITER_REVIEW_SYSTEM_PROMPT
+    assert "{tailored_resume}" in prompts.RECRUITER_REVIEW_USER_PROMPT
+
+
+def test_write_prompt_references_resume_plan():
+    assert "resume_plan" in prompts.CUSTOM_RESUME_WRITE_SYSTEM_PROMPT
+    assert "{resume_plan}" in prompts.CUSTOM_RESUME_WRITE_USER_PROMPT

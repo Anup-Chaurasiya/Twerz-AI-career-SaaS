@@ -96,7 +96,7 @@ export default function DashboardPage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {profiles.map((p) => (
-                <Link key={p.id} href={`/dashboard/profiles/${p.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'rgba(1,169,219,0.04)', borderRadius: 8, border: '1px solid rgba(1,169,219,0.08)', textDecoration: 'none', transition: 'all 0.2s ease' }}>
+                <Link key={p.id} href={`/dashboard/profiles/${p.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)', textDecoration: 'none', transition: 'all 0.2s ease' }}>
                   <div>
                     <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{p.resume_info?.name || `Profile #${p.id}`}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>{formatDate(p.created_at)}</div>
@@ -127,7 +127,7 @@ export default function DashboardPage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {jobs.map((j) => (
-                <Link key={j.id} href={`/dashboard/jobs/${j.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'rgba(1,169,219,0.04)', borderRadius: 8, border: '1px solid rgba(1,169,219,0.08)', textDecoration: 'none', transition: 'all 0.2s ease' }}>
+                <Link key={j.id} href={`/dashboard/jobs/${j.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)', textDecoration: 'none', transition: 'all 0.2s ease' }}>
                   <div>
                     <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{j.job_description.company}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>{j.job_description.role}</div>

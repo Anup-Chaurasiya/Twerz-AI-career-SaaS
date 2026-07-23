@@ -47,6 +47,8 @@ class Job(TimestampMixin, Base):
     fit_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
     gap_list: Mapped[list | None] = mapped_column(JSON, nullable=True)
     gap_roadmap: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    resume_plan: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    recruiter_review: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     ats_score_before: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ats_score_after: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ats_score_detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -57,6 +59,8 @@ class Job(TimestampMixin, Base):
     cover_letter: Mapped[str | None] = mapped_column(Text, nullable=True)
     interview_packet: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     pdf_verified_readable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    target_page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pdf_page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Application tracker (Phase 2)
     application_status: Mapped[ApplicationStatus] = mapped_column(

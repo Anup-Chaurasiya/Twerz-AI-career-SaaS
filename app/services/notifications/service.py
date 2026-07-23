@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.job import ApplicationStatus, Job
@@ -74,34 +74,42 @@ class NotificationService:
         When ``user_id`` is set, only that user's jobs are scanned (request-scoped path).
         """
         now = datetime.now(timezone.utc)
-        stmt = select(Job).where(
+        conditions = [
             Job.follow_up_at.is_not(None),
             Job.follow_up_at <= now,
             Job.follow_up_notified_at.is_(None),
             Job.application_status.notin_(_TERMINAL_APPLICATION),
-        )
+        ]
         if user_id is not None:
-            stmt = stmt.where(Job.user_id == user_id)
-        result = await db.execute(stmt)
-        jobs = list(result.scalars().all())
+            conditions.append(Job.user_id == user_id)
+
+        # Atomically claim due jobs so concurrent pollers cannot double-notify.
+        claim_stmt = (
+            update(Job)
+            .where(*conditions)
+            .values(follow_up_notified_at=now)
+            .returning(Job.id, Job.user_id, Job.job_description)
+            .execution_options(synchronize_session=False)
+        )
+        result = await db.execute(claim_stmt)
+        jobs = result.all()
         if not jobs:
             return 0
 
         created = 0
-        for job in jobs:
-            jd = job.job_description or {}
+        for job_id, job_user_id, job_description in jobs:
+            jd = job_description or {}
             role = jd.get("role") or "role"
             company = jd.get("company") or "company"
             await self.notify(
                 db,
-                job.user_id,
+                job_user_id,
                 title="Follow-up due",
                 body=f"Follow up on {role} at {company}",
                 kind="follow_up",
-                link=f"/dashboard/jobs/{job.id}",
+                link=f"/dashboard/jobs/{job_id}",
                 commit=False,
             )
-            job.follow_up_notified_at = now
             created += 1
         await db.commit()
         return created

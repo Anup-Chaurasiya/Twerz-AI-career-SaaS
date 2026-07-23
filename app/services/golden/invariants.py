@@ -89,6 +89,25 @@ def assert_no_forbidden_tools(resume: dict, forbidden: set[str] | list[str]) -> 
         assert tool.lower() not in blob, f"Invented/forbidden tool present: {tool}"
 
 
+def assert_keyword_coverage(
+    result: dict[str, Any],
+    *,
+    min_supported_pct: float = 95.0,
+    fit_label: str = "STRONG",
+) -> None:
+    """STRONG fit tailored resumes should weave nearly all SUPPORTED keywords."""
+    if (fit_label or "").upper() != "STRONG":
+        return
+    detail = result.get("ats_score_detail") or {}
+    coverage = detail.get("keyword_coverage") or {}
+    pct = coverage.get("supported_pct")
+    if pct is None:
+        return
+    assert float(pct) >= min_supported_pct, (
+        f"STRONG fit supported keyword coverage {pct}% below {min_supported_pct}%"
+    )
+
+
 def _concrete_token_count(text: str) -> int:
     if not text:
         return 0

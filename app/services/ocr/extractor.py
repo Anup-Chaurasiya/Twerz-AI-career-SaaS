@@ -17,6 +17,12 @@ class PDFExtractor:
         settings = get_settings()
         self.flash_model = settings.LLM_FLASH_MODEL
 
+    @staticmethod
+    def count_pages(pdf_bytes: bytes) -> int:
+        """Return the number of pages in a PDF (minimum 1)."""
+        with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+            return max(1, len(pdf.pages))
+
     def extract_text(self, pdf_bytes: bytes) -> str:
         """Fast extraction using pdfplumber without LLM."""
         texts = []
@@ -27,6 +33,18 @@ class PDFExtractor:
                     texts.append(text)
         # Strip null bytes — some PDFs embed \x00 which PostgreSQL rejects
         return "\n".join(texts).replace("\x00", "")
+
+    def extract_text_and_page_count(self, pdf_bytes: bytes) -> tuple[str, int]:
+        """Extract text and page count in a single pdfplumber pass."""
+        texts: list[str] = []
+        page_count = 1
+        with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+            page_count = max(1, len(pdf.pages))
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text:
+                    texts.append(text)
+        return "\n".join(texts).replace("\x00", ""), page_count
 
     async def extract_and_structure_via_vision(
         self,

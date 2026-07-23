@@ -89,6 +89,51 @@ async def approve_payout_review(
     return review
 
 
+async def resolve_pending_referral_holds_on_user_delete(
+    db: AsyncSession,
+    user_id: str,
+) -> None:
+    """Reject pending referral reviews and unblock surviving referred users before account delete."""
+    result = await db.execute(
+        select(ReferralPayoutReview)
+        .where(
+            ReferralPayoutReview.status == ReferralPayoutStatus.PENDING,
+            (ReferralPayoutReview.referrer_id == user_id)
+            | (ReferralPayoutReview.referred_id == user_id),
+        )
+        .with_for_update()
+    )
+    reviews = list(result.scalars().all())
+    if not reviews:
+        return
+
+    from app.models.referral_flag import ReferralFlag
+
+    now = datetime.now(timezone.utc)
+    for review in reviews:
+        if review.referred_id != user_id:
+            referred_result = await db.execute(
+                select(User).where(User.id == review.referred_id).with_for_update()
+            )
+            referred = referred_result.scalar_one_or_none()
+            if referred and referred.referral_bonus_status == "held":
+                referred.referral_bonus_status = "denied"
+
+        review.status = ReferralPayoutStatus.REJECTED
+        review.reviewed_at = now
+
+        flags = (await db.execute(
+            select(ReferralFlag).where(
+                ReferralFlag.referrer_id == review.referrer_id,
+                ReferralFlag.referred_id == review.referred_id,
+            )
+        )).scalars().all()
+        for flag in flags:
+            flag.reviewed = True
+
+    await db.flush()
+
+
 async def reject_payout_review(
     db: AsyncSession,
     review_id: int,

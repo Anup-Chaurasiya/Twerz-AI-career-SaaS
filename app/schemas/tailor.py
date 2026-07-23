@@ -157,3 +157,85 @@ class ImpliedClaimScan(BaseModel):
         default_factory=list,
         description="Implied claims of MISSING tools/skills in the draft",
     )
+
+
+class ResumePlan(BaseModel):
+    """Structured writing strategy produced BEFORE resume generation (Stage 5: Resume Planner).
+
+    The writer follows this plan for organization/strategy; `<candidate_profile>` remains
+    the sole source of truth for facts. Nothing here should introduce new claims.
+    """
+
+    target_role: str = Field(default="", description="Normalized target role this plan is written for")
+    strengths: List[str] = Field(
+        default_factory=list,
+        description="Candidate's real strengths relevant to this JD, grounded in evidence_map",
+    )
+    weaknesses: List[str] = Field(
+        default_factory=list,
+        description="Honest gaps relevant to this JD, drawn from evidence_map gaps/MISSING items only",
+    )
+    experience_themes: List[str] = Field(
+        default_factory=list,
+        description="Logical domains to group experience bullets under (e.g. Backend Systems, AI Platform, "
+        "Automation) — derived from what the candidate actually did",
+    )
+    project_themes: List[str] = Field(
+        default_factory=list,
+        description="Logical domains to group project bullets under",
+    )
+    skill_priorities: List[str] = Field(
+        default_factory=list,
+        description="Candidate's real skills only, ordered by relevance to this JD",
+    )
+    key_achievements: List[str] = Field(
+        default_factory=list,
+        description="Most valuable achievements to foreground, quoted/paraphrased directly from the profile "
+        "(favor quantified ones)",
+    )
+    bullet_ordering_notes: str = Field(
+        default="", description="Guidance on which bullets to lead with per role/project"
+    )
+    section_order: List[str] = Field(
+        default_factory=list,
+        description="Recommended resume section order, e.g. ['summary', 'skills', 'experience', 'projects', "
+        "'education']",
+    )
+    strategy_summary: str = Field(
+        default="", description="One or two sentence framing of the overall angle the writer should take"
+    )
+
+
+class RecruiterReviewResult(BaseModel):
+    """Stage 7: Recruiter Review — a senior-recruiter critique of a resume draft.
+
+    Sub-scores are 0-10. The pipeline computes pass/fail deterministically from the
+    minimum sub-score (see validators.recruiter_review_passed) rather than trusting a
+    self-reported boolean, matching how ATS/fit scores are gated elsewhere.
+    """
+
+    would_shortlist: bool = Field(default=False, description="Would this recruiter shortlist the candidate?")
+    ten_second_clarity: bool = Field(
+        default=False, description="Can a recruiter understand who this candidate is within ~10 seconds?"
+    )
+    readability: int = Field(default=0, ge=0, le=10)
+    professionalism: int = Field(default=0, ge=0, le=10)
+    trust: int = Field(default=0, ge=0, le=10)
+    scanability: int = Field(default=0, ge=0, le=10)
+    shortlist_likelihood: int = Field(default=0, ge=0, le=10)
+    repetitive_notes: List[str] = Field(
+        default_factory=list, description="What feels repetitive (verb reuse, similar bullet shapes)"
+    )
+    weak_bullets: List[str] = Field(
+        default_factory=list, description="Specific weak/vague/no-impact bullets quoted from the draft"
+    )
+    bullets_to_move: List[str] = Field(
+        default_factory=list, description="Bullets that are misplaced or buried and should move"
+    )
+    summary_feedback: str = Field(default="", description="Is the summary convincing, or generic filler?")
+    flow_feedback: str = Field(default="", description="Does the experience read as a coherent narrative?")
+    critique: str = Field(
+        default="",
+        description="Actionable critique for one targeted rewrite pass — structural/wording only, "
+        "never suggests adding unverifiable claims",
+    )

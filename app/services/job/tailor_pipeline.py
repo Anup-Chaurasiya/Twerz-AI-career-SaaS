@@ -21,6 +21,8 @@ from app.schemas.tailor import (
     ImpliedClaimScan,
     InterviewPacket,
     JDAnalysis,
+    RecruiterReviewResult,
+    ResumePlan,
 )
 from app.services.ai.inference import LLMInference
 from app.services.ai.prompts import (
@@ -50,23 +52,43 @@ from app.services.ai.prompts import (
     JD_ANALYSIS_USER_PROMPT,
     OUTREACH_MESSAGE_SYSTEM_PROMPT,
     OUTREACH_MESSAGE_USER_PROMPT,
+    RECRUITER_REVIEW_SYSTEM_PROMPT,
+    RECRUITER_REVIEW_USER_PROMPT,
+    RESUME_PLAN_SYSTEM_PROMPT,
+    RESUME_PLAN_USER_PROMPT,
     WRITE_MODE_STRETCH,
     WRITE_MODE_STRONG,
     WRITE_MODE_TRANSFERABLE,
 )
 from app.services.job.honesty import (
+    filter_resume_honesty_hits,
     find_forbidden_in_obj,
     find_forbidden_in_text,
-    forbidden_tools_from_evidence,
-    missing_requirements_list,
+    forbidden_tool_tokens_from_evidence,
+    missing_requirements_for_implied_scan,
     strip_forbidden_mentions,
     verify_evidence_quotes,
+)
+from app.services.job.validators import (
+    MAX_RECRUITER_PASSES,
+    build_keyword_checklist,
+    compute_keyword_coverage,
+    estimate_target_page_count,
+    fit_aware_thresholds,
+    page_target_block,
+    recruiter_critique_from,
+    recruiter_review_passed,
+    specificity_regression,
+    validate_content_preservation,
+    validate_formatting,
+    validate_structure,
+    validation_critique_from,
 )
 
 logger = getLogger(__name__)
 
-REFINE_SCORE_THRESHOLD = 72
-MAX_REFINE_PASSES = 2
+REFINE_SCORE_THRESHOLD = 72  # default; fit-aware thresholds override in run()
+MAX_REFINE_PASSES = 3
 # Structure is JD-independent so tailored resumes can improve ATS even on mismatch.
 ATS_STRUCTURE_WEIGHT = 0.55
 ATS_KEYWORD_WEIGHT = 0.45
@@ -423,6 +445,41 @@ def split_profile_bullets(description: Any) -> list[str]:
     return bullets or [text]
 
 
+def normalize_profile_for_tailor(profile_info: dict) -> dict:
+    """Normalize profile descriptions to bullet arrays for tailoring."""
+    out = dict(profile_info)
+    experiences: list[dict] = []
+    for exp in profile_info.get("past_experience") or profile_info.get("experience") or []:
+        if not isinstance(exp, dict):
+            continue
+        exp_copy = dict(exp)
+        exp_copy["description"] = split_profile_bullets(exp.get("description"))
+        experiences.append(exp_copy)
+    out["past_experience"] = experiences
+
+    projects: list[dict] = []
+    for proj in profile_info.get("projects") or []:
+        if not isinstance(proj, dict):
+            continue
+        proj_copy = dict(proj)
+        proj_copy["description"] = split_profile_bullets(proj.get("description"))
+        projects.append(proj_copy)
+    out["projects"] = projects
+
+    achievements: list[str] = []
+    for ach in profile_info.get("achievements") or []:
+        if isinstance(ach, dict):
+            name = str(ach.get("name") or "").strip()
+            desc = str(ach.get("description") or "").strip()
+            text = f"{name}: {desc}".strip(": ").strip() if name or desc else ""
+            if text:
+                achievements.append(text)
+        elif str(ach).strip():
+            achievements.append(str(ach).strip())
+    out["achievements"] = achievements
+    return out
+
+
 def _allowed_keywords(evidence: EvidenceMap | dict | None) -> list[str]:
     if evidence is None:
         return []
@@ -537,7 +594,8 @@ def _quality_critique_block(critique: str | None) -> str:
         "<quality_critique>\n"
         f"{critique.strip()}\n"
         "</quality_critique>\n"
-        "Fix the specificity regressions above. Restore metrics/tools/scope — do not invent.\n"
+        "Fix the issues above (specificity, structure, readability, or formatting as noted). "
+        "Preserve every fact/metric/scope already present — never invent, never drop content.\n"
     )
 
 
@@ -582,17 +640,32 @@ class TailorPipeline:
         job_description: dict,
         user_id: str | None = None,
         reference_id: str | None = None,
+        original_page_count: int | None = None,
     ) -> dict[str, Any]:
         """Full Phase-1 pipeline. Returns dict of fields to persist on Job."""
+        normalized_profile = normalize_profile_for_tailor(profile_info)
+        target_page_count = estimate_target_page_count(
+            normalized_profile,
+            original_page_count,
+            split_fn=split_profile_bullets,
+        )
+        page_block = page_target_block(target_page_count)
+
         jd_analysis = await self.analyze_jd(job_description, user_id=user_id, reference_id=reference_id)
         evidence_map = await self.map_evidence(
-            profile_info, jd_analysis, user_id=user_id, reference_id=reference_id
+            normalized_profile, jd_analysis, user_id=user_id, reference_id=reference_id
         )
         fit, raw_fit = compute_fit_verdict_and_raw(jd_analysis, evidence_map)
+        keyword_checklist = build_keyword_checklist(jd_analysis, evidence_map)
+        ats_threshold, supported_target, combined_target = fit_aware_thresholds(fit.fit_label)
 
-        # Baseline ATS score (structure/parseability + honest keyword hygiene)
+        # Stage 5: Resume Planner — structured strategy BEFORE any prose is written.
+        resume_plan = await self.plan_resume(
+            normalized_profile, jd_analysis, evidence_map, fit, user_id=user_id, reference_id=reference_id
+        )
+
         ats_before, meta_before = await self.score_resume(
-            profile_info,
+            normalized_profile,
             job_description,
             jd_analysis,
             evidence_map,
@@ -602,27 +675,115 @@ class TailorPipeline:
         )
 
         resume = await self.write_resume(
-            profile_info,
+            normalized_profile,
             job_description,
             jd_analysis,
             evidence_map,
             fit,
             user_id=user_id,
             reference_id=reference_id,
+            resume_plan=resume_plan,
+            page_target_block=page_block,
+            keyword_checklist=keyword_checklist,
         )
+        resume = await self._repair_resume_honesty(
+            resume,
+            normalized_profile,
+            job_description,
+            jd_analysis,
+            evidence_map,
+            fit,
+            user_id=user_id,
+            reference_id=reference_id,
+            page_target_block=page_block,
+            keyword_checklist=keyword_checklist,
+        )
+
         quality = await self.guardrail_specificity(
-            profile_info, resume, evidence_map, user_id=user_id, reference_id=reference_id
+            normalized_profile, resume, evidence_map, user_id=user_id, reference_id=reference_id
         )
         if not quality.passed:
             resume = await self.write_resume(
-                profile_info,
+                normalized_profile,
                 job_description,
                 jd_analysis,
                 evidence_map,
                 fit,
                 user_id=user_id,
                 reference_id=reference_id,
+                resume_plan=resume_plan,
                 quality_critique=quality.critique or _dumps(quality),
+                page_target_block=page_block,
+                keyword_checklist=keyword_checklist,
+            )
+            resume = await self._repair_resume_honesty(
+                resume,
+                normalized_profile,
+                job_description,
+                jd_analysis,
+                evidence_map,
+                fit,
+                user_id=user_id,
+                reference_id=reference_id,
+                page_target_block=page_block,
+                keyword_checklist=keyword_checklist,
+            )
+
+        # Stage 7: Recruiter Review — senior-recruiter critique of the draft, with a
+        # bounded targeted rewrite loop when any sub-score is below threshold.
+        # Runs BEFORE ATS scoring (draft → recruiter critique → rewrite → ATS critique).
+        recruiter_result = await self.review_as_recruiter(
+            resume, job_description, user_id=user_id, reference_id=reference_id
+        )
+        recruiter_passed, recruiter_min_score = recruiter_review_passed(recruiter_result)
+        recruiter_passes = 0
+        while not recruiter_passed and recruiter_passes < MAX_RECRUITER_PASSES:
+            recruiter_passes += 1
+            critique = recruiter_critique_from(recruiter_result)
+            dummy_ats = ATSScoreResult(
+                score=0,
+                critique="(recruiter review pass — see quality critique)",
+                matched_keywords=[],
+                missing_keywords=[],
+            )
+            resume = await self.refine_resume(
+                resume,
+                job_description,
+                evidence_map,
+                dummy_ats,
+                fit.fit_label,
+                user_id=user_id,
+                reference_id=reference_id,
+                quality_critique=critique,
+                page_target_block=page_block,
+                keyword_checklist=keyword_checklist,
+            )
+            resume = await self._repair_resume_honesty(
+                resume,
+                normalized_profile,
+                job_description,
+                jd_analysis,
+                evidence_map,
+                fit,
+                user_id=user_id,
+                reference_id=reference_id,
+                page_target_block=page_block,
+                keyword_checklist=keyword_checklist,
+            )
+            recruiter_result = await self.review_as_recruiter(
+                resume,
+                job_description,
+                user_id=user_id,
+                reference_id=reference_id,
+                purpose=f"recruiter_review_pass_{recruiter_passes}",
+            )
+            recruiter_passed, recruiter_min_score = recruiter_review_passed(recruiter_result)
+        if not recruiter_passed:
+            logger.warning(
+                "recruiter_review_cap_hit reference_id=%s passes=%s min_score=%s",
+                reference_id,
+                recruiter_passes,
+                recruiter_min_score,
             )
 
         ats_after, meta_after = await self.score_resume(
@@ -635,10 +796,31 @@ class TailorPipeline:
             purpose="ats_score_after",
         )
 
-        # Refine whenever ATS is below threshold — independent of Fit verdict (capped)
         refine_passes = 0
-        while ats_after.score < REFINE_SCORE_THRESHOLD and refine_passes < MAX_REFINE_PASSES:
+        while refine_passes < MAX_REFINE_PASSES:
+            coverage = compute_keyword_coverage(resume, evidence_map)
+            content_v = validate_content_preservation(
+                normalized_profile, resume, split_fn=split_profile_bullets
+            )
+            structure_v = validate_structure(resume)
+            formatting_v = validate_formatting(resume)
+            needs_refine = ats_after.score < ats_threshold
+            if fit.fit_label == FitLabel.STRONG and coverage.supported_pct < supported_target:
+                needs_refine = True
+            elif fit.fit_label == FitLabel.STRETCH and coverage.combined_pct < combined_target:
+                needs_refine = True
+            if not content_v.passed or not structure_v.passed or not formatting_v.passed:
+                needs_refine = True
+            if not needs_refine:
+                break
+
             refine_passes += 1
+            critique = validation_critique_from(
+                coverage=coverage,
+                content=content_v,
+                structure=structure_v,
+                formatting=formatting_v,
+            )
             resume = await self.refine_resume(
                 resume,
                 job_description,
@@ -647,9 +829,24 @@ class TailorPipeline:
                 fit.fit_label,
                 user_id=user_id,
                 reference_id=reference_id,
+                quality_critique=critique,
+                page_target_block=page_block,
+                keyword_checklist=keyword_checklist,
+            )
+            resume = await self._repair_resume_honesty(
+                resume,
+                normalized_profile,
+                job_description,
+                jd_analysis,
+                evidence_map,
+                fit,
+                user_id=user_id,
+                reference_id=reference_id,
+                page_target_block=page_block,
+                keyword_checklist=keyword_checklist,
             )
             quality = await self.guardrail_specificity(
-                profile_info, resume, evidence_map, user_id=user_id, reference_id=reference_id
+                normalized_profile, resume, evidence_map, user_id=user_id, reference_id=reference_id
             )
             if not quality.passed:
                 resume = await self.refine_resume(
@@ -661,6 +858,8 @@ class TailorPipeline:
                     user_id=user_id,
                     reference_id=reference_id,
                     quality_critique=quality.critique or _dumps(quality),
+                    page_target_block=page_block,
+                    keyword_checklist=keyword_checklist,
                 )
             ats_after, meta_after = await self.score_resume(
                 resume,
@@ -672,14 +871,20 @@ class TailorPipeline:
                 purpose=f"ats_score_after_refine_{refine_passes}",
             )
 
-        if ats_after.score < REFINE_SCORE_THRESHOLD and refine_passes >= MAX_REFINE_PASSES:
-            logger.warning(
-                "refine_cap_hit reference_id=%s passes=%s ats_score=%s threshold=%s",
-                reference_id,
-                refine_passes,
-                ats_after.score,
-                REFINE_SCORE_THRESHOLD,
-            )
+        if refine_passes >= MAX_REFINE_PASSES:
+            coverage = compute_keyword_coverage(resume, evidence_map)
+            if ats_after.score < ats_threshold or (
+                fit.fit_label == FitLabel.STRONG and coverage.supported_pct < supported_target
+            ):
+                logger.warning(
+                    "refine_cap_hit reference_id=%s passes=%s ats_score=%s threshold=%s "
+                    "supported_pct=%s",
+                    reference_id,
+                    refine_passes,
+                    ats_after.score,
+                    ats_threshold,
+                    coverage.supported_pct,
+                )
 
         resume = _inject_pii(resume, profile_info)
         versions = _append_version([], resume, "initial")
@@ -687,11 +892,20 @@ class TailorPipeline:
         gap_roadmap = await self.build_gap_roadmap(
             jd_analysis, evidence_map, fit, user_id=user_id, reference_id=reference_id
         )
+        final_coverage = compute_keyword_coverage(resume, evidence_map)
 
         return {
             "custom_resume_data": resume,
+            "target_page_count": target_page_count,
             "jd_analysis": jd_analysis.model_dump(mode="json"),
             "evidence_map": evidence_map.model_dump(mode="json"),
+            "resume_plan": resume_plan.model_dump(mode="json"),
+            "recruiter_review": {
+                "review": recruiter_result.model_dump(mode="json"),
+                "passed": recruiter_passed,
+                "min_score": recruiter_min_score,
+                "passes_used": recruiter_passes,
+            },
             "fit_score": clamp_score(fit.fit_score),
             "fit_label": fit.fit_label.value,
             "fit_rationale": fit.rationale,
@@ -702,6 +916,11 @@ class TailorPipeline:
             "ats_score_detail": {
                 "before": ats_before.model_dump(mode="json"),
                 "after": ats_after.model_dump(mode="json"),
+                "keyword_coverage": {
+                    "supported_pct": round(final_coverage.supported_pct, 1),
+                    "combined_pct": round(final_coverage.combined_pct, 1),
+                    "missing_supported": final_coverage.missing_supported[:20],
+                },
                 "raw": {
                     "fit_score": raw_fit,
                     "ats_score_before": meta_before.get("llm_raw"),
@@ -793,6 +1012,35 @@ class TailorPipeline:
             )
         return evidence
 
+    async def plan_resume(
+        self,
+        profile_info: dict,
+        jd_analysis: JDAnalysis,
+        evidence_map: EvidenceMap,
+        fit: FitVerdict,
+        *,
+        user_id: str | None,
+        reference_id: str | None,
+    ) -> ResumePlan:
+        """Stage 5: Resume Planner — structured writing strategy BEFORE any prose is written."""
+        llm = LLMInference(model_name=self.flash_model)
+        raw = await llm.run_inference(
+            system_prompt=RESUME_PLAN_SYSTEM_PROMPT,
+            inputs=[
+                RESUME_PLAN_USER_PROMPT.format(
+                    jd_analysis=_dumps(jd_analysis),
+                    evidence_map=_dumps(evidence_map),
+                    fit_verdict=_dumps(fit),
+                    user_info=_dumps(profile_info),
+                )
+            ],
+            structured_output_schema=ResumePlan,
+            user_id=user_id,
+            purpose="resume_plan",
+            reference_id=reference_id,
+        )
+        return ResumePlan.model_validate(raw)
+
     async def write_resume(
         self,
         profile_info: dict,
@@ -803,12 +1051,16 @@ class TailorPipeline:
         *,
         user_id: str | None,
         reference_id: str | None,
+        resume_plan: ResumePlan | dict | None = None,
         quality_critique: str | None = None,
+        page_target_block: str = "",
+        keyword_checklist: str = "",
     ) -> dict:
         llm = LLMInference(model_name=self.pro_model)
         raw = await llm.run_inference(
             system_prompt=CUSTOM_RESUME_WRITE_SYSTEM_PROMPT.format(
                 write_mode_block=write_mode_block(fit.fit_label),
+                page_target_block=page_target_block,
             ),
             inputs=[
                 CUSTOM_RESUME_WRITE_USER_PROMPT.format(
@@ -818,6 +1070,8 @@ class TailorPipeline:
                     fit_verdict=_dumps(fit),
                     user_info=_dumps(profile_info),
                     quality_critique_block=_quality_critique_block(quality_critique),
+                    keyword_checklist=keyword_checklist,
+                    resume_plan=_dumps(resume_plan) if resume_plan is not None else "(no plan provided)",
                 )
             ],
             structured_output_schema=CustomResumeInfo,
@@ -826,6 +1080,36 @@ class TailorPipeline:
             reference_id=reference_id,
         )
         return dict(raw)
+
+    async def review_as_recruiter(
+        self,
+        resume: dict,
+        job_description: dict,
+        *,
+        user_id: str | None,
+        reference_id: str | None,
+        purpose: str = "recruiter_review",
+    ) -> RecruiterReviewResult:
+        """Stage 7: Recruiter Review — senior-recruiter critique of a resume draft.
+
+        Pass/fail is computed deterministically from sub-scores by the caller
+        (validators.recruiter_review_passed) rather than trusted from the LLM.
+        """
+        llm = LLMInference(model_name=self.flash_model)
+        raw = await llm.run_inference(
+            system_prompt=RECRUITER_REVIEW_SYSTEM_PROMPT,
+            inputs=[
+                RECRUITER_REVIEW_USER_PROMPT.format(
+                    job_description=_dumps(job_description),
+                    tailored_resume=_dumps(resume),
+                )
+            ],
+            structured_output_schema=RecruiterReviewResult,
+            user_id=user_id,
+            purpose=purpose,
+            reference_id=reference_id,
+        )
+        return RecruiterReviewResult.model_validate(raw)
 
     async def build_gap_roadmap(
         self,
@@ -871,6 +1155,12 @@ class TailorPipeline:
         reference_id: str | None,
     ) -> BulletQualityResult:
         """Flash pass: reject tailored bullets that lost specificity vs original."""
+        regression = specificity_regression(profile_info, tailored, split_fn=split_profile_bullets)
+        if not regression.passed:
+            return BulletQualityResult(
+                passed=False,
+                critique="; ".join(regression.issues),
+            )
         llm = LLMInference(model_name=self.flash_model)
         raw = await llm.run_inference(
             system_prompt=BULLET_QUALITY_SYSTEM_PROMPT,
@@ -940,11 +1230,14 @@ class TailorPipeline:
         user_id: str | None,
         reference_id: str | None,
         quality_critique: str | None = None,
+        page_target_block: str = "",
+        keyword_checklist: str = "",
     ) -> dict:
         llm = LLMInference(model_name=self.pro_model)
         raw = await llm.run_inference(
             system_prompt=CUSTOM_RESUME_REFINE_SYSTEM_PROMPT.format(
                 write_mode_block=write_mode_block(fit_label),
+                page_target_block=page_target_block,
             ),
             inputs=[
                 CUSTOM_RESUME_REFINE_USER_PROMPT.format(
@@ -953,6 +1246,7 @@ class TailorPipeline:
                     tailored_resume=_dumps(resume),
                     job_description=_dumps(job_description),
                     quality_critique_block=_quality_critique_block(quality_critique),
+                    keyword_checklist=keyword_checklist,
                 )
             ],
             structured_output_schema=CustomResumeInfo,
@@ -961,6 +1255,99 @@ class TailorPipeline:
             reference_id=reference_id,
         )
         return dict(raw)
+
+    async def _repair_resume_honesty(
+        self,
+        resume: dict,
+        profile_info: dict,
+        job_description: dict,
+        jd_analysis: JDAnalysis,
+        evidence_map: EvidenceMap,
+        fit: FitVerdict,
+        *,
+        user_id: str | None,
+        reference_id: str | None,
+        page_target_block: str,
+        keyword_checklist: str,
+    ) -> dict:
+        """One repair refine if resume implies MISSING tools."""
+        hits = await self._honesty_hits(
+            resume,
+            evidence_map,
+            user_id=user_id,
+            reference_id=reference_id,
+            purpose="resume_implied_scan",
+            resume_mode=True,
+        )
+        if not hits:
+            return resume
+        logger.warning("Resume honesty hit: %s — repair refine once", hits)
+        critique = validation_critique_from(honesty_hits=hits)
+        dummy_ats = ATSScoreResult(score=0, critique=critique, matched_keywords=[], missing_keywords=[])
+        repaired = await self.refine_resume(
+            resume,
+            job_description,
+            evidence_map,
+            dummy_ats,
+            fit.fit_label,
+            user_id=user_id,
+            reference_id=reference_id,
+            quality_critique=critique,
+            page_target_block=page_target_block,
+            keyword_checklist=keyword_checklist,
+        )
+        hits2 = await self._honesty_hits(
+            repaired,
+            evidence_map,
+            user_id=user_id,
+            reference_id=reference_id,
+            purpose="resume_implied_scan_repair",
+            resume_mode=True,
+        )
+        if hits2:
+            logger.warning(
+                "Resume still has honesty hits after repair: %s — keeping repaired resume "
+                "(no JSON redaction; generic/JD boilerplate hits ignored)",
+                hits2,
+            )
+        return repaired
+
+    async def restore_resume_for_page_count(
+        self,
+        *,
+        resume: dict,
+        profile_info: dict,
+        job_description: dict,
+        jd_analysis: JDAnalysis | dict,
+        evidence_map: EvidenceMap | dict,
+        fit_label: FitLabel | str,
+        target_page_count: int,
+        actual_page_count: int,
+        user_id: str | None = None,
+        reference_id: str | None = None,
+    ) -> dict:
+        """One content-restore refine when compiled PDF is shorter than the original upload."""
+        if isinstance(evidence_map, dict):
+            evidence_map = EvidenceMap.model_validate(evidence_map)
+        if isinstance(jd_analysis, dict):
+            jd_analysis = JDAnalysis.model_validate(jd_analysis)
+        page_block = page_target_block(target_page_count)
+        keyword_checklist = build_keyword_checklist(jd_analysis, evidence_map)
+        critique = validation_critique_from(page_restore=(actual_page_count, target_page_count))
+        dummy_ats = ATSScoreResult(score=0, critique=critique, matched_keywords=[], missing_keywords=[])
+        restored = await self.refine_resume(
+            resume,
+            job_description,
+            evidence_map,
+            dummy_ats,
+            fit_label,
+            user_id=user_id,
+            reference_id=reference_id,
+            quality_critique=critique,
+            page_target_block=page_block,
+            keyword_checklist=keyword_checklist,
+        )
+        return _inject_pii(restored, profile_info)
 
     async def fix_keyword_gaps(
         self,
@@ -1013,7 +1400,7 @@ class TailorPipeline:
         purpose: str = "implied_claim_scan",
     ) -> list[str]:
         """Flash semantic scan for paraphrased MISSING-tool claims. Returns requirement strings."""
-        missing = missing_requirements_list(evidence_map)
+        missing = missing_requirements_for_implied_scan(evidence_map)
         if not missing or not (draft_text or "").strip():
             return []
         llm = LLMInference(model_name=self.flash_model)
@@ -1033,6 +1420,12 @@ class TailorPipeline:
         scan = ImpliedClaimScan.model_validate(raw)
         return [v.requirement.strip() for v in scan.violations if v.requirement and v.requirement.strip()]
 
+    def _honesty_scan_payload(self, text_or_obj: str | dict) -> str | dict:
+        """Payload for honesty scans — interview packet gaps are study topics, not claims."""
+        if isinstance(text_or_obj, str):
+            return text_or_obj
+        return {k: v for k, v in text_or_obj.items() if k != "gaps_to_prepare"}
+
     async def _honesty_hits(
         self,
         text_or_obj: str | dict,
@@ -1041,15 +1434,18 @@ class TailorPipeline:
         user_id: str | None,
         reference_id: str | None,
         purpose: str,
+        resume_mode: bool = False,
     ) -> list[str]:
         """Union of substring forbidden hits and semantic implied-claim hits."""
-        forbidden = forbidden_tools_from_evidence(evidence_map)
-        if isinstance(text_or_obj, str):
-            hits = find_forbidden_in_text(text_or_obj, forbidden)
-            draft = text_or_obj
+        del resume_mode  # same filtering for resume and side content
+        scan_payload = self._honesty_scan_payload(text_or_obj)
+        forbidden = forbidden_tool_tokens_from_evidence(evidence_map)
+        if isinstance(scan_payload, str):
+            hits = find_forbidden_in_text(scan_payload, forbidden)
+            draft = scan_payload
         else:
-            hits = find_forbidden_in_obj(text_or_obj, forbidden)
-            draft = _dumps(text_or_obj)
+            hits = find_forbidden_in_obj(scan_payload, forbidden)
+            draft = _dumps(scan_payload)
         implied = await self.scan_implied_claims(
             draft,
             evidence_map,
@@ -1065,7 +1461,7 @@ class TailorPipeline:
             if key not in seen:
                 seen.add(key)
                 merged.append(h)
-        return merged
+        return filter_resume_honesty_hits(merged, evidence_map)
 
     async def generate_cover_letter(
         self,
@@ -1078,7 +1474,6 @@ class TailorPipeline:
     ) -> str:
         if isinstance(evidence_map, dict):
             evidence_map = EvidenceMap.model_validate(evidence_map)
-        forbidden = forbidden_tools_from_evidence(evidence_map)
         llm = LLMInference(model_name=self.pro_model)
         raw = await llm.run_inference(
             system_prompt=COVER_LETTER_SYSTEM_PROMPT,
@@ -1129,9 +1524,7 @@ class TailorPipeline:
             )
             if hits2:
                 logger.warning("Cover letter still dirty after repair: %s — redacting", hits2)
-                # Prefer exact forbidden tokens for redaction; also try implied labels
-                redact = list(dict.fromkeys(hits2 + find_forbidden_in_text(letter, forbidden)))
-                letter = strip_forbidden_mentions(letter, redact)
+                letter = strip_forbidden_mentions(letter, hits2)
         return letter
 
     async def generate_interview_packet(
@@ -1145,7 +1538,6 @@ class TailorPipeline:
     ) -> dict:
         if isinstance(evidence_map, dict):
             evidence_map = EvidenceMap.model_validate(evidence_map)
-        forbidden = forbidden_tools_from_evidence(evidence_map)
         llm = LLMInference(model_name=self.flash_model)
         raw = await llm.run_inference(
             system_prompt=INTERVIEW_PACKET_SYSTEM_PROMPT,
@@ -1196,8 +1588,7 @@ class TailorPipeline:
             )
             if hits2:
                 logger.warning("Interview packet still dirty after repair: %s — redacting strings", hits2)
-                redact = list(dict.fromkeys(hits2 + find_forbidden_in_obj(packet, forbidden)))
-                packet = _redact_packet(packet, redact)
+                packet = _redact_packet(packet, hits2)
         return packet
 
     async def generate_outreach_message(
@@ -1225,22 +1616,24 @@ class TailorPipeline:
             outreach_type=outreach_type,
         )
 
-        res = await self.llm.raw_call(
-            model=self.pro_model,
-            messages=[
-                {"role": "system", "content": OUTREACH_MESSAGE_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            user_id=user_id,
+        llm = LLMInference(model_name=self.pro_model)
+        raw = await llm.run_inference(
+            system_prompt=OUTREACH_MESSAGE_SYSTEM_PROMPT,
+            inputs=[user_prompt],
+            user_id=user_id or None,
             purpose="generate_outreach_message",
             reference_id=reference_id,
         )
-        msg_text = (res.content or "").strip()
+        msg_text = (raw if isinstance(raw, str) else str(raw or "")).strip()
 
-        # Honesty check: strip any forbidden tools marked MISSING
-        forbidden = forbidden_tools_from_evidence(evidence_map)
+        forbidden = forbidden_tool_tokens_from_evidence(evidence_map)
         if forbidden:
-            msg_text = strip_forbidden_mentions(msg_text, list(forbidden))
+            hits = filter_resume_honesty_hits(
+                find_forbidden_in_text(msg_text, forbidden),
+                evidence_map,
+            )
+            if hits:
+                msg_text = strip_forbidden_mentions(msg_text, hits)
 
         return msg_text
 

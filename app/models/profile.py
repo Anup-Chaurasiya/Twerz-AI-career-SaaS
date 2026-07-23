@@ -19,6 +19,7 @@ class Profile(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), nullable=False, index=True)
     resume_info: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    original_page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[ProfileStatus] = mapped_column(
         Enum(ProfileStatus), default=ProfileStatus.PENDING, nullable=False
     )

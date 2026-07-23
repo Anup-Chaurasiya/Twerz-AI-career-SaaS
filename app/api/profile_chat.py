@@ -12,6 +12,7 @@ from app.models.user import User
 from app.models.profile import Profile, ProfileStatus
 from app.dependencies import get_current_user
 from app.services.chat.profile_chat import ProfileChatService
+from app.services.chat.gemini_retry import user_friendly_gemini_error
 from app.services.profile.service import ProfileService
 from app.exceptions import BadRequestError
 from logging import getLogger
@@ -107,7 +108,7 @@ async def chat_with_profile(
                         await queue.put(event_data)
                 except Exception as e:
                     logger.exception(f"Chat agent error for profile {_profile_id}")
-                    await queue.put({"type": "error", "message": str(e)})
+                    await queue.put({"type": "error", "message": user_friendly_gemini_error(e)})
         except Exception as e:
             logger.exception(f"Chat task setup error for profile {_profile_id}")
             try:

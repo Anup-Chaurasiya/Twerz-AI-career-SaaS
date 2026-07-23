@@ -21,6 +21,9 @@ notify_service = NotificationService()
 
 
 from app.utils.client_ip import client_ip as _client_ip
+
+
+@router.get("/notifications")
 async def list_notifications(
     unread_only: bool = False,
     db: AsyncSession = Depends(get_db),
@@ -128,6 +131,10 @@ async def delete_account(
     uid = current_user.id
     db.add(DataRequestLog(user_id=uid, action="delete", ip=_client_ip(request)))
     await db.flush()
+
+    from app.services.referral.payout import resolve_pending_referral_holds_on_user_delete
+
+    await resolve_pending_referral_holds_on_user_delete(db, uid)
     await db.execute(delete(Notification).where(Notification.user_id == uid))
     await db.execute(delete(UserSubscription).where(UserSubscription.user_id == uid))
     await db.execute(delete(PromoRedemption).where(PromoRedemption.user_id == uid))

@@ -7,11 +7,20 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.schemas.custom_resume import CustomResumeInfo
-from app.schemas.tailor import ATSScoreResult, BulletQualityResult, FitLabel, GapRoadmap, GapRoadmapStep
+from app.schemas.tailor import (
+    ATSScoreResult,
+    BulletQualityResult,
+    FitLabel,
+    GapRoadmap,
+    GapRoadmapStep,
+    RecruiterReviewResult,
+    ResumePlan,
+)
 from app.services.job.tailor_pipeline import TailorPipeline, compute_fit_verdict
 from tests.test_services.golden_invariants import (
     assert_ats_moved_or_structure_improved,
     assert_evidence_categories_sum,
+    assert_keyword_coverage,
     assert_no_forbidden_tools,
     assert_roadmap_policy,
     assert_scores_in_range,
@@ -25,6 +34,19 @@ from tests.test_services.golden_loader import (
     load_tailored,
     matrix_cells,
 )
+
+
+def _passing_recruiter_review() -> RecruiterReviewResult:
+    return RecruiterReviewResult(
+        would_shortlist=True,
+        ten_second_clarity=True,
+        readability=9,
+        professionalism=9,
+        trust=9,
+        scanability=9,
+        shortlist_likelihood=9,
+        critique="",
+    )
 
 
 @pytest.fixture(scope="module")
@@ -99,6 +121,9 @@ async def test_mocked_run_strong_cell_invariants():
         return_value=BulletQualityResult(passed=True, issues=[], critique="")
     )
     pipeline.build_gap_roadmap = AsyncMock(return_value=None)
+    pipeline._repair_resume_honesty = AsyncMock(side_effect=lambda resume, *a, **k: resume)
+    pipeline.plan_resume = AsyncMock(return_value=ResumePlan())
+    pipeline.review_as_recruiter = AsyncMock(return_value=_passing_recruiter_review())
 
     try:
         result = await pipeline.run(profile_info=profile, job_description={"text": "FS"})
@@ -115,6 +140,7 @@ async def test_mocked_run_strong_cell_invariants():
     assert_roadmap_policy(result["fit_label"], result.get("gap_roadmap"))
     assert result.get("bullet_diff") is not None
     assert_specificity_non_regression(result["bullet_diff"])
+    assert_keyword_coverage(result, fit_label=result["fit_label"], min_supported_pct=0)
 
 
 @pytest.mark.asyncio
@@ -166,6 +192,9 @@ async def test_mocked_run_mismatch_cell_invariants():
         return_value=BulletQualityResult(passed=True, issues=[], critique="")
     )
     pipeline.build_gap_roadmap = AsyncMock(return_value=roadmap)
+    pipeline._repair_resume_honesty = AsyncMock(side_effect=lambda resume, *a, **k: resume)
+    pipeline.plan_resume = AsyncMock(return_value=ResumePlan())
+    pipeline.review_as_recruiter = AsyncMock(return_value=_passing_recruiter_review())
 
     try:
         result = await pipeline.run(profile_info=profile, job_description={"text": "IAM"})

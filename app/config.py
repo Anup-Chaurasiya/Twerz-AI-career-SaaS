@@ -77,8 +77,9 @@ def get_settings() -> Settings:
     settings = Settings()
     # Google ADK reads GOOGLE_API_KEY from os.environ (not from Pydantic fields).
     # Ensure it's set so the ADK Runner can create genai.Client() without explicit api_key.
-    if settings.GOOGLE_API_KEY and not os.environ.get("GOOGLE_API_KEY"):
-        os.environ["GOOGLE_API_KEY"] = settings.GOOGLE_API_KEY
+    google_key = settings.GOOGLE_API_KEY or settings.GEMINI_API_KEY
+    if google_key and not os.environ.get("GOOGLE_API_KEY"):
+        os.environ["GOOGLE_API_KEY"] = google_key
     # LiteLLM reads provider keys from os.environ.
     if settings.GEMINI_API_KEY and not os.environ.get("GEMINI_API_KEY"):
         os.environ["GEMINI_API_KEY"] = settings.GEMINI_API_KEY

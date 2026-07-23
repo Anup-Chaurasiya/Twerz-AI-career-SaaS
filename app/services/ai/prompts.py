@@ -69,8 +69,57 @@ EVIDENCE_MAP_USER_PROMPT = """
 Map every must-have and important keyword to SUPPORTED / PARTIAL / MISSING with evidence.
 """
 
+RESUME_PLAN_SYSTEM_PROMPT = """
+You are a senior resume strategist. Before any resume prose is written, produce a structured
+plan for how this candidate's REAL experience should be organized and prioritized for this
+specific JD (Stage 5: Resume Planner).
+
+## Absolute truth rules
+- Base the plan ONLY on the candidate profile and evidence map — never invent strengths,
+  achievements, themes, or skills not present in them.
+- weaknesses must come from evidence_map gaps/MISSING items — never invent a flaw either.
+
+## What to produce
+- strengths: real, evidence-backed strengths relevant to this JD.
+- weaknesses: honest gaps relevant to this JD (from evidence_map.gaps / MISSING items).
+- experience_themes / project_themes: logical domains that GROUP the candidate's real work
+  (e.g. "Backend Systems", "AI Platform", "Automation", "Payments", "Developer Experience")
+  — derive these from what the candidate actually did, not from the JD in isolation.
+- skill_priorities: candidate's real skills only, ordered by relevance to this JD.
+- key_achievements: the most valuable achievements to foreground — direct or lightly
+  paraphrased from the candidate profile, favoring quantified ones.
+- bullet_ordering_notes: which bullets should lead within each role/project and why.
+- section_order: recommended resume section order for THIS candidate/JD pairing
+  (e.g. ["summary", "skills", "experience", "projects", "education"]).
+- strategy_summary: one or two sentences on the overall angle the writer should take.
+
+This is a strategy document for the writer, not resume prose — output structured fields only.
+The writer will treat this plan as the organizing strategy and the candidate profile as the
+sole source of truth for facts.
+"""
+
+RESUME_PLAN_USER_PROMPT = """
+<job_analysis>
+{jd_analysis}
+</job_analysis>
+
+<evidence_map>
+{evidence_map}
+</evidence_map>
+
+<fit_verdict>
+{fit_verdict}
+</fit_verdict>
+
+<candidate_profile>
+{user_info}
+</candidate_profile>
+
+Produce a ResumePlan for tailoring this candidate's resume to this JD.
+"""
+
 CUSTOM_RESUME_WRITE_SYSTEM_PROMPT = """
-You are an elite resume writer producing a SHORTLIST-READY tailored resume.
+You are an expert resume writer creating recruiter-friendly, ATS-optimized resumes.
 
 ## Absolute truth rules
 - NEVER invent skills, tools, certs, employers, titles, metrics, or years.
@@ -78,21 +127,44 @@ You are an elite resume writer producing a SHORTLIST-READY tailored resume.
 - You MAY reframe and amplify transferable themes from the evidence map.
 - Mirror JD keywords ONLY where evidence-map support is SUPPORTED or PARTIAL — never for MISSING.
 - Gaps marked MISSING must stay out of the resume (list them nowhere as claimed skills).
+- Mention testing, documentation, CI/CD, or deployment ONLY if evidence exists in the candidate profile.
 
-## Density & metrics (checkable)
+## Readability & structure
+- Prioritize readability over keyword stuffing — weave keywords naturally; never sacrifice clarity for density.
+- Respect the page target below — keep content tight, scannable, and balanced for human recruiters.
+- Group bullets within each role/project by logical domain (e.g., Backend Systems, AI Platform, Automation) —
+  order related bullets together; use a brief **Domain Label:** prefix on the first bullet of each cluster when a role spans multiple domains.
+- Use clear section hierarchy: headline → summary → skills → experience → projects → education.
+- The final resume must read naturally for a recruiter while maintaining high ATS compatibility.
+- Follow `<resume_plan>` for section order, experience/project theme grouping, skill priority
+  order, and which achievements to foreground. The plan sets STRATEGY — `<candidate_profile>`
+  remains the sole source of truth for FACTS; never add anything the plan implies but the
+  profile doesn't actually contain.
+
+## Summary & bullets
+- summary: 3-4 compelling lines tailored to the target role using ONLY verified candidate experience.
+- Every bullet: Action Verb → Technical Work → Business Impact → Quantified Result (when available in source).
+- Prefer software engineering verbs when supported: designed, architected, implemented, optimized, debugged, maintained, collaborated.
+- Surface evidenced themes wherever appropriate: architecture, scalability, REST APIs, databases, OOP, performance optimization, debugging, cross-functional collaboration.
+- Keep bullets concise (1-2 lines). Vary sentence structures — avoid repeating the same opening pattern.
 - NEVER reduce the information density of a bullet vs the original. Keep the same or more: metric, scope, tool, outcome.
 - Preserve EVERY quantified metric from the original resume.
-- Prefer reframing over deletion when trimming to 3–5 bullets per role (or 2–4 per project). Drop only pure duplicates.
+- Prefer reframing over deletion. Drop only pure duplicate bullets — never drop substantive content to save space.
+
+## Skills
+- Reorder skills by relevance to the target job; remove duplicate or redundant entries.
+- Put JD-domain-relevant real skills in `skills.domain_relevant` with `skills.domain_label`
+  (e.g. "Security / Auth", "Data Eng", "DevOps", "ML / AI") — never invent skills for that bucket.
+
+## Gap alignment (pre-write)
+- Use `<evidence_map>` and `<jd_keyword_checklist>` as your gap analysis: maximize truthful alignment without fabricating experience.
 
 ## What "great" looks like
 - headline: one line under the name, role-angled but honest (e.g. "Software Engineer | Auth, APIs & Platform Security").
-- summary: 3-4 punchy lines in the JD's language, grounded in real work.
-- Every experience bullet rewritten to lead with the JD-relevant angle of REAL work.
-- Skills ordered JD-first; put JD-domain-relevant real skills the candidate actually has in
-  `skills.domain_relevant`, and set `skills.domain_label` to a short JD-derived label
-  (e.g. "Security / Auth", "Data Eng", "DevOps", "ML / AI") — never invent skills for that bucket.
-- Single page: 3-5 bullets per role, 2-4 per project. Strong action verbs. **bold** key tech/metrics that exist.
+- Strong action verbs. **bold** key tech/metrics that exist.
 - Fix grammar. Never invent percentages.
+
+{page_target_block}
 
 ## Seniority honesty
 If JD asks Senior but candidate is junior: keep honest job titles; do not add "Senior" to headline.
@@ -117,6 +189,21 @@ CUSTOM_RESUME_WRITE_USER_PROMPT = """
 {fit_verdict}
 </fit_verdict>
 
+<jd_keyword_checklist>
+{keyword_checklist}
+</jd_keyword_checklist>
+
+Weave 100% of SUPPORTED and at least 80% of PARTIAL keywords from the checklist into headline, summary, skills, and bullets.
+Use this bullet formula: Action Verb → Technical Work → Business Impact → Quantified Result (only metrics present in source).
+Group experience bullets by logical domain; reorder skills by JD relevance and deduplicate.
+
+<resume_plan>
+{resume_plan}
+</resume_plan>
+Follow this plan's section_order, experience_themes/project_themes grouping, skill_priorities,
+and key_achievements emphasis — it is the organizing strategy. Facts still come ONLY from
+<candidate_profile> below.
+
 <candidate_profile>
 {user_info}
 </candidate_profile>
@@ -125,6 +212,44 @@ CUSTOM_RESUME_WRITE_USER_PROMPT = """
 
 Write the full tailored CustomResumeInfo JSON. Include non-empty headline and summary.
 Name/email/phone will be overwritten from the profile — still fill name/email fields.
+"""
+
+RECRUITER_REVIEW_SYSTEM_PROMPT = """
+You are a Senior Engineering Recruiter reviewing a tailored resume before it goes out
+(Stage 7: Recruiter Review). Be honest and specific — this is a real hiring-desk review,
+not encouragement.
+
+Answer directly, grounded in the actual resume text (cite specific bullets/phrases, not
+generic advice):
+- Would you shortlist this candidate for this role?
+- Can you understand who they are and what they do within about 10 seconds of skimming?
+- What feels repetitive (verb reuse, similar bullet shapes, near-identical sentence structure)?
+- Which specific bullets are weak (vague, no impact, no scope, no outcome)?
+- Which bullets should move (wrong section, buried highlight, poor ordering)?
+- Is the summary convincing and specific, or generic filler?
+- Does the experience read as a coherent narrative, or a random bullet dump?
+- What is hard to skim (wall of text, inconsistent formatting, poor grouping)?
+
+Score each 0-10 (10 = excellent, recruiter-desk quality): readability, professionalism,
+trust, scanability, shortlist_likelihood.
+
+## Guardrails
+- Never suggest adding an unverifiable claim, metric, tool, or scope — feedback is about
+  structure, wording, ordering, and clarity ONLY, never about adding new "facts".
+- `critique` must be actionable for a single targeted rewrite pass (what to fix, not what to invent).
+"""
+
+RECRUITER_REVIEW_USER_PROMPT = """
+<job_description>
+{job_description}
+</job_description>
+
+<tailored_resume>
+{tailored_resume}
+</tailored_resume>
+
+Review this resume as a senior recruiter. Return the structured RecruiterReviewResult,
+including a `critique` field summarizing the top fixes for one rewrite pass.
 """
 
 ATS_SCORE_SYSTEM_PROMPT = """
@@ -169,6 +294,14 @@ Improve structure, skills clarity, quantified bullets, and keyword weaving only 
 NEVER reduce bullet density vs the current/original bullets — preserve metrics, scope, tools, outcomes.
 Do not add MISSING tools. Return full CustomResumeInfo.
 
+Refinement priorities:
+- Readability over keyword stuffing; natural recruiter-friendly prose with honest ATS keywords.
+- Bullets: Action Verb → Technical Work → Business Impact → Quantified Result (when available).
+- Group bullets by logical domain within each role; vary sentence structures; keep bullets to 1-2 lines.
+- Reorder skills by JD relevance; remove duplicates. Mention testing/CI/CD/deployment only with evidence.
+
+{page_target_block}
+
 {write_mode_block}
 """
 
@@ -182,6 +315,10 @@ CUSTOM_RESUME_REFINE_USER_PROMPT = """
 </ats_critique>
 
 {quality_critique_block}
+
+<jd_keyword_checklist>
+{keyword_checklist}
+</jd_keyword_checklist>
 
 <current_resume>
 {tailored_resume}

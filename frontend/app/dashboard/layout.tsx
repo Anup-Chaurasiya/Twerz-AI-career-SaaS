@@ -105,10 +105,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className={`sidebar-backdrop ${sidebarOpen ? 'visible' : ''}`} onClick={() => setSidebarOpen(false)} />
 
       <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`} style={{ position: 'relative', zIndex: 60 }}>
-        <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid rgba(1,169,219,0.08)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'JetBrains Mono', fontWeight: 800, fontSize: 15 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, rgba(251,65,0,0.2), rgba(251,65,0,0.05))', border: '1px solid rgba(251,65,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FB4100" strokeWidth="2"><path d="M20 10V8a2.4 2.4 0 0 0-.706-1.704l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.35"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M16 14a2 2 0 0 0-2 2"/><path d="M16 22a2 2 0 0 1-2-2"/><path d="M20 14a2 2 0 0 1 2 2"/><path d="M20 22a2 2 0 0 0 2-2"/></svg>
+        <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'Inter', fontWeight: 700, fontSize: 16 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, rgba(255,90,31,0.2), rgba(255,90,31,0.05))', border: '1px solid rgba(255,90,31,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff5a1f" strokeWidth="2.5"><path d="M20 10V8a2.4 2.4 0 0 0-.706-1.704l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.35"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M16 14a2 2 0 0 0-2 2"/><path d="M16 22a2 2 0 0 1 2-2"/><path d="M20 14a2 2 0 0 1 2 2"/><path d="M20 22a2 2 0 0 0 2-2"/></svg>
             </div>
             ATS<span style={{ color: 'var(--orange)' }}>Beater</span>
           </div>
@@ -116,7 +116,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
           <div style={{ marginBottom: 4 }}>
-            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', color: 'var(--text-dim)', padding: '0 8px', marginBottom: 8 }}>Navigation</div>
+            <div style={{ fontFamily: 'Inter', fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--text-dim)', padding: '0 8px', marginBottom: 8 }}>Navigation</div>
             {navItems.map((item) => (
               <Link key={item.href} href={item.href} className={`sidebar-link ${isActive(item.href) ? 'active' : ''}`} onClick={() => setSidebarOpen(false)}>
                 {item.icon}
@@ -126,7 +126,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
           {user?.is_super_admin && (
             <div style={{ marginTop: 16 }}>
-              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', color: 'var(--text-dim)', padding: '0 8px', marginBottom: 8 }}>Admin</div>
+              <div style={{ fontFamily: 'Inter', fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--text-dim)', padding: '0 8px', marginBottom: 8 }}>Admin</div>
               <Link href="/dashboard/admin" className={`sidebar-link ${isActive('/dashboard/admin') ? 'active' : ''}`} onClick={() => setSidebarOpen(false)}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
                 Admin Panel
@@ -136,20 +136,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </nav>
 
         {balance && (
-          <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(1,169,219,0.08)' }}>
-            <div style={{ background: 'rgba(1,169,219,0.06)', border: '1px solid rgba(1,169,219,0.12)', borderRadius: 8, padding: '10px 12px' }}>
-              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: 4 }}>Credits</div>
+          <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '10px 12px' }}>
+              <div style={{ fontFamily: 'Inter', fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: 4 }}>Credits</div>
               {balance.has_unlimited ? (
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--teal)', fontFamily: 'JetBrains Mono' }}>∞ Unlimited</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--orange)', fontFamily: 'Inter' }}>∞ Unlimited</div>
               ) : (
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'JetBrains Mono' }}>{balance.balance} <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>+ {balance.daily_free_remaining} free</span></div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'Inter' }}>{balance.balance} <span style={{ color: 'var(--text-dim)', fontSize: 11, fontWeight: 500 }}>+ {balance.daily_free_remaining} free</span></div>
               )}
             </div>
           </div>
         )}
 
-        <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(1,169,219,0.08)', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(251,65,0,0.15)', border: '1px solid rgba(251,65,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'JetBrains Mono', fontWeight: 700, fontSize: 12, color: 'var(--orange)', flexShrink: 0 }}>
+        <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg, rgba(255,90,31,0.25), rgba(255,90,31,0.1))', border: '1px solid rgba(255,90,31,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter', fontWeight: 700, fontSize: 12, color: 'var(--orange)', flexShrink: 0 }}>
             {user?.name?.charAt(0).toUpperCase()}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>

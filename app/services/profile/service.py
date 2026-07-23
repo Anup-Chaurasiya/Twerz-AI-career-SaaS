@@ -121,14 +121,22 @@ class ProfileService:
             await db.commit()
             logger.info(f"[profile:{profile_id}] Processing started (pdf_size={len(pdf_bytes)} bytes, pre_extracted={bool(extracted_text.strip())})")
 
-            # Use pre-extracted text if available
+            # Use pre-extracted text if available; always capture page count from PDF bytes
             t0 = time.monotonic()
             text = extracted_text if extracted_text.strip() else ""
+            page_count = await asyncio.to_thread(self.extractor.count_pages, pdf_bytes)
             if not text:
-                text = await asyncio.to_thread(self.extractor.extract_text, pdf_bytes)
-                logger.info(f"[profile:{profile_id}] PDF text extraction: {int((time.monotonic() - t0) * 1000)}ms ({len(text)} chars)")
+                text, page_count = await asyncio.to_thread(
+                    self.extractor.extract_text_and_page_count, pdf_bytes
+                )
+                logger.info(
+                    f"[profile:{profile_id}] PDF text extraction: {int((time.monotonic() - t0) * 1000)}ms "
+                    f"({len(text)} chars, {page_count} pages)"
+                )
             else:
-                logger.info(f"[profile:{profile_id}] Using pre-extracted text ({len(text)} chars)")
+                logger.info(
+                    f"[profile:{profile_id}] Using pre-extracted text ({len(text)} chars, {page_count} pages)"
+                )
 
             needs_vision = len(text.strip()) < 50 or self.extractor._has_high_non_ascii_ratio(text)
 
@@ -163,6 +171,7 @@ class ProfileService:
                 logger.warning(f"[profile:{profile_id}] Completeness warning: {warning}")
 
             profile.resume_info = data
+            profile.original_page_count = page_count
             profile.status = ProfileStatus.READY
             await db.commit()
             logger.info(f"[profile:{profile_id}] DB save: {int((time.monotonic() - t0) * 1000)}ms")

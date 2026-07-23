@@ -14,6 +14,7 @@ from google.genai import types
 from app.config import get_settings
 from app.schemas.custom_resume import CustomResumeInfo
 from app.services.ai.inference import _log_request
+from app.services.chat.gemini_retry import run_agent_with_retry
 
 logger = getLogger(__name__)
 
@@ -247,8 +248,11 @@ class ChatService:
         resume_modified = False
         t0 = time.monotonic()
 
-        async for event in runner.run_async(
-            user_id=user_id, session_id=session_id, new_message=new_message,
+        async for event in run_agent_with_retry(
+            runner,
+            user_id=user_id,
+            session_id=session_id,
+            new_message=new_message,
         ):
             if event.actions and event.actions.state_delta:
                 if "resume" in event.actions.state_delta:
@@ -316,8 +320,11 @@ class ChatService:
         resume_modified = False
         t0 = time.monotonic()
 
-        async for event in runner.run_async(
-            user_id=user_id, session_id=session_id, new_message=new_message,
+        async for event in run_agent_with_retry(
+            runner,
+            user_id=user_id,
+            session_id=session_id,
+            new_message=new_message,
         ):
             # Detect tool calls and yield them
             if event.content and event.content.parts:

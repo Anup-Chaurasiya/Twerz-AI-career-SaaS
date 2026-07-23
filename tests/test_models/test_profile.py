@@ -19,6 +19,19 @@ async def test_create_profile(db_session, test_user):
 
 
 @pytest.mark.asyncio
+async def test_profile_original_page_count(db_session, test_user):
+    profile = Profile(
+        user_id=test_user.id,
+        status=ProfileStatus.READY,
+        original_page_count=3,
+    )
+    db_session.add(profile)
+    await db_session.commit()
+    await db_session.refresh(profile)
+    assert profile.original_page_count == 3
+
+
+@pytest.mark.asyncio
 async def test_profile_status_transition(db_session, test_user):
     profile = Profile(user_id=test_user.id, status=ProfileStatus.PENDING)
     db_session.add(profile)

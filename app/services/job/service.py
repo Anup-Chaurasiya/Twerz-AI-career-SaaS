@@ -125,6 +125,19 @@ async def _background_gcs_upload(pdf_bytes: bytes, user_id: str, job_id: int) ->
             await db.commit()
 
 
+def _count_pdf_pages_sync(pdf_bytes: bytes) -> int:
+    """Return page count from compiled PDF bytes."""
+    try:
+        import io
+        import pdfplumber
+
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            return max(1, len(pdf.pages))
+    except Exception as exc:
+        logger.warning("PDF page count failed: %s", exc)
+        return 1
+
+
 def _verify_pdf_readable_sync(pdf_bytes: bytes, job_custom_resume: dict | None) -> bool:
     """Check PDF machine-readability by re-extracting text with pdfplumber.
 
@@ -246,6 +259,7 @@ class JobService:
                 job_description=job.job_description or {},
                 user_id=user_id,
                 reference_id=str(job_id),
+                original_page_count=profile.original_page_count,
             )
             ai_ms = int((time.monotonic() - t0) * 1000)
             logger.info(f"[job:{job_id}] Tailor pipeline: {ai_ms}ms {'(SLOW >60s)' if ai_ms > 60000 else ''}")
@@ -259,11 +273,14 @@ class JobService:
             job.fit_rationale = result.get("fit_rationale")
             job.gap_list = result.get("gap_list")
             job.gap_roadmap = result.get("gap_roadmap")
+            job.resume_plan = result.get("resume_plan")
+            job.recruiter_review = result.get("recruiter_review")
             job.ats_score_before = result.get("ats_score_before")
             job.ats_score_after = result.get("ats_score_after")
             job.ats_score_detail = result.get("ats_score_detail")
             job.bullet_diff = result.get("bullet_diff")
             job.resume_versions = result.get("resume_versions")
+            job.target_page_count = result.get("target_page_count")
             job.status = JobStatus.RESUME_GENERATED
             await db.commit()
             await _publish_job_progress(
@@ -363,6 +380,63 @@ class JobService:
             t0 = time.monotonic()
             pdf_bytes = await compile_latex(latex_code)
             logger.info(f"[job:{job_id}] pdflatex compile: {int((time.monotonic() - t0) * 1000)}ms ({len(pdf_bytes)} bytes)")
+
+            actual_pages = await asyncio.to_thread(_count_pdf_pages_sync, pdf_bytes)
+            job.pdf_page_count = actual_pages
+            target_pages = job.target_page_count
+            if target_pages is None:
+                profile = await db.get(Profile, job.profile_id)
+                if profile and profile.original_page_count:
+                    target_pages = profile.original_page_count
+                    job.target_page_count = target_pages
+
+            if target_pages and actual_pages < target_pages:
+                logger.warning(
+                    "[job:%s] PDF page count %s < target %s — content-restore refine",
+                    job_id,
+                    actual_pages,
+                    target_pages,
+                )
+                profile = await db.get(Profile, job.profile_id)
+                if profile and job.evidence_map and job.custom_resume_data:
+                    restored = await self.pipeline.restore_resume_for_page_count(
+                        resume=job.custom_resume_data,
+                        profile_info=profile.resume_info or {},
+                        job_description=job.job_description or {},
+                        jd_analysis=job.jd_analysis or {},
+                        evidence_map=job.evidence_map,
+                        fit_label=job.fit_label or "STRONG",
+                        target_page_count=target_pages,
+                        actual_page_count=actual_pages,
+                        user_id=user_id,
+                        reference_id=str(job_id),
+                    )
+                    job.custom_resume_data = restored
+                    sanitized = sanitize_special_chars(restored)
+                    resume_info = CustomResumeInfo.model_validate(sanitized)
+                    latex_code = build_resume(resume_info)
+                    job.resume_latex_code = latex_code
+                    pdf_bytes = await compile_latex(latex_code)
+                    actual_pages = await asyncio.to_thread(_count_pdf_pages_sync, pdf_bytes)
+                    job.pdf_page_count = actual_pages
+                    logger.info(
+                        "[job:%s] After page-restore recompile: %s pages (target %s)",
+                        job_id,
+                        actual_pages,
+                        target_pages,
+                    )
+                elif actual_pages < target_pages:
+                    logger.warning(
+                        "[job:%s] Skipping page-restore refine — missing profile/evidence data",
+                        job_id,
+                    )
+            elif target_pages and actual_pages > target_pages:
+                logger.info(
+                    "[job:%s] PDF %s pages exceeds target %s — leaving as-is (no trim)",
+                    job_id,
+                    actual_pages,
+                    target_pages,
+                )
 
             # Save locally first (immediate availability)
             t0 = time.monotonic()

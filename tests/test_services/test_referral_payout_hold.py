@@ -9,7 +9,11 @@ from app.models.user import User
 from app.models.referral_payout_review import ReferralPayoutReview, ReferralPayoutStatus
 from app.models.credit import UserCredit, CreditTransaction, TransactionType
 from app.services.credit.service import CreditService
-from app.services.referral.payout import approve_payout_review, reject_payout_review
+from app.services.referral.payout import (
+    approve_payout_review,
+    reject_payout_review,
+    resolve_pending_referral_holds_on_user_delete,
+)
 
 
 @pytest.mark.asyncio
@@ -127,3 +131,34 @@ async def test_admin_reject_denies_bonus(db_session, super_admin_user):
     assert referred.referral_bonus_status == "denied"
     txns = (await db_session.execute(select(CreditTransaction))).scalars().all()
     assert len(txns) == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_referrer_resolves_held_bonus_for_referred(db_session):
+    referrer = User(
+        id="del-ref", google_id="g-dr", email="delref@test.com", name="Ref",
+        consent_accepted=True,
+    )
+    referred = User(
+        id="del-referred", google_id="g-dd", email="delreferred@test.com", name="Referred",
+        consent_accepted=True, referred_by_user_id="del-ref",
+        referral_bonus_granted=True, referral_bonus_status="held",
+    )
+    db_session.add_all([referrer, referred])
+    review = ReferralPayoutReview(
+        referrer_id="del-ref",
+        referred_id="del-referred",
+        signals=["ip_match"],
+        bonus_amount=2,
+        status=ReferralPayoutStatus.PENDING,
+    )
+    db_session.add(review)
+    await db_session.commit()
+
+    await resolve_pending_referral_holds_on_user_delete(db_session, "del-ref")
+    await db_session.commit()
+
+    await db_session.refresh(referred)
+    await db_session.refresh(review)
+    assert referred.referral_bonus_status == "denied"
+    assert review.status == ReferralPayoutStatus.REJECTED

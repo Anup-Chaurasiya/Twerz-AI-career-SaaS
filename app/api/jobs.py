@@ -252,6 +252,8 @@ async def get_job(
         "evidence_counts": evidence_counts_from_map(job.evidence_map),
         "gap_list": job.gap_list or [],
         "gap_roadmap": job.gap_roadmap,
+        "resume_plan": job.resume_plan,
+        "recruiter_review": job.recruiter_review,
         "ats_score_before": job.ats_score_before,
         "ats_score_after": job.ats_score_after,
         "ats_score_detail": job.ats_score_detail,

@@ -410,9 +410,9 @@ export default function LandingPage() {
               </a>
             ))}
             <button onClick={handleLogin}
-              style={{ background: '#ff5a1f', color: '#fff', border: '1px solid rgba(255,90,31,0.3)', borderRadius: 10, padding: '9px 22px', fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, fontSize: 11, letterSpacing: '1.2px', textTransform: 'uppercase', cursor: 'pointer', transition: 'transform 0.2s ease, box-shadow 0.2s ease', boxShadow: '0 0 20px rgba(255,90,31,0.2)', whiteSpace: 'nowrap' }}
-              onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.04)'; e.currentTarget.style.boxShadow = '0 0 32px rgba(255,90,31,0.45)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 0 20px rgba(255,90,31,0.2)'; }}>
+              style={{ background: 'linear-gradient(135deg, #ff5a1f, #ff7043)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 10, padding: '9px 22px', fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.25), 0 4px 16px rgba(255,90,31,0.3)', whiteSpace: 'nowrap' }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.35), 0 6px 24px rgba(255,90,31,0.45)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.25), 0 4px 16px rgba(255,90,31,0.3)'; }}>
               Get Started
             </button>
           </div>
@@ -472,9 +472,9 @@ export default function LandingPage() {
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 52 }}>
                 <button onClick={handleLogin}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '14px 32px', borderRadius: 12, background: 'linear-gradient(135deg,#ff5a1f,#e04e1b)', border: '1px solid rgba(255,90,31,0.3)', color: '#fff', fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, fontSize: 12, letterSpacing: '1.2px', textTransform: 'uppercase', cursor: 'pointer', transition: 'transform 0.2s ease, box-shadow 0.2s ease', boxShadow: '0 0 28px rgba(255,90,31,0.28)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 8px 40px rgba(255,90,31,0.45)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 0 28px rgba(255,90,31,0.28)'; }}>
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '14px 32px', borderRadius: 12, background: 'linear-gradient(135deg, #ff5a1f, #ff7043)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.3), 0 6px 24px rgba(255,90,31,0.35)' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.4), 0 10px 32px rgba(255,90,31,0.5)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.3), 0 6px 24px rgba(255,90,31,0.35)'; }}>
                   Start Free Now
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
@@ -482,9 +482,9 @@ export default function LandingPage() {
                 </button>
                 <a href="#how-it-works"
                   onClick={(e) => scrollToHash(e, '#how-it-works')}
-                  style={{ display: 'inline-flex', alignItems: 'center', padding: '14px 28px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-secondary)', fontFamily: "'JetBrains Mono',monospace", fontWeight: 600, fontSize: 12, letterSpacing: '0.8px', textTransform: 'uppercase', cursor: 'pointer', transition: 'border-color 0.2s ease, color 0.2s ease, background 0.2s ease', textDecoration: 'none' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(255,90,31,0.4)'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}>
+                  style={{ display: 'inline-flex', alignItems: 'center', padding: '14px 28px', borderRadius: 12, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', color: '#F8FAFC', fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s ease', textDecoration: 'none', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(255,90,31,0.4)'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = '#F8FAFC'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}>
                   See How It Works
                 </a>
               </div>
@@ -505,8 +505,8 @@ export default function LandingPage() {
             </div>
 
             <div className="fade-slide-in stagger-2" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div className="hero-mock" style={{ width: '100%', maxWidth: 460, background: 'rgba(24,24,27,0.95)', border: '1px solid rgba(63,63,70,0.7)', borderRadius: 18, overflow: 'hidden', boxShadow: '0 24px 60px rgba(0,0,0,0.45)' }}>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(63,63,70,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(9,9,11,0.4)' }}>
+              <div className="hero-mock" style={{ width: '100%', maxWidth: 460, background: 'rgba(22,27,38,0.85)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 18, overflow: 'hidden', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), 0 32px 80px rgba(0,0,0,0.6), 0 0 40px rgba(255,90,31,0.12)' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(11,15,23,0.6)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span className="led-pulse" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }} />
                     <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, fontWeight: 700, letterSpacing: '2px', color: '#71717a', userSelect: 'none' }}>AI RESUME EDITOR</span>

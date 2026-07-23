@@ -12,6 +12,7 @@ from app.models.user import User
 from app.models.job import Job, JobStatus
 from app.dependencies import get_current_user
 from app.services.chat.service import ChatService
+from app.services.chat.gemini_retry import user_friendly_gemini_error
 from app.services.job.service import JobService
 from app.exceptions import BadRequestError
 from logging import getLogger
@@ -122,7 +123,7 @@ async def chat_with_job(
                         await queue.put(event_data)
                 except Exception as e:
                     logger.exception(f"Chat agent error for job {_job_id}")
-                    await queue.put({"type": "error", "message": str(e)})
+                    await queue.put({"type": "error", "message": user_friendly_gemini_error(e)})
 
         except Exception as e:
             # Session factory failure

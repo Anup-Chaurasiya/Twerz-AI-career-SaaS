@@ -8,6 +8,8 @@ import { getStatusColor, getStatusLabel } from '@/lib/utils';
 import { useProgressSSE, ProgressEvent } from '@/lib/hooks/useProgressSSE';
 import { useCreditStore } from '@/lib/stores/creditStore';
 import JobDetailTabs from '@/components/JobDetailTabs';
+import ChatMessageContent from '@/components/ChatMessageContent';
+import ChatComposer, { ChatComposerHandle } from '@/components/ChatComposer';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -51,6 +53,7 @@ export default function JobDetailPage() {
   const [needsRecompile, setNeedsRecompile] = useState(false);
   const [recompiling, setRecompiling] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
+  const chatComposerRef = useRef<ChatComposerHandle>(null);
 
   // Direct JSON editing state
   const [showJsonEditor, setShowJsonEditor] = useState(false);
@@ -68,6 +71,11 @@ export default function JobDetailPage() {
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfPreviewError, setPdfPreviewError] = useState('');
   const [whyFitOpen, setWhyFitOpen] = useState(false);
+  const handleStarterClick = (text: string) => {
+    setInput(text);
+    requestAnimationFrame(() => chatComposerRef.current?.focus());
+  };
+
   const chatAllowed = job?.status === 'READY' || job?.status === 'RESUME_GENERATED';
   const fetchBalance = useCreditStore((s) => s.fetchBalance);
   const hasPro = !!useCreditStore((s) => s.balance?.subscription?.active || s.balance?.has_unlimited);
@@ -1259,7 +1267,11 @@ export default function JobDetailPage() {
         <div className="chat-messages" ref={chatRef}>
           {chatMessages.map((msg, i) => (
             <div key={i} className={`chat-bubble ${msg.role} fade-slide-in`}>
-              {msg.content}
+              {msg.role === 'assistant' ? (
+                <ChatMessageContent content={msg.content} />
+              ) : (
+                msg.content
+              )}
             </div>
           ))}
           {chatLoading && (
@@ -1273,33 +1285,20 @@ export default function JobDetailPage() {
           )}
           {chatMessages.length === 1 && !chatLoading && (
             <div className="chat-starters fade-slide-in stagger-2">
-              <button className="chat-starter-btn" onClick={() => setInput("Make the summary more concise and punchy")}>✨ Make the summary more concise</button>
-              <button className="chat-starter-btn" onClick={() => setInput("Highlight my leadership experience more")}>👑 Highlight leadership experience</button>
-              <button className="chat-starter-btn" onClick={() => setInput("Add more metrics and numbers to my recent role")}>📊 Add more metrics to recent role</button>
+              <button className="chat-starter-btn" onClick={() => handleStarterClick('Make the summary more concise and punchy')}>✨ Make the summary more concise</button>
+              <button className="chat-starter-btn" onClick={() => handleStarterClick('Highlight my leadership experience more')}>👑 Highlight leadership experience</button>
+              <button className="chat-starter-btn" onClick={() => handleStarterClick('Add more metrics and numbers to my recent role')}>📊 Add more metrics to recent role</button>
             </div>
           )}
         </div>
 
-        <form onSubmit={handleSendMessage} className="chat-input-area">
-          <div style={{ position: 'relative' }}>
-            <input 
-              type="text" 
-              className="input-field" 
-              placeholder="Ask AI to tweak the resume..." 
-              value={input} 
-              onChange={e => setInput(e.target.value)} 
-              disabled={chatLoading || !chatAllowed}
-              style={{ paddingRight: 40, borderRadius: 24, padding: '12px 20px', background: 'rgba(15,27,46,0.8)' }}
-            />
-            <button 
-              type="submit" 
-              disabled={!input.trim() || chatLoading || !chatAllowed}
-              style={{ position: 'absolute', right: 6, top: 6, bottom: 6, width: 32, borderRadius: '50%', background: input.trim() && !chatLoading ? 'var(--teal)' : 'rgba(1,169,219,0.1)', color: input.trim() && !chatLoading ? '#fff' : 'var(--text-dim)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: input.trim() && !chatLoading ? 'pointer' : 'default', transition: 'all 0.2s' }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-            </button>
-          </div>
-        </form>
+        <ChatComposer
+          ref={chatComposerRef}
+          value={input}
+          onChange={setInput}
+          onSubmit={handleSendMessage}
+          disabled={chatLoading || !chatAllowed}
+        />
       </div>
     </div>
   );

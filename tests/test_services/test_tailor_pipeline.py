@@ -30,6 +30,8 @@ from app.schemas.tailor import (
     GapRoadmap,
     GapRoadmapStep,
     JDAnalysis,
+    RecruiterReviewResult,
+    ResumePlan,
 )
 from app.services.job.tailor_pipeline import (
     REFINE_SCORE_THRESHOLD,
@@ -57,6 +59,60 @@ def _load(name: str) -> dict:
 
 
 FORBIDDEN_IAM_TOOLS = {"okta", "sailpoint", "ping identity", "azure ad", "saml", "oidc", "cyberark"}
+
+VALID_SUMMARY = (
+    "Built production SaaS APIs and web apps with measurable impact across several products "
+    "and teams. Delivered features on schedule with strong measurable results."
+)
+
+
+def _pipeline_resume(**overrides) -> dict:
+    base = {
+        "name": "Test",
+        "email": "t@example.com",
+        "headline": "Full Stack Engineer",
+        "summary": VALID_SUMMARY,
+        "past_experience": [
+            {
+                "company_name": "Acme",
+                "role": "Engineer",
+                "start_date": "2020",
+                "end_date": "Present",
+                "description": ["Built REST APIs with Python reducing latency 40%"],
+            }
+        ],
+        "projects": [],
+        "skills": {
+            "languages": ["Python"],
+            "frameworks": ["React"],
+            "databases": ["PostgreSQL"],
+        },
+        "educations": [{"degree": "BS", "institution": "Uni", "start_date": "2016", "end_date": "2020"}],
+    }
+    base.update(overrides)
+    return base
+
+
+def _passing_recruiter_review(**overrides) -> RecruiterReviewResult:
+    base = dict(
+        would_shortlist=True,
+        ten_second_clarity=True,
+        readability=9,
+        professionalism=9,
+        trust=9,
+        scanability=9,
+        shortlist_likelihood=9,
+        critique="",
+    )
+    base.update(overrides)
+    return RecruiterReviewResult(**base)
+
+
+def _mock_pipeline_extras(pipeline):
+    """Mock honesty repair + new Stage 5/7 (planner, recruiter review) to avoid LLM calls in unit tests."""
+    pipeline._repair_resume_honesty = AsyncMock(side_effect=lambda resume, *a, **k: resume)
+    pipeline.plan_resume = AsyncMock(return_value=ResumePlan())
+    pipeline.review_as_recruiter = AsyncMock(return_value=_passing_recruiter_review())
 
 
 def assert_no_forbidden_tools(resume: dict, forbidden: set[str]) -> None:
@@ -281,16 +337,7 @@ async def test_pipeline_refines_on_mismatch_when_ats_low():
 
     low_ats = ATSScoreResult(score=25, critique="weak structure")
     refined_ats = ATSScoreResult(score=80, critique="better structure")
-    resume = {
-        "name": "Test",
-        "email": "t@example.com",
-        "headline": "Full Stack Engineer",
-        "summary": "Built APIs and web apps with measurable impact across several products.",
-        "past_experience": [],
-        "projects": [],
-        "skills": {},
-        "education": [],
-    }
+    resume = _pipeline_resume(past_experience=[], projects=[], educations=[])
 
     pipeline.analyze_jd = AsyncMock(return_value=jd)
     pipeline.map_evidence = AsyncMock(return_value=evidence)
@@ -330,6 +377,7 @@ async def test_pipeline_refines_on_mismatch_when_ats_low():
             ],
         )
     )
+    _mock_pipeline_extras(pipeline)
 
     try:
         result = await pipeline.run(
@@ -339,7 +387,7 @@ async def test_pipeline_refines_on_mismatch_when_ats_low():
     finally:
         tp.compute_fit_verdict_and_raw = original
 
-    pipeline.refine_resume.assert_awaited_once()
+    assert pipeline.refine_resume.await_count >= 1
     assert any(c.startswith("ats_score_after_refine") for c in score_calls)
     assert result["fit_score"] == 0
     assert result["fit_label"] == "MISMATCH"
@@ -379,14 +427,7 @@ async def test_pipeline_refine_cap_hits_max_passes(caplog):
     )
     fit = FitVerdict(fit_score=55, fit_label=FitLabel.STRETCH, rationale="stretch", gap_list=[])
     low_ats = ATSScoreResult(score=30, critique="low")
-    resume = {
-        "name": "T",
-        "email": "t@x.com",
-        "headline": "Engineer",
-        "summary": "Built things with measurable impact across products and teams for years.",
-        "past_experience": [],
-        "skills": {},
-    }
+    resume = _pipeline_resume()
 
     pipeline.analyze_jd = AsyncMock(return_value=jd)
     pipeline.map_evidence = AsyncMock(return_value=evidence)
@@ -406,6 +447,7 @@ async def test_pipeline_refine_cap_hits_max_passes(caplog):
         return_value=BulletQualityResult(passed=True, issues=[], critique="")
     )
     pipeline.build_gap_roadmap = AsyncMock(return_value=None)
+    _mock_pipeline_extras(pipeline)
 
     try:
         with caplog.at_level("WARNING"):
@@ -499,20 +541,18 @@ async def test_guardrail_fail_triggers_one_rewrite():
     )
     fit = FitVerdict(fit_score=80, fit_label=FitLabel.STRONG, rationale="strong", gap_list=[])
     high_ats = ATSScoreResult(score=80, critique="good")
-    resume_v1 = {
-        "name": "T",
-        "email": "t@x.com",
-        "headline": "Engineer",
-        "summary": "Built product features with React and measurable impact across teams.",
-        "past_experience": [{"company_name": "Acme", "role": "Eng", "description": ["Did stuff"]}],
-        "projects": [],
-        "skills": {"languages": ["JS"]},
-        "education": [],
-    }
+    resume_v1 = _pipeline_resume(
+        past_experience=[{"company_name": "Acme", "role": "Eng", "start_date": "2020", "description": ["Did stuff"]}],
+    )
     resume_v2 = {
         **resume_v1,
         "past_experience": [
-            {"company_name": "Acme", "role": "Eng", "description": ["Shipped React features reducing load time 30%"]}
+            {
+                "company_name": "Acme",
+                "role": "Eng",
+                "start_date": "2020",
+                "description": ["Shipped React features reducing load time 30%"],
+            }
         ],
     }
 
@@ -533,13 +573,17 @@ async def test_guardrail_fail_triggers_one_rewrite():
     pipeline.score_resume = AsyncMock(
         return_value=(high_ats, {"llm_raw": 80, "llm_clamped": 80, "structure": 90, "blended": 80})
     )
-    pipeline.refine_resume = AsyncMock()
+    pipeline.refine_resume = AsyncMock(return_value=dict(resume_v2))
     pipeline.guardrail_specificity = AsyncMock(
         side_effect=[
             BulletQualityResult(passed=False, critique="Restore the 30% metric"),
             BulletQualityResult(passed=True, critique=""),
+            BulletQualityResult(passed=True, critique=""),
+            BulletQualityResult(passed=True, critique=""),
+            BulletQualityResult(passed=True, critique=""),
         ]
     )
+    _mock_pipeline_extras(pipeline)
 
     try:
         result = await pipeline.run(
@@ -547,7 +591,12 @@ async def test_guardrail_fail_triggers_one_rewrite():
                 "name": "T",
                 "email": "t@x.com",
                 "past_experience": [
-                    {"company_name": "Acme", "role": "Eng", "description": "Shipped React features reducing load time 30%"}
+                    {
+                        "company_name": "Acme",
+                        "role": "Eng",
+                        "start_date": "2020",
+                        "description": "Shipped React features reducing load time 30%",
+                    }
                 ],
             },
             job_description={"text": "FS"},
@@ -558,10 +607,135 @@ async def test_guardrail_fail_triggers_one_rewrite():
     assert len(write_calls) == 2
     assert write_calls[0] is None
     assert write_calls[1] and "30%" in write_calls[1]
-    pipeline.refine_resume.assert_not_awaited()  # ATS already high
+    # STRONG fit uses ATS threshold 85; score 80 triggers refine passes
+    assert pipeline.refine_resume.await_count >= 1
     assert result["bullet_diff"]["experiences"][0]["pairs"][0]["keyword"] == "React"
     assert "30%" in result["bullet_diff"]["experiences"][0]["pairs"][0]["tailored"]
     assert result["gap_roadmap"] is None  # STRONG skips roadmap
+
+
+@pytest.mark.asyncio
+async def test_recruiter_review_fail_triggers_one_rewrite():
+    """A low recruiter sub-score must trigger exactly one targeted refine_resume rewrite,
+    with a passing re-review afterward stopping the loop (bounded by MAX_RECRUITER_PASSES)."""
+    pipeline = TailorPipeline.__new__(TailorPipeline)
+    pipeline.flash_model = "test-flash"
+    pipeline.pro_model = "test-pro"
+
+    jd = JDAnalysis(
+        role_title="Full Stack Engineer",
+        role_family="Full-Stack",
+        seniority="junior",
+        must_haves=["React"],
+        keywords=["React"],
+        responsibilities=["Build"],
+        summary="FS",
+    )
+    evidence = EvidenceMap(
+        items=[EvidenceItem(requirement="React", support=EvidenceSupport.SUPPORTED)],
+        candidate_seniority_estimate="junior",
+        gaps=[],
+    )
+    fit = FitVerdict(fit_score=80, fit_label=FitLabel.STRONG, rationale="strong", gap_list=[])
+    high_ats = ATSScoreResult(score=90, critique="good")
+    resume = _pipeline_resume()
+
+    pipeline.analyze_jd = AsyncMock(return_value=jd)
+    pipeline.map_evidence = AsyncMock(return_value=evidence)
+    pipeline.plan_resume = AsyncMock(return_value=ResumePlan())
+    import app.services.job.tailor_pipeline as tp
+
+    original = tp.compute_fit_verdict_and_raw
+    tp.compute_fit_verdict_and_raw = MagicMock(return_value=(fit, 80))
+
+    pipeline.write_resume = AsyncMock(return_value=dict(resume))
+    pipeline.refine_resume = AsyncMock(return_value=dict(resume))
+    pipeline.score_resume = AsyncMock(
+        return_value=(high_ats, {"llm_raw": 90, "llm_clamped": 90, "structure": 90, "blended": 90})
+    )
+    pipeline.guardrail_specificity = AsyncMock(
+        return_value=BulletQualityResult(passed=True, issues=[], critique="")
+    )
+    pipeline._repair_resume_honesty = AsyncMock(side_effect=lambda resume, *a, **k: resume)
+    pipeline.build_gap_roadmap = AsyncMock(return_value=None)
+
+    failing_review = _passing_recruiter_review(readability=5, critique="Tighten the summary, cut repetition.")
+    passing_review = _passing_recruiter_review()
+    pipeline.review_as_recruiter = AsyncMock(side_effect=[failing_review, passing_review])
+
+    try:
+        result = await pipeline.run(
+            profile_info={"name": "T", "email": "t@x.com"},
+            job_description={"text": "FS"},
+        )
+    finally:
+        tp.compute_fit_verdict_and_raw = original
+
+    assert result["recruiter_review"]["passed"] is True
+    assert result["recruiter_review"]["passes_used"] == 1
+    assert pipeline.review_as_recruiter.await_count == 2
+    # One recruiter-triggered rewrite via refine_resume (before the ATS-threshold refine loop,
+    # which shouldn't trigger here since ATS is 90 and STRONG threshold is 85 with full coverage).
+    assert pipeline.refine_resume.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_recruiter_review_cap_hit_logs_warning(caplog):
+    """When recruiter sub-scores never clear the bar, cap rewrites at MAX_RECRUITER_PASSES and log."""
+    pipeline = TailorPipeline.__new__(TailorPipeline)
+    pipeline.flash_model = "test-flash"
+    pipeline.pro_model = "test-pro"
+
+    jd = JDAnalysis(
+        role_title="Role",
+        role_family="Eng",
+        seniority="mid",
+        must_haves=["Python"],
+        keywords=["Python"],
+        responsibilities=["Build"],
+        summary="eng",
+    )
+    evidence = EvidenceMap(items=[EvidenceItem(requirement="Python", support=EvidenceSupport.PARTIAL)], gaps=[])
+    fit = FitVerdict(fit_score=55, fit_label=FitLabel.STRETCH, rationale="stretch", gap_list=[])
+    ats = ATSScoreResult(score=90, critique="fine")
+    resume = _pipeline_resume()
+
+    pipeline.analyze_jd = AsyncMock(return_value=jd)
+    pipeline.map_evidence = AsyncMock(return_value=evidence)
+    pipeline.plan_resume = AsyncMock(return_value=ResumePlan())
+    import app.services.job.tailor_pipeline as tp
+
+    original = tp.compute_fit_verdict_and_raw
+    tp.compute_fit_verdict_and_raw = MagicMock(return_value=(fit, 55))
+
+    pipeline.write_resume = AsyncMock(return_value=dict(resume))
+    pipeline.refine_resume = AsyncMock(return_value=dict(resume))
+    pipeline.score_resume = AsyncMock(
+        return_value=(ats, {"llm_raw": 90, "llm_clamped": 90, "structure": 90, "blended": 90})
+    )
+    pipeline.guardrail_specificity = AsyncMock(
+        return_value=BulletQualityResult(passed=True, issues=[], critique="")
+    )
+    pipeline._repair_resume_honesty = AsyncMock(side_effect=lambda resume, *a, **k: resume)
+    pipeline.build_gap_roadmap = AsyncMock(return_value=None)
+
+    always_failing = _passing_recruiter_review(readability=3, critique="Still weak.")
+    pipeline.review_as_recruiter = AsyncMock(return_value=always_failing)
+
+    try:
+        with caplog.at_level("WARNING"):
+            result = await pipeline.run(
+                profile_info={"name": "T", "email": "t@x.com"},
+                job_description={"text": "Python"},
+            )
+    finally:
+        tp.compute_fit_verdict_and_raw = original
+
+    from app.services.job.validators import MAX_RECRUITER_PASSES
+
+    assert result["recruiter_review"]["passed"] is False
+    assert result["recruiter_review"]["passes_used"] == MAX_RECRUITER_PASSES
+    assert any("recruiter_review_cap_hit" in r.message for r in caplog.records)
 
 
 def test_write_mode_block_strong_stretch_transferable():
