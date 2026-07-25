@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { jobsApi } from '@/lib/api/endpoints';
 import { getErrorMessage } from '@/lib/api/client';
+import { toDateInputValue } from '@/lib/utils';
+import DatePicker from '@/components/DatePicker';
 import type { Job } from '@/types';
 
 interface ApplicationTrackerProps {
@@ -41,7 +43,7 @@ export default function ApplicationTracker({ job }: ApplicationTrackerProps) {
   const [appliedVia, setAppliedVia] = useState(job.applied_via || '');
   const [notes, setNotes] = useState(job.application_notes || '');
   const [followUpDate, setFollowUpDate] = useState(
-    job.follow_up_at ? new Date(job.follow_up_at).toISOString().split('T')[0] : ''
+    job.follow_up_at ? toDateInputValue(new Date(job.follow_up_at)) : ''
   );
 
   const updateMutation = useMutation({
@@ -49,7 +51,7 @@ export default function ApplicationTracker({ job }: ApplicationTrackerProps) {
       await jobsApi.updateApplication(job.id, {
         application_status: status,
         application_notes: notes,
-        follow_up_at: followUpDate || null,
+        follow_up_at: followUpDate ? new Date(`${followUpDate}T09:00:00`).toISOString() : null,
         applied_via: appliedVia || null,
       });
     },
@@ -109,10 +111,10 @@ export default function ApplicationTracker({ job }: ApplicationTrackerProps) {
             <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
               Follow-up Reminder
             </label>
-            <input
-              type="date"
+            <DatePicker
               value={followUpDate}
-              onChange={(e) => setFollowUpDate(e.target.value)}
+              onChange={setFollowUpDate}
+              placeholder="Pick a follow-up date"
               className="input-field"
             />
           </div>

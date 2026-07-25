@@ -38,7 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://api.fontshare.com/v2/css?f[]=clash-display@600,700&display=swap"
           rel="stylesheet"
         />
-        <meta name="theme-color" content="#0B0F17" />
+        <meta name="theme-color" content="#E8EDF4" />
       </head>
       <body className="antialiased" suppressHydrationWarning>
         <Providers>{children}</Providers>

@@ -5,7 +5,7 @@ import { useAuthStore } from '@/lib/stores/authStore';
 import { useCreditStore } from '@/lib/stores/creditStore';
 import { profilesApi, jobsApi } from '@/lib/api/endpoints';
 import { Profile, Job } from '@/types';
-import { formatDate, getStatusColor, getStatusLabel } from '@/lib/utils';
+import { formatDate, getStatusColor, getStatusLabel, getProfileDisplayName } from '@/lib/utils';
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
@@ -28,19 +28,22 @@ export default function DashboardPage() {
   }, []);
 
   const kpis = [
-    { label: 'Profiles', value: profiles.length, icon: '📄', color: 'var(--teal)', href: '/dashboard/profiles' },
-    { label: 'Jobs', value: jobs.length, icon: '💼', color: 'var(--orange)', href: '/dashboard/jobs' },
-    { label: 'Credits', value: balance?.has_unlimited ? '∞' : (balance?.balance ?? 0), icon: '⚡', color: 'var(--green)', href: '/dashboard/credits' },
-    { label: 'Free Today', value: balance?.daily_free_remaining ?? 0, icon: '🎁', color: 'var(--purple)', href: '/dashboard/credits' },
+    { label: 'Profiles', value: profiles.length, icon: '📄', color: 'var(--teal)', href: '/dashboard/profiles', accent: 'kpi-card--teal' },
+    { label: 'Jobs', value: jobs.length, icon: '💼', color: 'var(--orange)', href: '/dashboard/jobs', accent: 'kpi-card--orange' },
+    { label: 'Credits', value: balance?.has_unlimited ? '∞' : (balance?.balance ?? 0), icon: '⚡', color: 'var(--green)', href: '/dashboard/credits', accent: 'kpi-card--green' },
+    { label: 'Free Today', value: balance?.daily_free_remaining ?? 0, icon: '🎁', color: 'var(--purple)', href: '/dashboard/credits', accent: 'kpi-card--purple' },
   ];
 
   return (
     <div className="page-scroll">
       {/* Welcome */}
       <div className="fade-slide-in" style={{ marginBottom: 32 }}>
-        <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: 'var(--text-dim)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 6 }}>Dashboard</div>
-        <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-1px', marginBottom: 4 }}>
-          Welcome back, <span style={{ color: 'var(--orange)' }}>{user?.name?.split(' ')[0]}</span>
+        <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: 'var(--orange)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 8, height: 2, background: 'var(--orange)', display: 'inline-block' }} />
+          Dashboard
+        </div>
+        <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-1px', marginBottom: 6, background: 'linear-gradient(135deg, var(--text-primary) 0%, #3D4F66 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+          Welcome back, <span style={{ background: 'linear-gradient(135deg, #ff5a1f, #ff8254)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{user?.name?.split(' ')[0]}</span>
         </h1>
         <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Your AI resume tailoring hub. Let's land that interview.</p>
       </div>
@@ -48,7 +51,7 @@ export default function DashboardPage() {
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 32 }}>
         {kpis.map((kpi, i) => (
-          <Link key={kpi.label} href={kpi.href} className={`widget-card fade-slide-in stagger-${i + 1}`} style={{ textDecoration: 'none', display: 'block' }}>
+          <Link key={kpi.label} href={kpi.href} className={`widget-card kpi-card ${kpi.accent} fade-slide-in stagger-${i + 1}`} style={{ textDecoration: 'none', display: 'block' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <div className="kpi-label">{kpi.label}</div>
               <div style={{ fontSize: 20 }}>{kpi.icon}</div>
@@ -85,7 +88,7 @@ export default function DashboardPage() {
           </div>
           {loading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {[1,2,3].map(i => <div key={i} style={{ height: 44, background: 'rgba(1,169,219,0.04)', borderRadius: 8, animation: 'shimmer 1.5s infinite' }} />)}
+              {[1,2,3].map(i => <div key={i} style={{ height: 44, background: '#F1F5F9', borderRadius: 8, animation: 'shimmer 1.5s infinite' }} />)}
             </div>
           ) : profiles.length === 0 ? (
             <div className="empty-state" style={{ padding: '24px 0' }}>
@@ -96,9 +99,9 @@ export default function DashboardPage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {profiles.map((p) => (
-                <Link key={p.id} href={`/dashboard/profiles/${p.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)', textDecoration: 'none', transition: 'all 0.2s ease' }}>
+                <Link key={p.id} href={`/dashboard/profiles/${p.id}`} className="surface-row">
                   <div>
-                    <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{p.resume_info?.name || `Profile #${p.id}`}</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{getProfileDisplayName(p)}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>{formatDate(p.created_at)}</div>
                   </div>
                   <span className={`badge ${getStatusColor(p.status)}`}>{p.status}</span>
@@ -116,7 +119,7 @@ export default function DashboardPage() {
           </div>
           {loading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {[1,2,3].map(i => <div key={i} style={{ height: 44, background: 'rgba(1,169,219,0.04)', borderRadius: 8 }} />)}
+              {[1,2,3].map(i => <div key={i} style={{ height: 44, background: '#F1F5F9', borderRadius: 8 }} />)}
             </div>
           ) : jobs.length === 0 ? (
             <div className="empty-state" style={{ padding: '24px 0' }}>
@@ -127,7 +130,7 @@ export default function DashboardPage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {jobs.map((j) => (
-                <Link key={j.id} href={`/dashboard/jobs/${j.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)', textDecoration: 'none', transition: 'all 0.2s ease' }}>
+                <Link key={j.id} href={`/dashboard/jobs/${j.id}`} className="surface-row">
                   <div>
                     <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{j.job_description.company}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>{j.job_description.role}</div>

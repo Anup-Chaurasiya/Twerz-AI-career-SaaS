@@ -29,8 +29,11 @@ export function handleApiError(error: any): ApiErrorResponse {
 
   // Handle by HTTP status code
   switch (status) {
-    case 401:
-      // Auto-redirect after showing message
+    case 401: {
+      const detail = error.response?.data?.detail;
+      if (detail === 'token_expired') {
+        return { message: 'Refreshing your session...' };
+      }
       setTimeout(() => {
         localStorage.removeItem('token');
         window.location.href = '/login';
@@ -38,8 +41,9 @@ export function handleApiError(error: any): ApiErrorResponse {
       return {
         message: 'Your session has expired. Logging you out...',
         shouldRedirect: true,
-        redirectUrl: '/login'
+        redirectUrl: '/login',
       };
+    }
 
     case 403:
       return {

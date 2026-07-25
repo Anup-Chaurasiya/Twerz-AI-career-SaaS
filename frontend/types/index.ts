@@ -79,6 +79,7 @@ export interface Profile {
   id: number;
   status: ProfileStatus;
   is_active: boolean;
+  source_filename?: string | null;
   resume_info?: ResumeInfo;
   created_at: string;
   updated_at: string;

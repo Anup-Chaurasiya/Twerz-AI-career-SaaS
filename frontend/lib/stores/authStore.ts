@@ -13,9 +13,24 @@ interface AuthState {
 }
 
 let fetchMeInFlight: Promise<void> | null = null;
+let fetchMeRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
+function hasStoredToken(): boolean {
+  return typeof window !== 'undefined' && !!localStorage.getItem('token');
+}
+
+function scheduleFetchMeRetry(force = true, delayMs = 2500) {
+  if (fetchMeRetryTimer) return;
+  fetchMeRetryTimer = setTimeout(() => {
+    fetchMeRetryTimer = null;
+    if (hasStoredToken()) {
+      void useAuthStore.getState().fetchMe({ force });
+    }
+  }, delayMs);
+}
 
 async function refreshStoredToken(): Promise<boolean> {
-  if (typeof window === 'undefined' || !localStorage.getItem('token')) return false;
+  if (!hasStoredToken()) return false;
   try {
     const res = await authApi.refresh();
     localStorage.setItem('token', res.data.access_token);
@@ -25,23 +40,32 @@ async function refreshStoredToken(): Promise<boolean> {
   }
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoggedIn: false,
   isLoading: true,
   fetchMe: async (opts) => {
     if (fetchMeInFlight && !opts?.force) return fetchMeInFlight;
 
+    if (!hasStoredToken()) {
+      set({ user: null, isLoggedIn: false, isLoading: false });
+      return;
+    }
+
     fetchMeInFlight = (async () => {
       try {
         const res = await authApi.getMe();
+        if (fetchMeRetryTimer) {
+          clearTimeout(fetchMeRetryTimer);
+          fetchMeRetryTimer = null;
+        }
         set({ user: res.data, isLoggedIn: true, isLoading: false });
       } catch (err) {
         const is401 = axios.isAxiosError(err) && err.response?.status === 401;
         const detail = axios.isAxiosError(err)
           ? (err.response?.data as { detail?: string } | undefined)?.detail
           : undefined;
-        const hasToken = typeof window !== 'undefined' && !!localStorage.getItem('token');
+        const hasToken = hasStoredToken();
 
         if (is401 && hasToken && detail === 'token_expired') {
           const refreshed = await refreshStoredToken();
@@ -51,7 +75,7 @@ export const useAuthStore = create<AuthState>((set) => ({
               set({ user: res.data, isLoggedIn: true, isLoading: false });
               return;
             } catch {
-              /* fall through to logout */
+              /* fall through */
             }
           }
         }
@@ -62,8 +86,16 @@ export const useAuthStore = create<AuthState>((set) => ({
           return;
         }
 
-        // Transient/network errors — keep token so a refresh can recover the session.
-        set({ user: null, isLoggedIn: false, isLoading: false });
+        // Network/timeout/server errors — keep token and stay logged in optimistically.
+        const prev = get();
+        set({
+          user: prev.user,
+          isLoggedIn: true,
+          isLoading: false,
+        });
+        scheduleFetchMeRetry(true);
+      } finally {
+        set((state) => (state.isLoading ? { isLoading: false } : {}));
       }
     })();
 
@@ -74,9 +106,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
   logout: () => {
+    if (fetchMeRetryTimer) {
+      clearTimeout(fetchMeRetryTimer);
+      fetchMeRetryTimer = null;
+    }
     localStorage.removeItem('token');
     set({ user: null, isLoggedIn: false, isLoading: false });
     window.location.href = '/login';
   },
-  setUser: (user: User) => set({ user, isLoggedIn: true }),
+  setUser: (user: User) => set({ user, isLoggedIn: true, isLoading: false }),
 }));

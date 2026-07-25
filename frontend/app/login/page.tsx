@@ -31,7 +31,6 @@ function persistOAuthTokenFromUrl(): boolean {
 }
 
 export default function LoginPage() {
-  const { isLoggedIn, isLoading } = useAuthStore();
   const router = useRouter();
   const [booting, setBooting] = useState(true);
   const [lines, setLines] = useState<{ text: string; cls: string }[]>([]);
@@ -93,23 +92,14 @@ export default function LoginPage() {
       }
     };
 
-    const restoreSession = () => {
+    if (oauthTokenHandled || localStorage.getItem('token')) {
       useAuthStore.getState().fetchMe({ force: true }).then(finishLoginRedirect);
-    };
-
-    if (oauthTokenHandled) {
-      restoreSession();
       sessionStorage.removeItem('signup_referral_code');
       return;
     }
-    if (localStorage.getItem('token')) {
-      restoreSession();
-      return;
-    }
-    if (!isLoading && isLoggedIn) {
-      finishLoginRedirect();
-    }
-  }, [oauthTokenHandled, isLoading, isLoggedIn, router]);
+
+    useAuthStore.setState({ isLoading: false });
+  }, [oauthTokenHandled, router]);
 
   const handleLogin = async () => {
     setLoginLoading(true);
@@ -125,23 +115,26 @@ export default function LoginPage() {
   };
 
   return (
-    <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--deep)', position: 'relative' }}>
+    <div className="login-shell" style={{ background: 'var(--deep)' }}>
+      <div className="dot-grid" aria-hidden="true" />
+      <div className="ambient-orb ambient-orb--a" aria-hidden="true" />
+      <div className="ambient-orb ambient-orb--c" aria-hidden="true" />
       <div style={{ position: 'relative', zIndex: 2, width: '100%', maxWidth: 440, padding: '0 24px' }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontFamily: 'JetBrains Mono', fontWeight: 800, fontSize: 20, marginBottom: 8 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 10, background: 'linear-gradient(135deg, rgba(251,65,0,0.2), rgba(251,65,0,0.05))', border: '1px solid rgba(251,65,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FB4100" strokeWidth="2"><path d="M20 10V8a2.4 2.4 0 0 0-.706-1.704l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.35"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M16 14a2 2 0 0 0-2 2"/><path d="M16 22a2 2 0 0 1-2-2"/><path d="M20 14a2 2 0 0 1 2 2"/><path d="M20 22a2 2 0 0 0 2-2"/></svg>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontFamily: 'Inter', fontWeight: 700, fontSize: 20, marginBottom: 8, color: '#0F172A' }}>
+            <div style={{ width: 44, height: 44, borderRadius: 10, background: 'linear-gradient(135deg, rgba(255,90,31,0.12), rgba(255,90,31,0.04))', border: '1px solid rgba(255,90,31,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ff5a1f" strokeWidth="2"><path d="M20 10V8a2.4 2.4 0 0 0-.706-1.704l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.35"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M16 14a2 2 0 0 0-2 2"/><path d="M16 22a2 2 0 0 1-2-2"/><path d="M20 14a2 2 0 0 1 2 2"/><path d="M20 22a2 2 0 0 0 2-2"/></svg>
             </div>
             ATS<span style={{ color: 'var(--orange)' }}>Beater</span>
           </div>
-          <p style={{ fontSize: 13, color: 'var(--text-dim)', fontFamily: 'JetBrains Mono' }}>AI-Powered Resume Tailoring</p>
+          <p style={{ fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Inter' }}>AI-Powered Resume Tailoring</p>
         </div>
 
         {/* Card */}
-        <div className="widget-card" style={{ padding: 32 }}>
+        <div className="widget-card login-card">
           {/* Boot lines */}
-          <div style={{ marginBottom: 24, fontFamily: 'JetBrains Mono', fontSize: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div className="login-terminal" style={{ marginBottom: 24, fontFamily: 'JetBrains Mono', fontSize: 12, display: 'flex', flexDirection: 'column', gap: 4, borderRadius: 8, padding: '12px 14px' }}>
             {lines.filter(Boolean).map((l, i) => (
               <div key={i} style={{ color: l.cls === 'ok' ? 'var(--green)' : l.cls === 'warn' ? 'var(--amber)' : 'var(--text-dim)', opacity: 1, transition: 'opacity 0.3s ease', wordBreak: 'break-word' }}>{l.text}</div>
             ))}

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { profilesApi } from '@/lib/api/endpoints';
 import { Profile } from '@/types';
-import { formatDate, getStatusColor, getStatusLabel } from '@/lib/utils';
+import { formatDate, getStatusColor, getStatusLabel, getProfileDisplayName } from '@/lib/utils';
 import { useCreditStore } from '@/lib/stores/creditStore';
 
 export default function ProfilesListPage() {
@@ -136,7 +136,7 @@ export default function ProfilesListPage() {
                 <tbody>
                   {profiles.map(p => (
                     <tr key={p.id} onClick={() => router.push(`/dashboard/profiles/${p.id}`)}>
-                      <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{p.resume_info?.name || `Profile #${p.id}`}</td>
+                      <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{getProfileDisplayName(p)}</td>
                       <td><span className={`badge ${getStatusColor(p.status)}`}>{p.status}</span></td>
                       <td>{formatDate(p.created_at)}</td>
                       <td style={{ textAlign: 'right' }}>

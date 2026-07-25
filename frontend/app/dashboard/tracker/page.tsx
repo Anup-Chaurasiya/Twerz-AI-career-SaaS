@@ -3,17 +3,10 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { jobsApi } from '@/lib/api/endpoints';
 import { Job } from '@/types';
-import { formatDate } from '@/lib/utils';
+import { formatDate, toDateInputValue } from '@/lib/utils';
+import DatePicker from '@/components/DatePicker';
 
 const COLUMNS = ['SAVED', 'APPLIED', 'INTERVIEW', 'OFFER', 'REJECTED', 'WITHDRAWN'] as const;
-
-function toDatetimeLocalValue(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 export default function TrackerPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -40,7 +33,7 @@ export default function TrackerPage() {
     e.stopPropagation();
     setEditingId(j.id);
     setDraftNotes(j.application_notes || '');
-    setDraftFollowUp(toDatetimeLocalValue(j.follow_up_at));
+    setDraftFollowUp(j.follow_up_at ? toDateInputValue(new Date(j.follow_up_at)) : '');
     setDraftStatus(j.application_status || 'SAVED');
     setError(null);
   };
@@ -52,7 +45,7 @@ export default function TrackerPage() {
       const res = await jobsApi.updateApplication(jobId, {
         application_status: draftStatus,
         application_notes: draftNotes,
-        follow_up_at: draftFollowUp ? new Date(draftFollowUp).toISOString() : null,
+        follow_up_at: draftFollowUp ? new Date(`${draftFollowUp}T09:00:00`).toISOString() : null,
       });
       setJobs((prev) =>
         prev.map((j) => (j.id === jobId ? { ...j, ...res.data } : j))
@@ -145,11 +138,11 @@ export default function TrackerPage() {
                               <option key={s} value={s}>{s}</option>
                             ))}
                           </select>
-                          <input
-                            type="datetime-local"
+                          <DatePicker
                             value={draftFollowUp}
-                            onChange={(e) => setDraftFollowUp(e.target.value)}
-                            style={{ fontSize: 11, padding: 6, borderRadius: 4, background: 'var(--deep)', color: 'var(--text-primary)', border: '1px solid var(--card-border)' }}
+                            onChange={setDraftFollowUp}
+                            placeholder="Follow-up date"
+                            className="input-field"
                           />
                           <textarea
                             value={draftNotes}

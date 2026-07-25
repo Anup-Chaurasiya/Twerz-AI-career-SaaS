@@ -3,6 +3,7 @@ import { APIError } from '@/types';
 
 const client = axios.create({
   baseURL: '',
+  timeout: 15_000,
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -30,10 +31,12 @@ client.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<APIError>) => {
     const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
+    const isAuthRefreshCall = originalRequest.url?.includes('/auth/refresh');
     if (
       error.response?.status === 401 &&
       error.response?.data?.detail === 'token_expired' &&
-      !originalRequest._retry
+      !originalRequest._retry &&
+      !isAuthRefreshCall
     ) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
@@ -52,8 +55,10 @@ client.interceptors.response.use(
         return client(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError as Error);
-        localStorage.removeItem('token');
-        window.location.href = '/login';
+        if (axios.isAxiosError(refreshError) && refreshError.response?.status === 401) {
+          localStorage.removeItem('token');
+          window.location.href = '/login';
+        }
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

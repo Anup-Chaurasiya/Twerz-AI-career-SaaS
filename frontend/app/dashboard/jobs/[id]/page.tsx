@@ -4,7 +4,9 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { jobsApi } from '@/lib/api/endpoints';
 import { Job, ChatMessage } from '@/types';
-import { getStatusColor, getStatusLabel } from '@/lib/utils';
+import { getStatusColor, getStatusLabel, toDateInputValue } from '@/lib/utils';
+import DatePicker from '@/components/DatePicker';
+import { MarkdownInline } from '@/components/MarkdownInline';
 import { useProgressSSE, ProgressEvent } from '@/lib/hooks/useProgressSSE';
 import { useCreditStore } from '@/lib/stores/creditStore';
 import JobDetailTabs from '@/components/JobDetailTabs';
@@ -599,7 +601,9 @@ export default function JobDetailPage() {
                     </div>
                   </div>
                 )}
-                <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>{job.fit_rationale}</p>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+                  <MarkdownInline text={job.fit_rationale || ''} />
+                </p>
                 {job.fit_score_breakdown && (
                   <div style={{ marginTop: 10 }}>
                     <button
@@ -769,7 +773,9 @@ export default function JobDetailPage() {
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {(job.gap_list || []).map((g, i) => (
-                      <span key={i} style={{ fontSize: 11, padding: '4px 8px', borderRadius: 4, background: 'rgba(239,68,68,0.12)', color: 'var(--red)' }}>{g}</span>
+                      <span key={i} style={{ fontSize: 11, padding: '4px 8px', borderRadius: 4, background: 'rgba(239,68,68,0.12)', color: 'var(--red)' }}>
+                        <MarkdownInline text={g} />
+                      </span>
                     ))}
                     {!job.gap_list?.length && <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>No critical gaps listed</span>}
                   </div>
@@ -882,21 +888,9 @@ export default function JobDetailPage() {
                 projects.some((p) => (p.pairs || []).length > 0);
               if (!hasPairs) return null;
 
-              const highlightKeyword = (text: string, keyword?: string | null) => {
-                if (!keyword || !text) return text;
-                const idx = text.toLowerCase().indexOf(keyword.toLowerCase());
-                if (idx < 0) return text;
-                const before = text.slice(0, idx);
-                const match = text.slice(idx, idx + keyword.length);
-                const after = text.slice(idx + keyword.length);
-                return (
-                  <>
-                    {before}
-                    <mark style={{ background: 'rgba(20,184,166,0.25)', color: 'var(--teal)', padding: '0 2px', borderRadius: 2 }}>{match}</mark>
-                    {after}
-                  </>
-                );
-              };
+              const highlightKeyword = (text: string, keyword?: string | null) => (
+                <MarkdownInline text={text} keyword={keyword} />
+              );
 
               return (
                 <div style={{ marginTop: 20, borderTop: '1px solid var(--card-border)', paddingTop: 16 }}>
@@ -922,7 +916,7 @@ export default function JobDetailPage() {
                           <div key={pi} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 8 }}>
                             <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.5, background: 'rgba(255,255,255,0.02)', padding: 10, borderRadius: 6 }}>
                               <div style={{ fontSize: 10, letterSpacing: 1, marginBottom: 4, opacity: 0.7 }}>ORIGINAL</div>
-                              {pair.original || <em style={{ opacity: 0.5 }}>—</em>}
+                              {pair.original ? <MarkdownInline text={pair.original} /> : <em style={{ opacity: 0.5 }}>—</em>}
                             </div>
                             <div style={{ fontSize: 12, color: 'var(--text-primary)', lineHeight: 1.5, background: 'rgba(20,184,166,0.06)', padding: 10, borderRadius: 6, border: '1px solid rgba(20,184,166,0.15)' }}>
                               <div style={{ fontSize: 10, letterSpacing: 1, marginBottom: 4, color: 'var(--teal)' }}>TAILORED</div>
@@ -944,7 +938,7 @@ export default function JobDetailPage() {
                           <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 8 }}>
                             <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.5, background: 'rgba(255,255,255,0.02)', padding: 10, borderRadius: 6 }}>
                               <div style={{ fontSize: 10, letterSpacing: 1, marginBottom: 4, opacity: 0.7 }}>ORIGINAL</div>
-                              {pair.original || <em style={{ opacity: 0.5 }}>—</em>}
+                              {pair.original ? <MarkdownInline text={pair.original} /> : <em style={{ opacity: 0.5 }}>—</em>}
                             </div>
                             <div style={{ fontSize: 12, color: 'var(--text-primary)', lineHeight: 1.5, background: 'rgba(20,184,166,0.06)', padding: 10, borderRadius: 6, border: '1px solid rgba(20,184,166,0.15)' }}>
                               <div style={{ fontSize: 10, letterSpacing: 1, marginBottom: 4, color: 'var(--teal)' }}>TAILORED</div>
@@ -980,27 +974,20 @@ export default function JobDetailPage() {
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
-              <input
-                type="datetime-local"
-                title="Follow-up date"
-                value={(() => {
-                  if (!job.follow_up_at) return '';
-                  const d = new Date(job.follow_up_at);
-                  if (Number.isNaN(d.getTime())) return '';
-                  const pad = (n: number) => String(n).padStart(2, '0');
-                  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-                })()}
-                onChange={async (e) => {
+              <DatePicker
+                value={job.follow_up_at ? toDateInputValue(new Date(job.follow_up_at)) : ''}
+                onChange={async (dateValue) => {
                   try {
                     const res = await jobsApi.updateApplication(jobId, {
-                      follow_up_at: e.target.value ? new Date(e.target.value).toISOString() : null,
+                      follow_up_at: dateValue ? new Date(`${dateValue}T09:00:00`).toISOString() : null,
                     });
                     setJob(prev => prev ? { ...prev, ...res.data } : prev);
                   } catch (err: any) {
                     setNotice({ type: 'error', message: err.response?.data?.detail || 'Failed to set follow-up' });
                   }
                 }}
-                style={{ fontSize: 12, padding: '6px 10px', borderRadius: 6, background: 'var(--deep)', color: 'var(--text-primary)', border: '1px solid var(--card-border)' }}
+                placeholder="Follow-up date"
+                className="input-field"
               />
               <textarea
                 placeholder="Application notes"

@@ -24,6 +24,7 @@ class Profile(TimestampMixin, Base):
         Enum(ProfileStatus), default=ProfileStatus.PENDING, nullable=False
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    source_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     enhance_count_today: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     enhance_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

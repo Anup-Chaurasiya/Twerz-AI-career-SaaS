@@ -78,20 +78,43 @@ export default function LandingPage() {
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
+
+    const revealVisible = (node: Element) => {
+      node.classList.add('visible');
+    };
+
     const nodes = root.querySelectorAll('.reveal');
     const io = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            entry.target.classList.add('visible');
+            revealVisible(entry.target);
             io.unobserve(entry.target);
           }
         });
       },
-      { threshold: 0.12, rootMargin: '0px 0px -40px 0px' },
+      { root, threshold: 0.08, rootMargin: '0px 0px -24px 0px' },
     );
-    nodes.forEach((n) => io.observe(n));
-    return () => io.disconnect();
+
+    nodes.forEach((node) => {
+      io.observe(node);
+      const rect = node.getBoundingClientRect();
+      const rootRect = root.getBoundingClientRect();
+      if (rect.top < rootRect.bottom - 24 && rect.bottom > rootRect.top) {
+        revealVisible(node);
+        io.unobserve(node);
+      }
+    });
+
+    // Safety net: ensure content is never permanently hidden if IO misses an element.
+    const fallback = window.setTimeout(() => {
+      nodes.forEach((node) => revealVisible(node));
+    }, 1200);
+
+    return () => {
+      window.clearTimeout(fallback);
+      io.disconnect();
+    };
   }, []);
 
   useEffect(() => {
@@ -128,7 +151,7 @@ export default function LandingPage() {
     {
       val: wallStats ? formatStat(wallStats.total_resumes_tailored) : '10k+',
       label: 'Resumes Tailored',
-      color: '#ffffff',
+      color: '#0F172A',
     },
     {
       val: wallStats?.has_improvement_data && wallStats.avg_ats_score_improvement != null
@@ -371,7 +394,7 @@ export default function LandingPage() {
   ];
 
   const navLinkStyle: CSSProperties = {
-    fontSize: 13.5, fontWeight: 500, color: '#71717a',
+    fontSize: 13.5, fontWeight: 500, color: '#64748B',
     textDecoration: 'none', transition: 'color 0.2s', padding: '4px 0',
   };
 
@@ -381,6 +404,7 @@ export default function LandingPage() {
         <div className="dot-grid" />
         <div className="ambient-orb ambient-orb--a" />
         <div className="ambient-orb ambient-orb--b" />
+        <div className="ambient-orb ambient-orb--c" />
       </div>
 
       {/* ======= NAVBAR ======= */}
@@ -395,7 +419,7 @@ export default function LandingPage() {
                 <path d="M20 14a2 2 0 0 1 2 2" /><path d="M20 22a2 2 0 0 0 2-2" />
               </svg>
             </div>
-            <span style={{ fontFamily: "'Clash Display','Inter',sans-serif", fontWeight: 700, fontSize: 19, color: '#fff', letterSpacing: '-0.3px' }}>
+            <span style={{ fontFamily: "'Clash Display','Inter',sans-serif", fontWeight: 700, fontSize: 19, color: '#0F172A', letterSpacing: '-0.3px' }}>
               ATS<span style={{ color: '#ff5a1f' }}>Beater</span>
             </span>
           </div>
@@ -404,8 +428,8 @@ export default function LandingPage() {
             {([['#how-it-works', 'How It Works'], ['#features', 'Features'], ['#pricing', 'Pricing'], ['#faq', 'FAQ']] as const).map(([href, label]) => (
               <a key={href} href={href} style={navLinkStyle}
                 onClick={(e) => scrollToHash(e, href)}
-                onMouseEnter={(e) => { e.currentTarget.style.color = '#fff'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = '#71717a'; }}>
+                onMouseEnter={(e) => { e.currentTarget.style.color = '#0F172A'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = '#64748B'; }}>
                 {label}
               </a>
             ))}
@@ -427,10 +451,10 @@ export default function LandingPage() {
         </div>
 
         {mobileOpen && (
-          <div className="animate-fade-in" style={{ position: 'absolute', top: '100%', left: 0, right: 0, padding: '20px 24px', background: 'rgba(9,9,11,0.98)', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: 4, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+          <div className="animate-fade-in" style={{ position: 'absolute', top: '100%', left: 0, right: 0, padding: '20px 24px', background: 'rgba(255,255,255,0.98)', borderBottom: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: 4, boxShadow: '0 8px 32px rgba(0,0,0,0.08)' }}>
             {([['#how-it-works', 'How It Works'], ['#features', 'Features'], ['#pricing', 'Pricing'], ['#faq', 'FAQ']] as const).map(([href, label]) => (
               <a key={href} href={href} onClick={(e) => scrollToHash(e, href)}
-                style={{ display: 'block', fontSize: 15, fontWeight: 500, color: 'var(--text-secondary)', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', textDecoration: 'none' }}>
+                style={{ display: 'block', fontSize: 15, fontWeight: 500, color: 'var(--text-secondary)', padding: '10px 0', borderBottom: '1px solid #E2E8F0', textDecoration: 'none' }}>
                 {label}
               </a>
             ))}
@@ -457,16 +481,16 @@ export default function LandingPage() {
               </div>
 
               <h1 style={{ fontFamily: "'Clash Display','Inter',sans-serif", fontSize: 'clamp(42px,5vw,72px)', fontWeight: 700, lineHeight: 1.06, letterSpacing: '-0.03em', marginBottom: 22 }}>
-                <span style={{ display: 'block', background: 'linear-gradient(180deg,#ffffff 30%,#94a3b8 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+                <span style={{ display: 'block', background: 'linear-gradient(180deg,#0F172A 30%,#334155 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
                   Beat the ATS,
                 </span>
                 <span style={{ display: 'block' }}>
-                  <span style={{ background: 'linear-gradient(180deg,#ffffff 30%,#94a3b8 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Land the </span>
+                  <span style={{ background: 'linear-gradient(180deg,#0F172A 30%,#334155 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Land the </span>
                   <span style={{ color: '#ff5a1f' }}>Interview</span>
                 </span>
               </h1>
 
-              <p style={{ fontSize: 17, lineHeight: 1.78, color: '#e4e4e7', maxWidth: 500, marginBottom: 36 }}>
+              <p style={{ fontSize: 17, lineHeight: 1.78, color: '#475569', maxWidth: 500, marginBottom: 36 }}>
                 Upload your resume, paste a job description, and get an ATS-optimized tailored resume in seconds. Powered by AI and LaTeX precision.
               </p>
 
@@ -482,21 +506,21 @@ export default function LandingPage() {
                 </button>
                 <a href="#how-it-works"
                   onClick={(e) => scrollToHash(e, '#how-it-works')}
-                  style={{ display: 'inline-flex', alignItems: 'center', padding: '14px 28px', borderRadius: 12, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', color: '#F8FAFC', fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s ease', textDecoration: 'none', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(255,90,31,0.4)'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = '#F8FAFC'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}>
+                  style={{ display: 'inline-flex', alignItems: 'center', padding: '14px 28px', borderRadius: 12, background: '#F1F5F9', border: '1px solid #E2E8F0', color: '#0F172A', fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s ease', textDecoration: 'none' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(255,90,31,0.4)'; e.currentTarget.style.color = '#0F172A'; e.currentTarget.style.background = '#E2E8F0'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.color = '#0F172A'; e.currentTarget.style.background = '#F1F5F9'; }}>
                   See How It Works
                 </a>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'stretch', paddingTop: 28, borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+              <div style={{ display: 'flex', alignItems: 'stretch', paddingTop: 28, borderTop: '1px solid #E2E8F0' }}>
                 {[
-                  { val: '10k+', label: 'Job Seekers', color: '#ffffff' },
+                  { val: '10k+', label: 'Job Seekers', color: '#0F172A' },
                   { val: '95%', label: 'ATS Pass Rate', color: '#ff5a1f' },
                   { val: '< 60s', label: 'Generation Time', color: '#10b981' },
                 ].map((stat, idx) => (
                   <div key={stat.label} style={{ flex: 1, textAlign: 'center', position: 'relative', paddingTop: 6, paddingBottom: 6 }}>
-                    {idx > 0 && <div style={{ position: 'absolute', left: 0, top: '10%', bottom: '10%', width: 1, background: 'rgba(255,255,255,0.08)' }} />}
+                    {idx > 0 && <div style={{ position: 'absolute', left: 0, top: '10%', bottom: '10%', width: 1, background: '#E2E8F0' }} />}
                     <div style={{ fontFamily: "'Clash Display','Inter',sans-serif", fontSize: 'clamp(22px,2.5vw,30px)', fontWeight: 700, color: stat.color, letterSpacing: '-0.03em', lineHeight: 1.15 }}>{stat.val}</div>
                     <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-dim)', letterSpacing: '1.5px', textTransform: 'uppercase', marginTop: 5 }}>{stat.label}</div>
                   </div>
@@ -505,11 +529,11 @@ export default function LandingPage() {
             </div>
 
             <div className="fade-slide-in stagger-2" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div className="hero-mock" style={{ width: '100%', maxWidth: 460, background: 'rgba(22,27,38,0.85)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 18, overflow: 'hidden', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), 0 32px 80px rgba(0,0,0,0.6), 0 0 40px rgba(255,90,31,0.12)' }}>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(11,15,23,0.6)' }}>
+              <div className="hero-mock" style={{ width: '100%', maxWidth: 460, background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 18, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.08), 0 0 40px rgba(255,90,31,0.06)' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#F8FAFC' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span className="led-pulse" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }} />
-                    <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, fontWeight: 700, letterSpacing: '2px', color: '#71717a', userSelect: 'none' }}>AI RESUME EDITOR</span>
+                    <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, fontWeight: 700, letterSpacing: '2px', color: '#64748B', userSelect: 'none' }}>AI RESUME EDITOR</span>
                   </div>
                   <div style={{ display: 'flex', gap: 5 }}>
                     {['#ef4444', '#fbbf24', '#34d399'].map((c) => (
@@ -519,27 +543,27 @@ export default function LandingPage() {
                 </div>
 
                 <div style={{ padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 12, minHeight: 300 }}>
-                  <div className="msg-fade-in delay-1" style={{ alignSelf: 'flex-end', maxWidth: '82%', background: 'rgba(63,63,70,0.5)', border: '1px solid rgba(63,63,70,0.4)', borderRadius: '14px 14px 4px 14px', padding: '10px 14px', fontSize: 12.5, color: '#e4e4e7', lineHeight: 1.55 }}>
+                  <div className="msg-fade-in delay-1" style={{ alignSelf: 'flex-end', maxWidth: '82%', background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: '14px 14px 4px 14px', padding: '10px 14px', fontSize: 12.5, color: '#0F172A', lineHeight: 1.55 }}>
                     Tailor my resume for this Senior React Developer role at Stripe
                   </div>
-                  <div className="msg-fade-in delay-2" style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px', borderRadius: 8, background: 'rgba(9,9,11,0.6)', border: '1px solid rgba(56,189,248,0.25)', fontSize: 10.5, fontFamily: "'JetBrains Mono',monospace", color: '#38bdf8', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
+                  <div className="msg-fade-in delay-2" style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px', borderRadius: 8, background: '#F8FAFC', border: '1px solid rgba(56,189,248,0.35)', fontSize: 10.5, fontFamily: "'JetBrains Mono',monospace", color: '#0284C7', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
                     <span className="pulse-blue" style={{ display: 'inline-flex', width: 6, height: 6, borderRadius: '50%', background: '#38bdf8', flexShrink: 0 }} />
                     analyze_job_requirements
                   </div>
-                  <div className="msg-fade-in delay-3" style={{ alignSelf: 'flex-start', maxWidth: '82%', background: 'rgba(9,9,11,0.35)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '4px 14px 14px 14px', padding: '10px 14px', fontSize: 12.5, color: '#a1a1aa', lineHeight: 1.55 }}>
+                  <div className="msg-fade-in delay-3" style={{ alignSelf: 'flex-start', maxWidth: '82%', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '4px 14px 14px 14px', padding: '10px 14px', fontSize: 12.5, color: '#475569', lineHeight: 1.55 }}>
                     Analyzing the job requirements... Adding emphasis on TypeScript, React hooks, and performance optimization to your experience section.
                   </div>
-                  <div className="msg-fade-in delay-4" style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px', borderRadius: 8, background: 'rgba(9,9,11,0.6)', border: '1px solid rgba(52,211,153,0.25)', fontSize: 10.5, fontFamily: "'JetBrains Mono',monospace", color: '#34d399', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
+                  <div className="msg-fade-in delay-4" style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px', borderRadius: 8, background: '#F8FAFC', border: '1px solid rgba(52,211,153,0.35)', fontSize: 10.5, fontFamily: "'JetBrains Mono',monospace", color: '#059669', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
                     <span className="pulse-emerald" style={{ display: 'inline-flex', width: 6, height: 6, borderRadius: '50%', background: '#34d399', flexShrink: 0 }} />
                     update_resume_section
                   </div>
-                  <div className="msg-fade-in delay-5" style={{ alignSelf: 'flex-start', maxWidth: '92%', display: 'flex', gap: 10, alignItems: 'flex-start', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.22)', borderRadius: '4px 14px 14px 14px', padding: '11px 14px', boxShadow: '0 0 24px rgba(16,185,129,0.06)' }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+                  <div className="msg-fade-in delay-5" style={{ alignSelf: 'flex-start', maxWidth: '92%', display: 'flex', gap: 10, alignItems: 'flex-start', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '4px 14px 14px 14px', padding: '11px 14px', boxShadow: '0 4px 16px rgba(16,185,129,0.08)' }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
                       <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <div>
-                      <p style={{ fontSize: 12.5, fontWeight: 600, color: '#a7f3d0', marginBottom: 3 }}>Resume tailored!</p>
-                      <p style={{ fontSize: 11.5, color: '#6ee7b7', lineHeight: 1.5 }}>Your ATS match score is now <strong style={{ color: '#a7f3d0' }}>94%</strong>. Ready to generate PDF.</p>
+                      <p style={{ fontSize: 12.5, fontWeight: 600, color: '#047857', marginBottom: 3 }}>Resume tailored!</p>
+                      <p style={{ fontSize: 11.5, color: '#059669', lineHeight: 1.5 }}>Your ATS match score is now <strong style={{ color: '#047857' }}>94%</strong>. Ready to generate PDF.</p>
                     </div>
                   </div>
                 </div>
@@ -740,8 +764,8 @@ export default function LandingPage() {
                 key={plan.name}
                 className={`pricing-card reveal reveal-d${i + 1}${plan.featured ? ' featured' : ''}`}
                 style={{
-                  background: plan.featured ? 'linear-gradient(160deg,rgba(255,90,31,0.1),rgba(24,24,27,0.92))' : 'rgba(24,24,27,0.7)',
-                  border: `1px solid ${plan.featured ? 'rgba(255,90,31,0.35)' : 'var(--card-border)'}`,
+                  background: plan.featured ? 'linear-gradient(160deg,rgba(255,90,31,0.06),#FFFFFF)' : '#FFFFFF',
+                  border: `1px solid ${plan.featured ? 'rgba(255,90,31,0.35)' : '#E2E8F0'}`,
                   borderRadius: 18,
                   padding: '36px 28px',
                   position: 'relative',
@@ -759,23 +783,23 @@ export default function LandingPage() {
                 <div style={{ fontSize: 44, fontWeight: 900, letterSpacing: -2, lineHeight: 1, marginBottom: 4 }}>{plan.price}</div>
                 <div style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 8 }}>{plan.per}</div>
                 <div style={{ fontSize: 12, color: plan.accent, marginBottom: 20, fontWeight: 600 }}>Best for: {plan.bestFor}</div>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 24, paddingBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{plan.credits}</div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 24, paddingBottom: 20, borderBottom: '1px solid #E2E8F0' }}>{plan.credits}</div>
                 <ul style={{ listStyle: 'none', marginBottom: 28 }}>
                   {plan.features.map((f) => (
-                    <li key={f} style={{ fontSize: 14, color: 'var(--text-secondary)', padding: '8px 0', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                    <li key={f} style={{ fontSize: 14, color: 'var(--text-secondary)', padding: '8px 0', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #F1F5F9' }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={plan.accent} strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
                       {f}
                     </li>
                   ))}
                 </ul>
-                <button onClick={handleLogin} style={{ width: '100%', padding: 14, borderRadius: 10, fontFamily: 'JetBrains Mono', fontWeight: 700, fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', cursor: 'pointer', transition: 'transform 0.2s ease, background 0.2s ease, border-color 0.2s ease', background: plan.featured ? 'linear-gradient(135deg,var(--orange),#D13600)' : 'transparent', border: plan.featured ? '1px solid rgba(255,90,31,0.4)' : '1px solid rgba(255,255,255,0.1)', color: plan.featured ? '#fff' : 'var(--text-secondary)' }}>
+                <button onClick={handleLogin} style={{ width: '100%', padding: 14, borderRadius: 10, fontFamily: 'Inter', fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'transform 0.2s ease, background 0.2s ease, border-color 0.2s ease', background: plan.featured ? 'linear-gradient(135deg,var(--orange),#D13600)' : '#F1F5F9', border: plan.featured ? '1px solid rgba(255,90,31,0.4)' : '1px solid #E2E8F0', color: plan.featured ? '#fff' : '#0F172A' }}>
                   Get Started
                 </button>
               </div>
             ))}
           </div>
 
-          <div className="reveal reveal-d3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: '24px 32px', marginTop: 32, textAlign: 'center' }}>
+          <div className="reveal reveal-d3" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12, padding: '24px 32px', marginTop: 32, textAlign: 'center' }}>
             <p style={{ fontSize: 15, color: 'var(--text-secondary)' }}>Get <strong style={{ color: 'var(--orange)' }}>3 free credits every day</strong> just by signing up. No credit card required.</p>
           </div>
         </div>
@@ -790,7 +814,7 @@ export default function LandingPage() {
           </div>
           <div className="reveal reveal-d2" style={{ maxWidth: 720 }}>
             {faqs.map((faq, i) => (
-              <div key={faq.q} className="faq-item" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <div key={faq.q} className="faq-item" style={{ borderBottom: '1px solid #E2E8F0' }}>
                 <button onClick={() => setOpenFaq(openFaq === i ? null : i)} style={{ width: '100%', background: 'none', border: 'none', color: 'var(--text-primary)', textAlign: 'left', padding: '20px 0', cursor: 'pointer', fontFamily: 'Inter', fontSize: 16, fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
                   {faq.q}
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={openFaq === i ? '#ff5a1f' : 'currentColor'} strokeWidth="2" style={{ flexShrink: 0, color: openFaq === i ? '#ff5a1f' : 'var(--text-dim)', transform: openFaq === i ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s ease, color 0.2s' }}><polyline points="6 9 12 15 18 9" /></svg>
@@ -804,7 +828,7 @@ export default function LandingPage() {
 
       {/* ======= CTA BAND ======= */}
       <section className="lp-section lp-section-cta cta-band">
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg,rgba(255,90,31,0.06),rgba(56,189,248,0.03),rgba(52,211,153,0.03))', borderTop: '1px solid rgba(255,90,31,0.1)', borderBottom: '1px solid rgba(255,255,255,0.05)' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg,rgba(255,90,31,0.04),rgba(56,189,248,0.02),rgba(52,211,153,0.02))', borderTop: '1px solid rgba(255,90,31,0.12)', borderBottom: '1px solid #E2E8F0' }} />
         <div className="reveal" style={{ position: 'relative', zIndex: 1 }}>
           <h2 style={{ fontFamily: "'Clash Display','Inter',sans-serif", fontSize: 'clamp(28px,4vw,40px)', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: 16 }}>Ready to Beat the ATS?</h2>
           <p style={{ fontSize: 16, color: 'var(--text-secondary)', marginBottom: 32 }}>Join thousands of job seekers who&apos;ve landed interviews with ATS Beater.</p>
@@ -813,9 +837,9 @@ export default function LandingPage() {
       </section>
 
       {/* ======= FOOTER ======= */}
-      <footer style={{ padding: '48px 0 32px', borderTop: '1px solid rgba(255,255,255,0.05)', overflow: 'hidden' }}>
+      <footer style={{ padding: '48px 0 32px', borderTop: '1px solid #E2E8F0', overflow: 'hidden' }}>
         <div className="lp-container">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 40, paddingBottom: 32, borderBottom: '1px solid rgba(255,255,255,0.05)', marginBottom: 24, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 40, paddingBottom: 32, borderBottom: '1px solid #E2E8F0', marginBottom: 24, flexWrap: 'wrap' }}>
             <div>
               <div style={{ fontFamily: "'Clash Display','Inter',sans-serif", fontWeight: 700, fontSize: 17, marginBottom: 12 }}>ATS<span style={{ color: 'var(--orange)' }}>Beater</span></div>
               <p style={{ fontSize: 13, color: 'var(--text-dim)', maxWidth: 280, lineHeight: 1.6 }}>AI-powered resume tailoring to help you land your dream job. Powered by Cydratech.</p>
@@ -825,7 +849,7 @@ export default function LandingPage() {
                 <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: 700, color: 'var(--text-dim)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16 }}>Product</div>
                 {([['Features', '#features'], ['Pricing', '#pricing'], ['FAQ', '#faq']] as const).map(([l, href]) => (
                   <a key={l} href={href} onClick={(e) => scrollToHash(e, href)} style={{ display: 'block', fontSize: 14, color: 'var(--text-secondary)', marginBottom: 10, transition: 'color 0.2s' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#fff'; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#0F172A'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}>
                     {l}
                   </a>

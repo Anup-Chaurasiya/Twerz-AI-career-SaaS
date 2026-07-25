@@ -4,7 +4,8 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { profilesApi } from '@/lib/api/endpoints';
 import { Profile, ResumeInfo } from '@/types';
-import { getStatusColor, groupSkillsByCategory, formatDateRange, getExperienceList, getEducationList } from '@/lib/utils';
+import { getStatusColor, groupSkillsByCategory, formatDateRange, getExperienceList, getEducationList, getProfileDisplayName } from '@/lib/utils';
+import { MarkdownInline } from '@/components/MarkdownInline';
 
 export default function ProfileDetailPage() {
   const { id } = useParams();
@@ -37,7 +38,14 @@ export default function ProfileDetailPage() {
           setEditData(res.data.resume_info || {});
         }
       } catch (err: any) {
-        setError(err.response?.data?.detail || 'Failed to load profile');
+        const detail = err.response?.data?.detail || 'Failed to load profile';
+        if (err.response?.status === 404) {
+          setError(typeof detail === 'string' && detail.toLowerCase().includes('not found')
+            ? 'This profile has been deleted or does not exist.'
+            : detail);
+        } else {
+          setError(detail);
+        }
         setLoading(false);
       }
     };
@@ -155,7 +163,7 @@ export default function ProfileDetailPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
           <div>
             <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
-              {profile.resume_info?.name || `Profile #${profile.id}`}
+              {getProfileDisplayName(profile)}
               <span className={`badge ${getStatusColor(profile.status)}`}>{profile.status}</span>
             </h1>
             <p style={{ fontSize: 13, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -232,7 +240,7 @@ export default function ProfileDetailPage() {
                   {exp.description && <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 12 }}>{exp.description}</p>}
                   {exp.achievements && exp.achievements.length > 0 && (
                     <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                      {exp.achievements.map((ach, j) => <li key={j} style={{ marginBottom: 4 }}>{ach}</li>)}
+                      {exp.achievements.map((ach, j) => <li key={j} style={{ marginBottom: 4 }}><MarkdownInline text={ach} /></li>)}
                     </ul>
                   )}
                 </div>

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { profilesApi, jobsApi } from '@/lib/api/endpoints';
 import { Profile } from '@/types';
+import { getProfileDisplayName } from '@/lib/utils';
 
 export default function NewJobPage() {
   const router = useRouter();
@@ -92,7 +93,7 @@ export default function NewJobPage() {
               <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8, fontFamily: 'JetBrains Mono', textTransform: 'uppercase', letterSpacing: 1 }}>Base Profile *</label>
               <select className="input-field" value={formData.profileId} onChange={e => setFormData({...formData, profileId: e.target.value})} required>
                 {profiles.map(p => (
-                  <option key={p.id} value={p.id}>{p.resume_info?.name || `Profile #${p.id}`} (Ready)</option>
+                  <option key={p.id} value={p.id}>{getProfileDisplayName(p)} (Ready)</option>
                 ))}
               </select>
             </div>

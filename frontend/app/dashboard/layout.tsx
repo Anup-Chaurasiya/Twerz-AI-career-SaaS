@@ -19,6 +19,17 @@ const navItems = [
   { href: '/dashboard/account', icon: (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>), label: 'Account' },
 ];
 
+function formatBreadcrumbSegment(segment: string, index: number, parts: string[]): string {
+  if (/^\d+$/.test(segment)) {
+    const parent = parts[index - 1];
+    if (parent === 'profiles') return 'Profile';
+    if (parent === 'jobs') return 'Job';
+    if (parent === 'roasts') return 'Roast';
+    if (parent === 'users') return 'User';
+  }
+  return segment.replace(/-/g, ' ');
+}
+
 type NotifItem = {
   id: number;
   title: string;
@@ -39,16 +50,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const notifsLoadedRef = useRef(false);
+  const [mounted, setMounted] = useState(false);
 
   const unreadCount = notifs.filter((n) => !n.is_read).length;
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const loadNotifs = () => {
     notificationsApi.list(false).then((res) => setNotifs(res.data.items || [])).catch(() => {});
   };
 
   useEffect(() => {
-    if (!isLoading && !isLoggedIn) router.push('/login');
-  }, [isLoading, isLoggedIn, router]);
+    if (!mounted || isLoading) return;
+    const hasToken = !!localStorage.getItem('token');
+    if (!isLoggedIn && !hasToken) router.push('/login');
+  }, [mounted, isLoading, isLoggedIn, router]);
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -74,7 +92,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => document.removeEventListener('mousedown', onDoc);
   }, []);
 
-  if (isLoading) {
+  if (!mounted || isLoading) {
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--deep)' }}>
         <div style={{ textAlign: 'center' }}>
@@ -85,7 +103,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  if (!isLoggedIn) return null;
+  if (!isLoggedIn) {
+    const hasToken = typeof window !== 'undefined' && !!localStorage.getItem('token');
+    if (hasToken) {
+      return (
+        <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--deep)' }}>
+          <div style={{ textAlign: 'center' }}>
+            <div className="spinner spinner-lg" style={{ margin: '0 auto 16px' }} />
+            <p style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--text-dim)' }}>Restoring session...</p>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--deep)' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div className="spinner spinner-lg" style={{ margin: '0 auto 16px' }} />
+          <p style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--text-dim)' }}>Redirecting to login...</p>
+        </div>
+      </div>
+    );
+  }
 
   const isActive = (href: string) => href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href);
 
@@ -101,11 +139,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   };
 
   return (
-    <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden', background: 'var(--deep)', position: 'relative' }}>
+    <div className="app-canvas dashboard-shell" style={{ display: 'flex', height: '100dvh', overflow: 'hidden', background: 'var(--deep)', position: 'relative' }}>
       <div className={`sidebar-backdrop ${sidebarOpen ? 'visible' : ''}`} onClick={() => setSidebarOpen(false)} />
 
       <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`} style={{ position: 'relative', zIndex: 60 }}>
-        <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <div className="sidebar-brand">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'Inter', fontWeight: 700, fontSize: 16 }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, rgba(255,90,31,0.2), rgba(255,90,31,0.05))', border: '1px solid rgba(255,90,31,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff5a1f" strokeWidth="2.5"><path d="M20 10V8a2.4 2.4 0 0 0-.706-1.704l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.35"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M16 14a2 2 0 0 0-2 2"/><path d="M16 22a2 2 0 0 1 2-2"/><path d="M20 14a2 2 0 0 1 2 2"/><path d="M20 22a2 2 0 0 0 2-2"/></svg>
@@ -116,7 +154,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
           <div style={{ marginBottom: 4 }}>
-            <div style={{ fontFamily: 'Inter', fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--text-dim)', padding: '0 8px', marginBottom: 8 }}>Navigation</div>
+            <div className="sidebar-section-label">Navigation</div>
             {navItems.map((item) => (
               <Link key={item.href} href={item.href} className={`sidebar-link ${isActive(item.href) ? 'active' : ''}`} onClick={() => setSidebarOpen(false)}>
                 {item.icon}
@@ -126,7 +164,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
           {user?.is_super_admin && (
             <div style={{ marginTop: 16 }}>
-              <div style={{ fontFamily: 'Inter', fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--text-dim)', padding: '0 8px', marginBottom: 8 }}>Admin</div>
+              <div className="sidebar-section-label">Admin</div>
               <Link href="/dashboard/admin" className={`sidebar-link ${isActive('/dashboard/admin') ? 'active' : ''}`} onClick={() => setSidebarOpen(false)}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
                 Admin Panel
@@ -136,9 +174,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </nav>
 
         {balance && (
-          <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '10px 12px' }}>
-              <div style={{ fontFamily: 'Inter', fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: 4 }}>Credits</div>
+          <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-subtle)' }}>
+            <div className="sidebar-credits">
+              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: 4 }}>Credits</div>
               {balance.has_unlimited ? (
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--orange)', fontFamily: 'Inter' }}>∞ Unlimited</div>
               ) : (
@@ -148,7 +186,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         )}
 
-        <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="sidebar-user">
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg, rgba(255,90,31,0.25), rgba(255,90,31,0.1))', border: '1px solid rgba(255,90,31,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter', fontWeight: 700, fontSize: 12, color: 'var(--orange)', flexShrink: 0 }}>
             {user?.name?.charAt(0).toUpperCase()}
           </div>
@@ -170,7 +208,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </button>
             <div style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--text-dim)', letterSpacing: '0.5px' }}>
               {pathname.split('/').filter(Boolean).map((p, i, arr) => (
-                <span key={i}>{i > 0 && ' / '}<span style={{ color: i === arr.length - 1 ? 'var(--text-primary)' : 'var(--text-dim)', textTransform: 'capitalize' }}>{p}</span></span>
+                <span key={i}>{i > 0 && ' / '}<span style={{ color: i === arr.length - 1 ? 'var(--text-primary)' : 'var(--text-dim)', textTransform: 'capitalize' }}>{formatBreadcrumbSegment(p, i, arr)}</span></span>
               ))}
             </div>
           </div>
@@ -198,10 +236,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 )}
               </button>
               {notifOpen && (
-                <div style={{
+                <div className="notif-dropdown animate-fade-in" style={{
                   position: 'absolute', right: 0, top: '100%', marginTop: 8, width: 320, maxHeight: 360,
-                  overflowY: 'auto', background: 'var(--card)', border: '1px solid var(--card-border)',
-                  borderRadius: 10, boxShadow: '0 12px 40px rgba(0,0,0,0.45)', zIndex: 100,
+                  overflowY: 'auto', zIndex: 100,
                 }}>
                   <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--card-border)', fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>
                     NOTIFICATIONS
@@ -215,8 +252,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       onClick={() => onNotifClick(n)}
                       style={{
                         display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px',
-                        border: 'none', borderBottom: '1px solid rgba(255,255,255,0.04)',
-                        background: n.is_read ? 'transparent' : 'rgba(1,169,219,0.06)',
+                        border: 'none', borderBottom: '1px solid #E2E8F0',
+                        background: n.is_read ? 'transparent' : 'rgba(255,90,31,0.06)',
                         cursor: 'pointer', color: 'var(--text-primary)',
                       }}
                     >
@@ -228,7 +265,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               )}
             </div>
             {balance && !balance.has_unlimited && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: 'rgba(1,169,219,0.06)', border: '1px solid rgba(1,169,219,0.12)', borderRadius: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: 'rgba(255,90,31,0.06)', border: '1px solid rgba(255,90,31,0.15)', borderRadius: 6 }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
                 <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 600, color: 'var(--teal)' }}>{balance.balance}</span>
               </div>

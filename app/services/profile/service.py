@@ -87,9 +87,15 @@ class ProfileService:
         settings = get_settings()
         self.flash_model = settings.LLM_FLASH_MODEL
 
-    async def create_profile(self, db: AsyncSession, user_id: str, pdf_bytes: bytes) -> int:
+    async def create_profile(
+        self, db: AsyncSession, user_id: str, pdf_bytes: bytes, *, source_filename: str | None = None
+    ) -> int:
         """Create profile row (PENDING), then extract and structure in background."""
-        profile = Profile(user_id=user_id, status=ProfileStatus.PENDING)
+        profile = Profile(
+            user_id=user_id,
+            status=ProfileStatus.PENDING,
+            source_filename=(source_filename or None),
+        )
         db.add(profile)
         await db.commit()
         await db.refresh(profile)
@@ -196,7 +202,11 @@ class ProfileService:
 
     async def get_profile(self, db: AsyncSession, profile_id: int, user_id: str) -> Profile:
         result = await db.execute(
-            select(Profile).where(Profile.id == profile_id, Profile.user_id == user_id)
+            select(Profile).where(
+                Profile.id == profile_id,
+                Profile.user_id == user_id,
+                Profile.is_active == True,
+            )
         )
         profile = result.scalar_one_or_none()
         if not profile:

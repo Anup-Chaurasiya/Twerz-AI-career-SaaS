@@ -7,12 +7,19 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { BodyRouteManager } from '@/components/BodyRouteManager';
 
 function AuthInitializer() {
-  const fetchMe = useAuthStore((s) => s.fetchMe);
   useEffect(() => {
     // /login owns OAuth token capture + session restore.
     if (window.location.pathname === '/login') return;
-    fetchMe();
-  }, [fetchMe]);
+
+    const state = useAuthStore.getState();
+    if (!localStorage.getItem('token')) {
+      state.fetchMe();
+      return;
+    }
+    // Already validated this session — skip redundant /auth/me on route changes.
+    if (state.isLoggedIn && state.user) return;
+    state.fetchMe({ force: true });
+  }, []);
   return null;
 }
 

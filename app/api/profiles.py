@@ -24,7 +24,9 @@ async def upload_profile(
     current_user: User = Depends(get_current_user),
 ):
     pdf_bytes = await file.read()
-    profile_id = await service.create_profile(db, current_user.id, pdf_bytes)
+    profile_id = await service.create_profile(
+        db, current_user.id, pdf_bytes, source_filename=file.filename
+    )
 
     # Fast-path: extract text immediately (pdfplumber is near-instant)
     # so the frontend can animate through the content while AI structures in background
@@ -76,6 +78,7 @@ async def list_profiles(
                 "id": p.id,
                 "status": p.status.value,
                 "is_active": p.is_active,
+                "source_filename": p.source_filename,
                 "resume_info": p.resume_info,
                 "created_at": p.created_at.isoformat(),
                 "updated_at": p.updated_at.isoformat(),
@@ -101,6 +104,7 @@ async def get_profile(
         "id": profile.id,
         "status": profile.status.value,
         "is_active": profile.is_active,
+        "source_filename": profile.source_filename,
         "resume_info": profile.resume_info,
         "created_at": profile.created_at.isoformat(),
         "updated_at": profile.updated_at.isoformat(),
