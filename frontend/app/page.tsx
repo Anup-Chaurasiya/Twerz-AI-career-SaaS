@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { authApi } from '@/lib/api/endpoints';
 import GuestResumeUpload from '@/components/GuestResumeUpload';
+import HeroCardsShowcase from '@/components/HeroCardsShowcase';
 import { loadGuestProfileSession } from '@/lib/guestProfile';
 
 type Accent = { color: string; soft: string };
@@ -23,6 +24,48 @@ const iconProps = {
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const,
 };
+
+function BrandLogo({ onClick }: { onClick?: () => void }) {
+  return (
+    <a href="/" className="brand-logo" onClick={onClick}>
+      <div className="brand-logo-mark">S</div>
+      <div className="brand-logo-text">
+        <span className="brand-logo-name">Shortlyst</span>
+        <span className="brand-logo-by">by Twerz</span>
+      </div>
+    </a>
+  );
+}
+
+function ScoreRing({ score, color, size = 88 }: { score: number; color: string; size?: number }) {
+  const r = (size - 8) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (score / 100) * circ;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e2e8f0" strokeWidth="6" />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth="6"
+        strokeLinecap="round"
+        strokeDasharray={circ}
+        strokeDashoffset={offset}
+      />
+    </svg>
+  );
+}
+
+const NAV_LINKS = [
+  ['#how-it-works', 'How It Works'],
+  ['#platform', 'Platform'],
+  ['#features', 'Features'],
+  ['#pricing', 'Pricing'],
+  ['#faq', 'FAQ'],
+] as const;
 
 function CompareMark({ val, highlight }: { val: boolean | string; highlight?: boolean }) {
   if (val === true) {
@@ -131,10 +174,11 @@ export default function LandingPage() {
 
   const faqs = [
     { q: 'What is an ATS?', a: 'An Applicant Tracking System (ATS) is software used by employers to filter resumes before a human ever sees them. Up to 75% of resumes are rejected by ATS before reaching a recruiter.' },
-    { q: 'How does ATS Beater work?', a: 'Upload your base resume, paste a job description, and our AI analyzes the job requirements to generate a perfectly tailored, ATS-optimized resume in LaTeX-precision PDF format.' },
-    { q: 'Is my resume data safe?', a: 'Yes. Your resume data is encrypted and stored securely. We never share your data with third parties. You can delete your data at any time.' },
+    { q: 'How does Shortlyst work?', a: 'Upload your base resume, paste a job description, and our AI analyzes the job requirements to generate a perfectly tailored, ATS-optimized resume in LaTeX-precision PDF format — with an honest fit score before you spend a credit.' },
+    { q: 'What is Twerz?', a: 'Twerz is the company behind Shortlyst. We build AI-powered career tools designed for honest, evidence-grounded job applications — starting with resume tailoring on resume.twerz.' },
+    { q: 'Is my resume data safe?', a: 'Yes. Your resume data is encrypted and stored securely. We never share your data with third parties. You can delete your data at any time. Shortlyst is built with DPDP Act compliance for India.' },
     { q: 'How many free credits do I get?', a: 'You get 3 free resume tailors every day. They reset at midnight UTC, and no credit card is needed to start.' },
-    { q: 'What file formats are supported?', a: 'We accept PDF resume files today. DOC support is coming soon. The output is always a clean, professionally formatted PDF.' },
+    { q: 'What file formats are supported?', a: 'We accept PDF resume files today. DOC support is coming soon. The output is always a clean, professionally formatted PDF or DOCX.' },
     { q: 'How many applications can I make with 1 credit?', a: 'Each credit gives you one tailored resume + cover letter for one job. Your 3 daily free credits reset every day at midnight.' },
   ];
 
@@ -142,6 +186,119 @@ export default function LandingPage() {
     if (n >= 1000) return `${Math.floor(n / 1000)}k+`;
     return `${n}+`;
   };
+
+  const heroStats = [
+    {
+      val: wallStats ? formatStat(wallStats.total_resumes_tailored) : '10k+',
+      label: 'Resumes Tailored',
+      color: '#0F172A',
+    },
+    {
+      val: wallStats?.has_improvement_data && wallStats.avg_ats_score_improvement != null
+        ? `+${Math.round(wallStats.avg_ats_score_improvement)}%`
+        : '+32%',
+      label: 'ATS Score Lift',
+      color: '#ff5a1f',
+    },
+    {
+      val: '< 60s',
+      label: 'Generation Time',
+      color: '#10b981',
+    },
+  ];
+
+  const uploadHighlights = [
+    { title: 'Honest Fit Score', desc: 'Strong · Stretch · Mismatch + red gaps', accent: '#6366f1', icon: '◉' },
+    { title: 'Evidence Keywords', desc: 'JD keywords woven from real experience', accent: '#38bdf8', icon: '◎' },
+    { title: 'LaTeX + DOCX', desc: 'Print-ready PDF and editable DOCX export', accent: '#34d399', icon: '▣' },
+    { title: 'Cover Letters', desc: 'Role-specific letter with every tailor', accent: '#fb923c', icon: '✉' },
+    { title: 'Interview Prep', desc: 'STAR stories, questions, elevator pitch', accent: '#fbbf24', icon: '★' },
+    { title: 'App Tracker', desc: 'Kanban board from saved to offer', accent: '#8b5cf6', icon: '▦' },
+    { title: '3 Free / Day', desc: 'No credit card needed to start', accent: '#ff5a1f', icon: '⚡' },
+    { title: 'Encrypted · DPDP', desc: 'India privacy standards built in', accent: '#10b981', icon: '🔒' },
+  ];
+
+  const honestPillars = [
+    {
+      title: 'No fabricated skills',
+      desc: 'Keywords mirror your profile only — never invents Okta, SAML, or metrics you don\'t have.',
+      accent: '#6366f1',
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+      ),
+    },
+    {
+      title: 'Fit Score before you spend',
+      desc: 'Strong · Stretch · Mismatch labels with red gaps — know when a role is a stretch before applying.',
+      accent: '#ff5a1f',
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
+      ),
+    },
+    {
+      title: 'End-to-end, not one PDF',
+      desc: 'Structure once → tailor → edit → cover letter → interview prep → track until offer.',
+      accent: '#34d399',
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+      ),
+    },
+  ];
+
+  const platformCategories = [
+    {
+      title: 'Tailor & Score',
+      accent: '#ff5a1f',
+      icon: '◉',
+      items: [
+        { name: 'Fit analysis (free pre-check)', badge: 'Free' },
+        { name: 'ATS score before → after' },
+        { name: 'Keyword matching' },
+        { name: 'Gap fixer (evidence only)' },
+        { name: 'Anti-fabrication guard' },
+        { name: 'Profile enhancement' },
+      ],
+    },
+    {
+      title: 'Edit & Export',
+      accent: '#38bdf8',
+      icon: '✎',
+      items: [
+        { name: 'AI chat editor' },
+        { name: 'LaTeX PDF output' },
+        { name: 'DOCX export' },
+        { name: 'Version history + restore' },
+        { name: 'Free PDF recompile' },
+        { name: 'Multi-language support' },
+      ],
+    },
+    {
+      title: 'Apply Smarter',
+      accent: '#fbbf24',
+      icon: '→',
+      items: [
+        { name: 'Cover letter generator' },
+        { name: 'Interview prep packet' },
+        { name: 'LinkedIn optimizer' },
+        { name: 'Outreach assist' },
+        { name: 'Public ATS check' },
+        { name: 'Networking contacts' },
+      ],
+    },
+    {
+      title: 'Track & Grow',
+      accent: '#6366f1',
+      icon: '▦',
+      items: [
+        { name: 'Kanban application tracker' },
+        { name: 'Personal analytics' },
+        { name: 'Referral program' },
+        { name: 'Resume roast + share' },
+        { name: 'Chrome extension (JD capture)' },
+        { name: 'Promo codes & time passes' },
+      ],
+    },
+  ];
 
   const statsBand = [
     {
@@ -261,15 +418,152 @@ export default function LandingPage() {
         </div>
       ),
     },
+    {
+      title: 'Fit Score & Gap Analysis',
+      desc: 'Strong, Stretch, or Mismatch — with red gaps listed before you spend a credit on tailoring.',
+      tag: 'Intelligence',
+      accent: { color: '#6366f1', soft: 'rgba(99,102,241,0.12)' },
+      icon: (
+        <svg {...iconProps}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+      ),
+      visual: (
+        <div className="feat-visual feat-visual--roast">
+          <div className="feat-roast-score" style={{ color: '#6366f1' }}><span>78</span><small>/100</small></div>
+          <div className="feat-roast-items"><span className="feat-roast-ok">✓ React</span><span className="feat-roast-fail">✗ Kubernetes</span></div>
+        </div>
+      ),
+    },
+    {
+      title: 'Cover Letter Generator',
+      desc: 'Role-specific cover letter generated alongside every tailored resume — evidence-grounded, never generic.',
+      tag: 'Apply',
+      accent: { color: '#fb923c', soft: 'rgba(251,146,60,0.12)' },
+      icon: (
+        <svg {...iconProps}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>
+      ),
+      visual: (
+        <div className="feat-visual feat-visual--chat">
+          <div className="feat-chat-bubble feat-chat-bubble--ai">Dear hiring team — my 4 years building React systems aligns with…</div>
+        </div>
+      ),
+    },
+    {
+      title: 'Interview Prep Packet',
+      desc: 'Likely questions, STAR stories from your resume, elevator pitch, and gaps to study before the call.',
+      tag: 'Apply',
+      accent: { color: '#fbbf24', soft: 'rgba(251,191,36,0.12)' },
+      icon: (
+        <svg {...iconProps}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+      ),
+      visual: (
+        <div className="feat-visual feat-visual--lang">
+          {['STAR', 'Q&A', 'Pitch'].map((l) => (
+            <span key={l} className="feat-lang-chip">{l}</span>
+          ))}
+        </div>
+      ),
+    },
+    {
+      title: 'Application Tracker',
+      desc: 'Kanban board from Saved → Applied → Interview → Offer. Notes, follow-ups, and fit scores on every card.',
+      tag: 'Workflow',
+      accent: { color: '#8b5cf6', soft: 'rgba(139,92,246,0.12)' },
+      icon: (
+        <svg {...iconProps}><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>
+      ),
+      visual: (
+        <div className="feat-visual feat-visual--speed">
+          <span className="feat-speed-label">Saved · Applied · Interview · Offer</span>
+          <div className="feat-speed-bar"><div className="feat-speed-fill" style={{ width: '55%' }} /></div>
+        </div>
+      ),
+    },
+    {
+      title: 'LinkedIn Optimizer',
+      desc: 'Headline, About section, and Skills list optimized from your profile — optionally flavored by a target JD.',
+      tag: 'Profile',
+      accent: { color: '#0ea5e9', soft: 'rgba(14,165,233,0.12)' },
+      icon: (
+        <svg {...iconProps}><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" /><rect x="2" y="9" width="4" height="12" /><circle cx="4" cy="4" r="2" /></svg>
+      ),
+      visual: (
+        <div className="feat-visual feat-visual--keywords">
+          <div className="feat-kw-result">Senior Engineer · React · TypeScript · AWS</div>
+        </div>
+      ),
+    },
+    {
+      title: 'Chrome Extension',
+      desc: 'Capture job descriptions from any job page and create a Shortlyst job in one click.',
+      tag: 'Workflow',
+      accent: { color: '#34d399', soft: 'rgba(52,211,153,0.12)' },
+      icon: (
+        <svg {...iconProps}><circle cx="12" cy="12" r="10" /><path d="M12 8v8" /><path d="M8 12h8" /></svg>
+      ),
+      visual: (
+        <div className="feat-visual feat-visual--keywords">
+          <div className="feat-kw-row"><span className="feat-kw-from">JD captured</span> → Shortlyst job created</div>
+        </div>
+      ),
+    },
+    {
+      title: 'Referral Program',
+      desc: 'Share your link — both you and your friend get bonus credits when they complete their first tailor.',
+      tag: 'Growth',
+      accent: { color: '#ff5a1f', soft: 'rgba(255,90,31,0.12)' },
+      icon: (
+        <svg {...iconProps}><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><path d="M20 8v6M23 11h-6" /></svg>
+      ),
+      visual: (
+        <div className="feat-visual feat-visual--lang">
+          {['You +2', 'Friend +2'].map((l) => (
+            <span key={l} className="feat-lang-chip">{l}</span>
+          ))}
+        </div>
+      ),
+    },
+    {
+      title: 'Personal Analytics',
+      desc: 'Conversion rates by fit band vs platform benchmarks — see when tailoring pays off.',
+      tag: 'Insights',
+      accent: { color: '#6366f1', soft: 'rgba(99,102,241,0.12)' },
+      icon: (
+        <svg {...iconProps}><path d="M18 20V10" /><path d="M12 20V4" /><path d="M6 20v-6" /></svg>
+      ),
+      visual: (
+        <div className="feat-visual feat-visual--speed">
+          <span className="feat-speed-label">Fit ≥70 → 3× interview rate</span>
+          <div className="feat-speed-bar"><div className="feat-speed-fill" style={{ width: '68%' }} /></div>
+        </div>
+      ),
+    },
+    {
+      title: 'Public ATS Check',
+      desc: 'No signup required — upload any PDF for an instant ATS parseability score and checklist.',
+      tag: 'Free Tool',
+      accent: { color: '#38bdf8', soft: 'rgba(56,189,248,0.12)' },
+      icon: (
+        <svg {...iconProps}><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
+      ),
+      visual: (
+        <div className="feat-visual feat-visual--roast">
+          <div className="feat-roast-score" style={{ color: '#38bdf8' }}><span>72</span><small>/100</small></div>
+          <div className="feat-roast-items"><span className="feat-roast-ok">✓ Free · No signup</span></div>
+        </div>
+      ),
+    },
   ];
-
   const compareRows = [
-    { label: 'Tailored per job description', manual: false, template: false, beater: true },
-    { label: 'Real keyword matching', manual: false, template: false, beater: true },
-    { label: 'LaTeX-quality PDF output', manual: false, template: 'Partial', beater: true },
-    { label: 'AI chat editing', manual: false, template: false, beater: true },
-    { label: 'ATS score before applying', manual: false, template: false, beater: true },
-    { label: 'Under 60 seconds', manual: false, template: true, beater: true },
+    { label: 'Tailored per job description', manual: false, template: false, shortlyst: true },
+    { label: 'Real keyword matching', manual: false, template: false, shortlyst: true },
+    { label: 'Honest fit score (no fabrication)', manual: false, template: false, shortlyst: true },
+    { label: 'LaTeX-quality PDF output', manual: false, template: 'Partial', shortlyst: true },
+    { label: 'AI chat editing', manual: false, template: false, shortlyst: true },
+    { label: 'Cover letter + interview prep', manual: false, template: false, shortlyst: true },
+    { label: 'Application tracker built-in', manual: false, template: false, shortlyst: true },
+    { label: 'ATS score before applying', manual: false, template: false, shortlyst: true },
+    { label: 'Free daily credits', manual: false, template: false, shortlyst: true },
+    { label: 'Under 60 seconds', manual: false, template: true, shortlyst: true },
   ];
 
   const testimonials = [
@@ -406,22 +700,10 @@ export default function LandingPage() {
       {/* ======= NAVBAR ======= */}
       <nav className={scrolled ? 'lp-nav lp-nav--scrolled' : 'lp-nav'}>
         <div className="lp-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none', flexShrink: 0 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,90,31,0.08)', border: '1px solid rgba(255,90,31,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ff5a1f" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 10V8a2.4 2.4 0 0 0-.706-1.704l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.35" />
-                <path d="M14 2v5a1 1 0 0 0 1 1h5" />
-                <path d="M16 14a2 2 0 0 0-2 2" /><path d="M16 22a2 2 0 0 1 2-2" />
-                <path d="M20 14a2 2 0 0 1 2 2" /><path d="M20 22a2 2 0 0 0 2-2" />
-              </svg>
-            </div>
-            <span style={{ fontFamily: "'Clash Display','Inter',sans-serif", fontWeight: 700, fontSize: 19, color: '#0F172A', letterSpacing: '-0.3px' }}>
-              ATS<span style={{ color: '#ff5a1f' }}>Beater</span>
-            </span>
-          </div>
+          <BrandLogo />
 
-          <div className="nav-links-desktop" style={{ display: 'flex', alignItems: 'center', gap: 36 }}>
-            {([['#how-it-works', 'How It Works'], ['#features', 'Features'], ['#pricing', 'Pricing'], ['#faq', 'FAQ']] as const).map(([href, label]) => (
+          <div className="nav-links-desktop" style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
+            {NAV_LINKS.map(([href, label]) => (
               <a key={href} href={href} style={navLinkStyle}
                 onClick={(e) => scrollToHash(e, href)}
                 onMouseEnter={(e) => { e.currentTarget.style.color = '#0F172A'; }}
@@ -429,6 +711,9 @@ export default function LandingPage() {
                 {label}
               </a>
             ))}
+            <a href="https://twerz.com" className="twerz-badge" target="_blank" rel="noopener noreferrer">
+              Powered by Twerz
+            </a>
             <button onClick={scrollToUpload}
               style={{ background: 'linear-gradient(135deg, #ff5a1f, #ff7043)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 10, padding: '9px 22px', fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.25), 0 4px 16px rgba(255,90,31,0.3)', whiteSpace: 'nowrap' }}
               onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.35), 0 6px 24px rgba(255,90,31,0.45)'; }}
@@ -448,12 +733,15 @@ export default function LandingPage() {
 
         {mobileOpen && (
           <div className="animate-fade-in" style={{ position: 'absolute', top: '100%', left: 0, right: 0, padding: '20px 24px', background: 'rgba(255,255,255,0.98)', borderBottom: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: 4, boxShadow: '0 8px 32px rgba(0,0,0,0.08)' }}>
-            {([['#how-it-works', 'How It Works'], ['#features', 'Features'], ['#pricing', 'Pricing'], ['#faq', 'FAQ']] as const).map(([href, label]) => (
+            {NAV_LINKS.map(([href, label]) => (
               <a key={href} href={href} onClick={(e) => scrollToHash(e, href)}
                 style={{ display: 'block', fontSize: 15, fontWeight: 500, color: 'var(--text-secondary)', padding: '10px 0', borderBottom: '1px solid #E2E8F0', textDecoration: 'none' }}>
                 {label}
               </a>
             ))}
+            <a href="https://twerz.com" className="twerz-badge" style={{ alignSelf: 'flex-start', marginTop: 8 }} target="_blank" rel="noopener noreferrer">
+              Powered by Twerz
+            </a>
             <button onClick={() => { scrollToUpload(); }}
               style={{ marginTop: 8, width: '100%', padding: '12px', borderRadius: 10, background: '#ff5a1f', color: '#fff', border: 'none', fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, fontSize: 11, letterSpacing: '1px', textTransform: 'uppercase', cursor: 'pointer' }}>
               Get Started
@@ -465,29 +753,27 @@ export default function LandingPage() {
       {/* ======= HERO ======= */}
       <section style={{ position: 'relative', minHeight: '100vh', display: 'flex', alignItems: 'center', paddingTop: 120, paddingBottom: 80, overflow: 'hidden' }}>
         <div className="hero-grid" />
+        <div className="hero-mesh" aria-hidden />
 
         <div className="lp-container" style={{ position: 'relative', zIndex: 1 }}>
           <div className="hero-cols" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'center' }}>
             <div className="fade-slide-in">
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 16px 6px 10px', borderRadius: 100, background: 'linear-gradient(135deg,rgba(255,90,31,0.14),rgba(251,191,36,0.06))', border: '1px solid rgba(255,90,31,0.28)', marginBottom: 28, userSelect: 'none' }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 16px 6px 10px', borderRadius: 100, background: 'linear-gradient(135deg,rgba(255,90,31,0.14),rgba(99,102,241,0.08))', border: '1px solid rgba(255,90,31,0.28)', marginBottom: 28, userSelect: 'none' }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ff5a1f" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M9.813 15.904L9 21l8.982-11.795H14.18l.818-5.096L6 16l3.813-.096z" />
                 </svg>
-                <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, fontWeight: 600, color: '#ff5a1f', letterSpacing: '0.6px' }}>AI-Powered Resume Tailoring</span>
+                <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, fontWeight: 600, color: '#ff5a1f', letterSpacing: '0.6px' }}>Shortlyst · Job Hunt OS</span>
               </div>
 
               <h1 style={{ fontFamily: "'Clash Display','Inter',sans-serif", fontSize: 'clamp(42px,5vw,72px)', fontWeight: 700, lineHeight: 1.06, letterSpacing: '-0.03em', marginBottom: 22 }}>
+                <span style={{ display: 'block', color: '#ff5a1f' }}>Every job</span>
                 <span style={{ display: 'block', background: 'linear-gradient(180deg,#0F172A 30%,#334155 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
-                  Beat the ATS,
-                </span>
-                <span style={{ display: 'block' }}>
-                  <span style={{ background: 'linear-gradient(180deg,#0F172A 30%,#334155 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Land the </span>
-                  <span style={{ color: '#ff5a1f' }}>Interview</span>
+                  deserves its own resume.
                 </span>
               </h1>
 
-              <p style={{ fontSize: 17, lineHeight: 1.78, color: '#475569', maxWidth: 500, marginBottom: 36 }}>
-                Upload your resume, paste a job description, and get an ATS-optimized tailored resume in seconds. Powered by AI and LaTeX precision.
+              <p style={{ fontSize: 17, lineHeight: 1.78, color: '#475569', maxWidth: 520, marginBottom: 36 }}>
+                Shortlyst turns one profile into role-perfect PDFs — with honest fit scores, zero fabricated skills, and LaTeX-grade output. A product of Twerz.
               </p>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 52 }}>
@@ -500,71 +786,27 @@ export default function LandingPage() {
                     <path d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
                   </svg>
                 </button>
-                <a href="#how-it-works"
-                  onClick={(e) => scrollToHash(e, '#how-it-works')}
+                <a href="#platform"
+                  onClick={(e) => scrollToHash(e, '#platform')}
                   style={{ display: 'inline-flex', alignItems: 'center', padding: '14px 28px', borderRadius: 12, background: '#F1F5F9', border: '1px solid #E2E8F0', color: '#0F172A', fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s ease', textDecoration: 'none' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(255,90,31,0.4)'; e.currentTarget.style.color = '#0F172A'; e.currentTarget.style.background = '#E2E8F0'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.color = '#0F172A'; e.currentTarget.style.background = '#F1F5F9'; }}>
-                  See How It Works
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(99,102,241,0.4)'; e.currentTarget.style.background = '#E2E8F0'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.background = '#F1F5F9'; }}>
+                  See Platform
                 </a>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'stretch', paddingTop: 28, borderTop: '1px solid #E2E8F0' }}>
-                {[
-                  { val: '10k+', label: 'Job Seekers', color: '#0F172A' },
-                  { val: '95%', label: 'ATS Pass Rate', color: '#ff5a1f' },
-                  { val: '< 60s', label: 'Generation Time', color: '#10b981' },
-                ].map((stat, idx) => (
-                  <div key={stat.label} style={{ flex: 1, textAlign: 'center', position: 'relative', paddingTop: 6, paddingBottom: 6 }}>
-                    {idx > 0 && <div style={{ position: 'absolute', left: 0, top: '10%', bottom: '10%', width: 1, background: '#E2E8F0' }} />}
-                    <div style={{ fontFamily: "'Clash Display','Inter',sans-serif", fontSize: 'clamp(22px,2.5vw,30px)', fontWeight: 700, color: stat.color, letterSpacing: '-0.03em', lineHeight: 1.15 }}>{stat.val}</div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-dim)', letterSpacing: '1.5px', textTransform: 'uppercase', marginTop: 5 }}>{stat.label}</div>
+              <div className="hero-stats-row">
+                {heroStats.map((stat, idx) => (
+                  <div key={stat.label} className="hero-stat-item">
+                    {idx > 0 && <div className="hero-stat-divider" aria-hidden />}
+                    <div className="hero-stat-val" style={{ color: stat.color }}>{stat.val}</div>
+                    <div className="hero-stat-label">{stat.label}</div>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="fade-slide-in stagger-2" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div className="hero-mock" style={{ width: '100%', maxWidth: 460, background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 18, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.08), 0 0 40px rgba(255,90,31,0.06)' }}>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#F8FAFC' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span className="led-pulse" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }} />
-                    <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, fontWeight: 700, letterSpacing: '2px', color: '#64748B', userSelect: 'none' }}>AI RESUME EDITOR</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 5 }}>
-                    {['#ef4444', '#fbbf24', '#34d399'].map((c) => (
-                      <div key={c} style={{ width: 10, height: 10, borderRadius: '50%', background: c, opacity: 0.85 }} />
-                    ))}
-                  </div>
-                </div>
-
-                <div style={{ padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 12, minHeight: 300 }}>
-                  <div className="msg-fade-in delay-1" style={{ alignSelf: 'flex-end', maxWidth: '82%', background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: '14px 14px 4px 14px', padding: '10px 14px', fontSize: 12.5, color: '#0F172A', lineHeight: 1.55 }}>
-                    Tailor my resume for this Senior React Developer role at Stripe
-                  </div>
-                  <div className="msg-fade-in delay-2" style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px', borderRadius: 8, background: '#F8FAFC', border: '1px solid rgba(56,189,248,0.35)', fontSize: 10.5, fontFamily: "'JetBrains Mono',monospace", color: '#0284C7', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
-                    <span className="pulse-blue" style={{ display: 'inline-flex', width: 6, height: 6, borderRadius: '50%', background: '#38bdf8', flexShrink: 0 }} />
-                    analyze_job_requirements
-                  </div>
-                  <div className="msg-fade-in delay-3" style={{ alignSelf: 'flex-start', maxWidth: '82%', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '4px 14px 14px 14px', padding: '10px 14px', fontSize: 12.5, color: '#475569', lineHeight: 1.55 }}>
-                    Analyzing the job requirements... Adding emphasis on TypeScript, React hooks, and performance optimization to your experience section.
-                  </div>
-                  <div className="msg-fade-in delay-4" style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px', borderRadius: 8, background: '#F8FAFC', border: '1px solid rgba(52,211,153,0.35)', fontSize: 10.5, fontFamily: "'JetBrains Mono',monospace", color: '#059669', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
-                    <span className="pulse-emerald" style={{ display: 'inline-flex', width: 6, height: 6, borderRadius: '50%', background: '#34d399', flexShrink: 0 }} />
-                    update_resume_section
-                  </div>
-                  <div className="msg-fade-in delay-5" style={{ alignSelf: 'flex-start', maxWidth: '92%', display: 'flex', gap: 10, alignItems: 'flex-start', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '4px 14px 14px 14px', padding: '11px 14px', boxShadow: '0 4px 16px rgba(16,185,129,0.08)' }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
-                      <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <div>
-                      <p style={{ fontSize: 12.5, fontWeight: 600, color: '#047857', marginBottom: 3 }}>Resume tailored!</p>
-                      <p style={{ fontSize: 11.5, color: '#059669', lineHeight: 1.5 }}>Your ATS match score is now <strong style={{ color: '#047857' }}>94%</strong>. Ready to generate PDF.</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <HeroCardsShowcase />
           </div>
         </div>
       </section>
@@ -572,6 +814,7 @@ export default function LandingPage() {
       {/* ======= STATS BAND ======= */}
       <section className="lp-stats-band reveal">
         <div className="lp-container">
+          <p className="lp-stats-intro reveal">Trusted by job seekers tailoring at scale</p>
           <div className="lp-stats-grid">
             {statsBand.map((s) => (
               <div key={s.label} className="lp-stat-item">
@@ -583,28 +826,79 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ======= HONEST AI ======= */}
+      <section className="lp-section-honest reveal">
+        <div className="lp-container">
+          <div className="lp-section-head lp-section-head--center reveal">
+            <div className="lp-eyebrow lp-eyebrow--center"><span className="lp-eyebrow-line" /> Why Shortlyst</div>
+            <h2 className="lp-section-title reveal reveal-d1">AI that won&apos;t lie on your resume.</h2>
+            <p className="lp-section-sub reveal reveal-d2">Generic AI invents skills. Templates ignore the job. Shortlyst only amplifies what you actually have.</p>
+          </div>
+          <div className="honest-pillars-grid">
+            {honestPillars.map((p, i) => (
+              <article
+                key={p.title}
+                className={`honest-pillar reveal reveal-d${i + 1}`}
+                style={{ '--accent': p.accent } as CSSProperties}
+              >
+                <div className="honest-pillar-icon">{p.icon}</div>
+                <h3 className="honest-pillar-title">{p.title}</h3>
+                <p className="honest-pillar-desc">{p.desc}</p>
+              </article>
+            ))}
+          </div>
+          <div className="honest-score-visual reveal reveal-d3">
+            <div className="honest-score-compare">
+              <div className="honest-score-item">
+                <div className="honest-score-ring">
+                  <ScoreRing score={62} color="#fb7185" />
+                  <span className="honest-score-val honest-score-val--before">62</span>
+                </div>
+                <span className="honest-score-label">Before</span>
+              </div>
+              <span className="honest-score-arrow" aria-hidden>→</span>
+              <div className="honest-score-item">
+                <div className="honest-score-ring">
+                  <ScoreRing score={94} color="#10b981" />
+                  <span className="honest-score-val honest-score-val--after">94</span>
+                </div>
+                <span className="honest-score-label honest-score-label--stack">
+                  <span>After</span>
+                  <span>Shortlyst</span>
+                </span>
+              </div>
+            </div>
+            <div className="honest-score-copy">
+              <p className="honest-score-copy-title">Average ATS lift</p>
+              <p className="honest-score-copy-desc">Real keywords from your experience — never stuffed, never fabricated.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ======= TRY IT — GUEST UPLOAD ======= */}
       <section id="upload-resume" ref={uploadSectionRef} className="lp-section lp-section-upload reveal">
         <div className="lp-container">
+          <div className="lp-section-head reveal">
+            <div className="lp-eyebrow"><span className="lp-eyebrow-line" /> Get Started</div>
+            <h2 className="lp-section-title reveal reveal-d1">Try it now — upload once, tailor forever.</h2>
+            <p className="lp-section-sub reveal reveal-d2">
+              Paste a job description and get an ATS-optimized, honestly tailored PDF — with fit score, keyword matching, and LaTeX-quality formatting.
+            </p>
+          </div>
           <div className="upload-section-grid">
-            <div className="upload-section-copy reveal reveal-d1">
-              <div className="lp-eyebrow"><span className="lp-eyebrow-line" /> Get Started</div>
-              <h2 className="lp-section-title" style={{ marginBottom: 16 }}>Tailor your resume for any job in under 60 seconds</h2>
-              <p className="lp-section-sub" style={{ marginBottom: 28, maxWidth: 440 }}>
-                Paste a job description and get an ATS-optimized, honestly tailored PDF — with fit score, keyword matching, and LaTeX-quality formatting. Upload your base resume to begin.
-              </p>
-              <ul className="upload-section-list">
-                {[
-                  'Tailored per job — keywords woven from your real experience',
-                  'Honest fit score + gap analysis before you apply',
-                  '3 free tailors per day — no credit card needed',
-                ].map((item) => (
-                  <li key={item}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
-                    {item}
-                  </li>
-                ))}
-              </ul>
+            <div className="upload-highlight-bento reveal reveal-d1">
+              {uploadHighlights.map((h) => (
+                <div
+                  key={h.title}
+                  className="upload-highlight-card"
+                  style={{ '--accent': h.accent } as CSSProperties}
+                >
+                  <div className="upload-highlight-icon">{h.icon}</div>
+                  <div className="upload-highlight-title">{h.title}</div>
+                  <div className="upload-highlight-desc">{h.desc}</div>
+                </div>
+              ))}
             </div>
             <div className="upload-section-panel reveal reveal-d2">
               <GuestResumeUpload variant="section" />
@@ -618,8 +912,8 @@ export default function LandingPage() {
         <div className="lp-container">
           <div className="lp-section-head reveal">
             <div className="lp-eyebrow"><span className="lp-eyebrow-line" /> How It Works</div>
-            <h2 className="lp-section-title reveal reveal-d1">Three Steps to Your Dream Job</h2>
-            <p className="lp-section-sub reveal reveal-d2">From upload to interview-ready PDF — the same flow thousands of job seekers use every day.</p>
+            <h2 className="lp-section-title reveal reveal-d1">From PDF to interview-ready in three steps.</h2>
+            <p className="lp-section-sub reveal reveal-d2">The same flow thousands of job seekers use every day on resume.twerz.</p>
           </div>
 
           <div className="hiw-flow">
@@ -653,15 +947,15 @@ export default function LandingPage() {
         <div className="lp-container">
           <div className="lp-section-head lp-section-head--center reveal">
             <div className="lp-eyebrow lp-eyebrow--center"><span className="lp-eyebrow-line" /> Features</div>
-            <h2 className="lp-section-title reveal reveal-d1">Everything You Need to Win</h2>
-            <p className="lp-section-sub reveal reveal-d2">Not a template filler. A full AI workspace built for people who take their job search seriously.</p>
+            <h2 className="lp-section-title reveal reveal-d1">Built for people who apply seriously.</h2>
+            <p className="lp-section-sub reveal reveal-d2">A complete job-hunt workspace — not a one-off PDF generator.</p>
           </div>
 
           <div className="features-grid-v2">
             {features.map((f) => (
               <article
                 key={f.title}
-                className="feature-card-v2"
+                className="feature-card-v2 reveal"
                 style={{ '--accent': f.accent.color, '--accent-soft': f.accent.soft } as CSSProperties}
               >
                 <div className="feature-card-v2-head">
@@ -677,27 +971,61 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ======= PLATFORM ======= */}
+      <section id="platform" className="lp-section lp-section-platform">
+        <div className="lp-container">
+          <div className="lp-section-head lp-section-head--center reveal">
+            <div className="lp-eyebrow lp-eyebrow--center"><span className="lp-eyebrow-line" /> Platform</div>
+            <h2 className="lp-section-title reveal reveal-d1">The complete job-hunt workspace.</h2>
+            <p className="lp-section-sub reveal reveal-d2">Everything from fit analysis to offer tracking — one profile, every application.</p>
+          </div>
+          <div className="platform-grid reveal reveal-d2">
+            {platformCategories.map((cat) => (
+              <article
+                key={cat.title}
+                className="platform-category"
+                style={{ '--accent': cat.accent } as CSSProperties}
+              >
+                <div className="platform-category-head">
+                  <div className="platform-category-icon">{cat.icon}</div>
+                  <h3 className="platform-category-title">{cat.title}</h3>
+                </div>
+                <ul className="platform-feature-list">
+                  {cat.items.map((item) => (
+                    <li key={item.name}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
+                      <span>{item.name}</span>
+                      {'badge' in item && item.badge && <span className="platform-badge">{item.badge}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ======= COMPARISON ======= */}
       <section id="compare" className="lp-section lp-section-compare">
         <div className="lp-container">
           <div className="lp-section-head lp-section-head--center reveal">
-            <div className="lp-eyebrow lp-eyebrow--center"><span className="lp-eyebrow-line" /> Why ATS Beater</div>
-            <h2 className="lp-section-title reveal reveal-d1">Stop Sending the Same Resume Everywhere</h2>
-            <p className="lp-section-sub reveal reveal-d2">Generic templates and manual edits weren&apos;t built for modern ATS filters.</p>
+            <div className="lp-eyebrow lp-eyebrow--center"><span className="lp-eyebrow-line" /> Why Shortlyst</div>
+            <h2 className="lp-section-title reveal reveal-d1">Why Shortlyst beats templates and ChatGPT.</h2>
+            <p className="lp-section-sub reveal reveal-d2">Generic tools weren&apos;t built for honest, role-specific applications at scale.</p>
           </div>
           <div className="compare-table reveal reveal-d2">
             <div className="compare-header">
               <div className="compare-cell compare-cell--label" />
               <div className="compare-cell">Manual Editing</div>
               <div className="compare-cell">Template Sites</div>
-              <div className="compare-cell compare-cell--highlight">ATS Beater</div>
+              <div className="compare-cell compare-cell--highlight">Shortlyst</div>
             </div>
             {compareRows.map((row) => (
               <div key={row.label} className="compare-row">
                 <div className="compare-cell compare-cell--label">{row.label}</div>
                 <div className="compare-cell"><CompareMark val={row.manual} /></div>
                 <div className="compare-cell"><CompareMark val={row.template} /></div>
-                <div className="compare-cell compare-cell--highlight"><CompareMark val={row.beater} highlight /></div>
+                <div className="compare-cell compare-cell--highlight"><CompareMark val={row.shortlyst} highlight /></div>
               </div>
             ))}
           </div>
@@ -709,7 +1037,7 @@ export default function LandingPage() {
         <div className="lp-container">
           <div className="lp-section-head lp-section-head--center reveal">
             <div className="lp-eyebrow lp-eyebrow--center"><span className="lp-eyebrow-line" /> Social Proof</div>
-            <h2 className="lp-section-title reveal reveal-d1">Loved by Job Seekers</h2>
+            <h2 className="lp-section-title reveal reveal-d1">Results that show up in inboxes.</h2>
             <p className="lp-section-sub reveal reveal-d2">Real results from people who stopped guessing and started tailoring.</p>
           </div>
           <div className="testimonials-grid reveal reveal-d2">
@@ -735,7 +1063,7 @@ export default function LandingPage() {
         <div className="lp-container">
           <div className="lp-section-head lp-section-head--center reveal">
             <div className="lp-eyebrow lp-eyebrow--center"><span className="lp-eyebrow-line" /> Built For You</div>
-            <h2 className="lp-section-title reveal reveal-d1">Every Stage of Your Career</h2>
+            <h2 className="lp-section-title reveal reveal-d1">Whether it&apos;s your first role or your fifth.</h2>
             <p className="lp-section-sub reveal reveal-d2">Whether you&apos;re applying to your first role or your fifth senior position.</p>
           </div>
           <div className="personas-grid reveal reveal-d2">
@@ -770,7 +1098,8 @@ export default function LandingPage() {
         <div className="lp-container">
           <div className="lp-section-head reveal">
             <div className="lp-eyebrow"><span className="lp-eyebrow-line" /> Pricing</div>
-            <h2 className="lp-section-title reveal reveal-d1">Simple, Transparent Pricing</h2>
+            <h2 className="lp-section-title reveal reveal-d1">Start free. Scale when you&apos;re hunting hard.</h2>
+            <p className="lp-section-sub reveal reveal-d2">Shortlyst credits · powered by Twerz billing</p>
           </div>
 
           <div className="reveal reveal-d2" style={{ background: 'linear-gradient(135deg,rgba(255,90,31,0.1),rgba(251,191,36,0.06))', border: '1px solid rgba(255,90,31,0.2)', borderRadius: 14, padding: '14px 20px', marginBottom: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
@@ -818,7 +1147,7 @@ export default function LandingPage() {
                     </li>
                   ))}
                 </ul>
-                <button onClick={handleLogin} style={{ width: '100%', padding: 14, borderRadius: 10, fontFamily: 'Inter', fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'transform 0.2s ease, background 0.2s ease, border-color 0.2s ease', background: plan.featured ? 'linear-gradient(135deg,var(--orange),#D13600)' : '#F1F5F9', border: plan.featured ? '1px solid rgba(255,90,31,0.4)' : '1px solid #E2E8F0', color: plan.featured ? '#fff' : '#0F172A' }}>
+                <button onClick={() => handleLogin()} style={{ width: '100%', padding: 14, borderRadius: 10, fontFamily: 'Inter', fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'transform 0.2s ease, background 0.2s ease, border-color 0.2s ease', background: plan.featured ? 'linear-gradient(135deg,var(--orange),#D13600)' : '#F1F5F9', border: plan.featured ? '1px solid rgba(255,90,31,0.4)' : '1px solid #E2E8F0', color: plan.featured ? '#fff' : '#0F172A' }}>
                   Get Started
                 </button>
               </div>
@@ -856,42 +1185,53 @@ export default function LandingPage() {
       <section className="lp-section lp-section-cta cta-band">
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg,rgba(255,90,31,0.04),rgba(56,189,248,0.02),rgba(52,211,153,0.02))', borderTop: '1px solid rgba(255,90,31,0.12)', borderBottom: '1px solid #E2E8F0' }} />
         <div className="reveal" style={{ position: 'relative', zIndex: 1 }}>
-          <h2 style={{ fontFamily: "'Clash Display','Inter',sans-serif", fontSize: 'clamp(28px,4vw,40px)', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: 16 }}>Ready to Beat the ATS?</h2>
-          <p style={{ fontSize: 16, color: 'var(--text-secondary)', marginBottom: 32 }}>Join thousands of job seekers who&apos;ve landed interviews with ATS Beater.</p>
-          <button onClick={handleLogin} className="btn-primary" style={{ padding: '16px 48px', fontSize: 14, borderRadius: 12 }}>Start Free — No Card Required</button>
+          <h2 style={{ fontFamily: "'Clash Display','Inter',sans-serif", fontSize: 'clamp(28px,4vw,40px)', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: 16 }}>Your next application starts here.</h2>
+          <p style={{ fontSize: 16, color: 'var(--text-secondary)', marginBottom: 32 }}>Join thousands of job seekers who&apos;ve landed interviews with Shortlyst.</p>
+          <button onClick={() => handleLogin()} className="btn-primary" style={{ padding: '16px 48px', fontSize: 14, borderRadius: 12 }}>Start Free — No Card Required</button>
         </div>
       </section>
 
       {/* ======= FOOTER ======= */}
-      <footer style={{ padding: '48px 0 32px', borderTop: '1px solid #E2E8F0', overflow: 'hidden' }}>
+      <footer className="lp-footer">
         <div className="lp-container">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 40, paddingBottom: 32, borderBottom: '1px solid #E2E8F0', marginBottom: 24, flexWrap: 'wrap' }}>
+          <div className="lp-footer-grid">
             <div>
-              <div style={{ fontFamily: "'Clash Display','Inter',sans-serif", fontWeight: 700, fontSize: 17, marginBottom: 12 }}>ATS<span style={{ color: 'var(--orange)' }}>Beater</span></div>
-              <p style={{ fontSize: 13, color: 'var(--text-dim)', maxWidth: 280, lineHeight: 1.6 }}>AI-powered resume tailoring to help you land your dream job. Powered by Cydratech.</p>
+              <BrandLogo />
+              <p className="lp-footer-brand-desc">
+                AI resume tailoring for serious job seekers. Upload once, tailor for every role — with honest fit scores and LaTeX-grade output.
+              </p>
+              <a href="https://twerz.com" className="twerz-badge" target="_blank" rel="noopener noreferrer">
+                Powered by Twerz
+              </a>
             </div>
-            <div style={{ display: 'flex', gap: 48 }}>
-              <div>
-                <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: 700, color: 'var(--text-dim)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16 }}>Product</div>
-                {([['Features', '#features'], ['Pricing', '#pricing'], ['FAQ', '#faq']] as const).map(([l, href]) => (
-                  <a key={l} href={href} onClick={(e) => scrollToHash(e, href)} style={{ display: 'block', fontSize: 14, color: 'var(--text-secondary)', marginBottom: 10, transition: 'color 0.2s' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#0F172A'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}>
-                    {l}
-                  </a>
-                ))}
-              </div>
-              <div>
-                <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: 700, color: 'var(--text-dim)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 16 }}>Legal</div>
-                {['Privacy Policy', 'Terms of Service'].map((l) => (
-                  <div key={l} style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 10, cursor: 'pointer' }}>{l}</div>
-                ))}
-              </div>
+            <div>
+              <div className="lp-footer-col-title">Product</div>
+              {([['Features', '#features'], ['Platform', '#platform'], ['Pricing', '#pricing'], ['How It Works', '#how-it-works'], ['FAQ', '#faq']] as const).map(([l, href]) => (
+                <a key={l} href={href} className="lp-footer-link" onClick={(e) => scrollToHash(e, href)}>{l}</a>
+              ))}
+            </div>
+            <div>
+              <div className="lp-footer-col-title">Company</div>
+              <a href="https://twerz.com" className="lp-footer-link" target="_blank" rel="noopener noreferrer">About Twerz</a>
+              <span className="lp-footer-link">Careers</span>
+              <span className="lp-footer-link">Contact</span>
+            </div>
+            <div>
+              <div className="lp-footer-col-title">Legal</div>
+              <span className="lp-footer-link">Privacy Policy</span>
+              <span className="lp-footer-link">Terms of Service</span>
+              <span className="lp-footer-link">DPDP Compliance</span>
             </div>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-            <p style={{ fontSize: 12, color: 'var(--text-dim)' }}>© 2025 Cydratech. All rights reserved.</p>
-            <p style={{ fontSize: 12, color: 'var(--text-dim)', fontFamily: 'JetBrains Mono' }}>Built with ♥ for job seekers</p>
+          <div className="lp-footer-bottom">
+            <div>
+              <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 4 }}>© 2026 <span className="lp-footer-twerz">Twerz</span>. All rights reserved.</p>
+              <p style={{ fontSize: 11, color: 'var(--text-dim)' }}>Shortlyst is a product of Twerz.</p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span className="lp-footer-domain">resume.twerz</span>
+              <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>Made in India</span>
+            </div>
           </div>
         </div>
       </footer>
