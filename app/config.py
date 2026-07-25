@@ -56,7 +56,7 @@ class Settings(BaseSettings):
 
     # App & Reliability (Phase 7)
     ENVIRONMENT: str = "DEV"  # DEV, staging, or production
-    FRONTEND_URL: str = "http://localhost:8000"
+    FRONTEND_URL: str = "http://localhost:3000"
     API_BASE_URL: str = ""
     TRUST_PROXY_HEADERS: bool = False  # set True in production behind Cloud Run / LB
     DEV_AUTH_BYPASS: bool = False
@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     REDIS_URL: str = ""  # redis://localhost:6379 or redis://user:password@host:port/db
     RATE_LIMIT_PUBLIC_RPM: int = 30  # 30 req/min per IP on public endpoints
     PUBLIC_UPLOAD_MAX_BYTES: int = 5_000_000  # 5 MB cap for unauthenticated uploads
+    GUEST_PROFILE_TTL_HOURS: int = 72
+    GUEST_UPLOAD_MAX_PER_IP_PER_DAY: int = 3
+    GUEST_UPLOAD_COOLDOWN_SECONDS: int = 60
     LINKEDIN_OPTIMIZE_DAILY_LIMIT: int = 5  # free LinkedIn optimize calls per user per day
     OUTREACH_DAILY_LIMIT: int = 10  # outreach messages per user per day
 

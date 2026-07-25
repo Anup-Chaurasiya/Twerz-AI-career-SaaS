@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { jobsApi } from '@/lib/api/endpoints';
@@ -10,7 +10,7 @@ import { MarkdownInline } from '@/components/MarkdownInline';
 import { useProgressSSE, ProgressEvent } from '@/lib/hooks/useProgressSSE';
 import { useCreditStore } from '@/lib/stores/creditStore';
 import JobDetailTabs from '@/components/JobDetailTabs';
-import ChatMessageContent from '@/components/ChatMessageContent';
+import ChatMessageBubble from '@/components/ChatMessageBubble';
 import ChatComposer, { ChatComposerHandle } from '@/components/ChatComposer';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
@@ -56,6 +56,7 @@ export default function JobDetailPage() {
   const [recompiling, setRecompiling] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
   const chatComposerRef = useRef<ChatComposerHandle>(null);
+  const jsonValidateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Direct JSON editing state
   const [showJsonEditor, setShowJsonEditor] = useState(false);
@@ -102,6 +103,12 @@ export default function JobDetailPage() {
       setGeneratingResume(false);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (jsonValidateTimer.current) clearTimeout(jsonValidateTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     const fetchJob = async () => {
@@ -246,7 +253,11 @@ export default function JobDetailPage() {
   };
 
   useEffect(() => {
-    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+    const el = chatRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
   }, [chatMessages, chatLoading]);
 
   // iframe cannot send Authorization headers — load PDF as authenticated blob URL
@@ -431,16 +442,18 @@ export default function JobDetailPage() {
     }
   };
 
-  const handleJsonChange = (value: string) => {
+  const handleJsonChange = useCallback((value: string) => {
     setJsonEditValue(value);
-    // Real-time validation
-    try {
-      JSON.parse(value);
-      setJsonError('');
-    } catch (e) {
-      setJsonError('⚠ Invalid JSON');
-    }
-  };
+    if (jsonValidateTimer.current) clearTimeout(jsonValidateTimer.current);
+    jsonValidateTimer.current = setTimeout(() => {
+      try {
+        JSON.parse(value);
+        setJsonError('');
+      } catch {
+        setJsonError('Invalid JSON');
+      }
+    }, 300);
+  }, []);
 
   const handleSaveJson = async () => {
     try {
@@ -524,18 +537,19 @@ export default function JobDetailPage() {
     <div className="split-layout">
       {/* Main Content (PDF / Preview) */}
       <div className="split-main">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
           <div>
-            <Link href="/dashboard/jobs" style={{ fontSize: 12, color: 'var(--text-dim)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 16, transition: 'color 0.2s' }}>
+            <Link href="/dashboard/jobs" className="editor-back-link">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
               Back to Jobs
             </Link>
-            <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <h1 className="editor-title">
               {job.job_description.role}
               <span className={`badge ${getStatusColor(job.status)}`}>{getStatusLabel(job.status)}</span>
             </h1>
-            <p style={{ fontSize: 14, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              🏢 <span style={{ color: 'var(--text-secondary)' }}>{job.job_description.company}</span>
+            <p className="editor-company">
+              <span aria-hidden>🏢</span>
+              <span className="editor-company-name">{job.job_description.company}</span>
             </p>
           </div>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -565,17 +579,19 @@ export default function JobDetailPage() {
           <div className="widget-card" style={{ marginBottom: 20, padding: 20 }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center' }}>
               <div style={{ textAlign: 'center', minWidth: 100 }}>
-                <div style={{ fontSize: 11, color: 'var(--text-dim)', letterSpacing: 1, marginBottom: 6 }}>FIT SCORE</div>
-                <div style={{
-                  fontSize: 36, fontWeight: 800, fontFamily: 'JetBrains Mono',
-                  color: job.fit_label === 'STRONG' ? 'var(--green)' : job.fit_label === 'STRETCH' ? 'var(--amber)' : 'var(--red)'
-                }}>
+                <div className="editor-score-label">Fit Score</div>
+                <div
+                  className="editor-score-value"
+                  style={{
+                    color: job.fit_label === 'STRONG' ? 'var(--green)' : job.fit_label === 'STRETCH' ? 'var(--amber)' : 'var(--red)',
+                  }}
+                >
                   {job.fit_score ?? '—'}
                 </div>
                 <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4 }}>{job.fit_label || ''}</div>
               </div>
               <div style={{ textAlign: 'center', minWidth: 120 }}>
-                <div style={{ fontSize: 11, color: 'var(--text-dim)', letterSpacing: 1, marginBottom: 6 }}>ATS SCORE</div>
+                <div className="editor-score-label">ATS Score</div>
                 <div style={{ fontSize: 18, fontFamily: 'JetBrains Mono', color: 'var(--text-secondary)' }}>
                   {job.ats_score_before ?? '—'} → <span style={{ color: 'var(--teal)', fontWeight: 700 }}>{job.ats_score_after ?? '—'}</span>
                 </div>
@@ -1105,9 +1121,7 @@ export default function JobDetailPage() {
 
         {(job.status === 'READY' || job.status === 'RESUME_GENERATED') && job.evidence_map && (
           <div className="widget-card" style={{ marginBottom: 24, padding: 20 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', marginBottom: 12, letterSpacing: 1 }}>
-              NETWORKING & APPLICATION
-            </div>
+            <div className="editor-section-label">Networking & Application</div>
             <JobDetailTabs job={job} />
           </div>
         )}
@@ -1138,32 +1152,46 @@ export default function JobDetailPage() {
 
         {job.status === 'READY' || job.status === 'RESUME_GENERATED' ? (
           <>
-            <div className="widget-card" style={{ height: 'calc(100% - 120px)', padding: 0, overflow: 'hidden' }}>
+            <div className="widget-card pdf-preview-shell">
+              <div className="pdf-preview-toolbar">
+                <span className="pdf-preview-toolbar-label">Resume Preview</span>
+                {job.status === 'READY' && !needsRecompile && pdfPreviewUrl && (
+                  <button
+                    className="btn-ghost"
+                    onClick={() => window.open(pdfPreviewUrl, '_blank')}
+                    style={{ padding: '5px 10px', fontSize: 10 }}
+                  >
+                    Open fullscreen
+                  </button>
+                )}
+              </div>
+              <div className="pdf-preview-body">
               {job.status === 'READY' && !needsRecompile ? (
                 pdfPreviewUrl ? (
                   <iframe src={pdfPreviewUrl} className="pdf-embed" title="Resume Preview" />
                 ) : pdfPreviewError ? (
-                  <div style={{ minHeight: 360, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center' }}>
-                    <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: 'var(--red)' }}>PDF preview failed</div>
-                    <p style={{ fontSize: 13, color: 'var(--text-secondary)', maxWidth: 420, lineHeight: 1.6, marginBottom: 20 }}>{pdfPreviewError}</p>
+                  <div className="editor-empty-state">
+                    <div className="editor-empty-title" style={{ color: 'var(--red)' }}>PDF preview failed</div>
+                    <p className="editor-empty-desc">{pdfPreviewError}</p>
                     <button className="btn-primary" onClick={handleGeneratePdf} disabled={recompiling}>
                       {recompiling ? 'Starting...' : 'Recompile PDF'}
                     </button>
                   </div>
                 ) : (
-                  <div style={{ minHeight: 360, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div className="editor-empty-state">
                     <div className="spinner spinner-lg" />
                   </div>
                 )
               ) : (
-                <div style={{ minHeight: 360, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center' }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: 'var(--text-primary)' }}>PDF needs recompilation</div>
-                  <p style={{ fontSize: 13, color: 'var(--text-secondary)', maxWidth: 420, lineHeight: 1.6, marginBottom: 20 }}>Your resume content is ready, but the downloadable PDF has not been generated for the latest version.</p>
+                <div className="editor-empty-state">
+                  <div className="editor-empty-title">PDF needs recompilation</div>
+                  <p className="editor-empty-desc">Your resume content is ready, but the downloadable PDF has not been generated for the latest version.</p>
                   <button className="btn-primary" onClick={handleGeneratePdf} disabled={recompiling}>
                     {recompiling ? 'Starting...' : 'Recompile PDF'}
                   </button>
                 </div>
               )}
+              </div>
             </div>
             
             {/* Manual Edit Button */}
@@ -1192,18 +1220,7 @@ export default function JobDetailPage() {
                 <textarea
                   value={jsonEditValue}
                   onChange={(e) => handleJsonChange(e.target.value)}
-                  style={{
-                    width: '100%',
-                    minHeight: 400,
-                    fontFamily: 'JetBrains Mono, monospace',
-                    fontSize: 13,
-                    padding: 12,
-                    borderRadius: 6,
-                    border: `1px solid ${jsonError ? 'var(--red)' : 'var(--card-border)'}`,
-                    background: 'var(--deep)',
-                    color: 'var(--text-primary)',
-                    resize: 'vertical'
-                  }}
+                  className={`editor-json-textarea${jsonError ? ' editor-json-textarea--error' : ''}`}
                 />
                 <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
                   <button 
@@ -1237,9 +1254,9 @@ export default function JobDetailPage() {
       {/* AI Chat Sidebar */}
       <div className="split-chat">
         <div className="chat-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 600, color: 'var(--teal)' }}>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--teal)', boxShadow: '0 0 8px var(--teal)' }} />
-            AI EDITOR
+          <div className="chat-header-brand">
+            <div className="chat-header-dot" />
+            AI Editor
           </div>
           <button
             className="btn-ghost"
@@ -1247,31 +1264,29 @@ export default function JobDetailPage() {
             disabled={job.status !== 'READY' || needsRecompile || !pdfPreviewUrl}
             style={{ padding: '6px 12px', fontSize: 10 }}
           >
-            View Fullscreen
+            View PDF
           </button>
         </div>
         
         <div className="chat-messages" ref={chatRef}>
           {chatMessages.map((msg, i) => (
-            <div key={i} className={`chat-bubble ${msg.role} fade-slide-in`}>
-              {msg.role === 'assistant' ? (
-                <ChatMessageContent content={msg.content} />
-              ) : (
-                msg.content
-              )}
-            </div>
+            <ChatMessageBubble
+              key={`${msg.role}-${i}`}
+              message={msg}
+              isStreaming={chatLoading && i === chatMessages.length - 1 && msg.role === 'assistant'}
+            />
           ))}
-          {chatLoading && (
-            <div className="chat-bubble assistant fade-slide-in">
+          {chatLoading && chatMessages[chatMessages.length - 1]?.role !== 'assistant' && (
+            <div className="chat-bubble assistant">
               <div className="typing-dots">
-                <span style={{ fontSize: 24, lineHeight: 0.5 }}>.</span>
-                <span style={{ fontSize: 24, lineHeight: 0.5 }}>.</span>
-                <span style={{ fontSize: 24, lineHeight: 0.5 }}>.</span>
+                <span />
+                <span />
+                <span />
               </div>
             </div>
           )}
           {chatMessages.length === 1 && !chatLoading && (
-            <div className="chat-starters fade-slide-in stagger-2">
+            <div className="chat-starters">
               <button className="chat-starter-btn" onClick={() => handleStarterClick('Make the summary more concise and punchy')}>✨ Make the summary more concise</button>
               <button className="chat-starter-btn" onClick={() => handleStarterClick('Highlight my leadership experience more')}>👑 Highlight leadership experience</button>
               <button className="chat-starter-btn" onClick={() => handleStarterClick('Add more metrics and numbers to my recent role')}>📊 Add more metrics to recent role</button>

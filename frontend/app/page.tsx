@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { authApi } from '@/lib/api/endpoints';
+import GuestResumeUpload from '@/components/GuestResumeUpload';
+import { loadGuestProfileSession } from '@/lib/guestProfile';
 
 type Accent = { color: string; soft: string };
 
@@ -45,30 +47,25 @@ export default function LandingPage() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [wallStats, setWallStats] = useState<WallStats | null>(null);
-  const rootRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-
     let ticking = false;
     const onScroll = () => {
       if (ticking) return;
       ticking = true;
       window.requestAnimationFrame(() => {
-        const next = root.scrollTop > 10;
+        const next = window.scrollY > 10;
         setScrolled((prev) => (prev === next ? prev : next));
         ticking = false;
       });
     };
-    root.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
-    return () => root.removeEventListener('scroll', onScroll);
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
   const scrollToHash = (e: React.MouseEvent<HTMLAnchorElement>, hash: string) => {
     e.preventDefault();
-    const target = rootRef.current?.querySelector(hash);
+    const target = document.querySelector(hash);
     if (target) {
       target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       setMobileOpen(false);
@@ -76,14 +73,11 @@ export default function LandingPage() {
   };
 
   useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-
     const revealVisible = (node: Element) => {
       node.classList.add('visible');
     };
 
-    const nodes = root.querySelectorAll('.reveal');
+    const nodes = document.querySelectorAll('.lp-root .reveal');
     const io = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -93,20 +87,11 @@ export default function LandingPage() {
           }
         });
       },
-      { root, threshold: 0.08, rootMargin: '0px 0px -24px 0px' },
+      { threshold: 0.08, rootMargin: '0px 0px -24px 0px' },
     );
 
-    nodes.forEach((node) => {
-      io.observe(node);
-      const rect = node.getBoundingClientRect();
-      const rootRect = root.getBoundingClientRect();
-      if (rect.top < rootRect.bottom - 24 && rect.bottom > rootRect.top) {
-        revealVisible(node);
-        io.unobserve(node);
-      }
-    });
+    nodes.forEach((node) => io.observe(node));
 
-    // Safety net: ensure content is never permanently hidden if IO misses an element.
     const fallback = window.setTimeout(() => {
       nodes.forEach((node) => revealVisible(node));
     }, 1200);
@@ -124,12 +109,23 @@ export default function LandingPage() {
       .catch(() => {});
   }, []);
 
-  const handleLogin = async () => {
+  const uploadSectionRef = useRef<HTMLDivElement>(null);
+
+  const scrollToUpload = () => {
+    uploadSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setMobileOpen(false);
+  };
+
+  const handleLogin = async (guestToken?: string) => {
     try {
-      const res = await authApi.getGoogleLoginUrl();
+      const ref = typeof window !== 'undefined'
+        ? sessionStorage.getItem('signup_referral_code') || undefined
+        : undefined;
+      const token = guestToken || loadGuestProfileSession()?.guestToken;
+      const res = await authApi.getGoogleLoginUrl(ref, token);
       window.location.href = res.data.url;
     } catch {
-      window.location.href = '/login';
+      window.location.href = '/login?guest=1';
     }
   };
 
@@ -399,7 +395,7 @@ export default function LandingPage() {
   };
 
   return (
-    <div ref={rootRef} className="lp-root lp-scroll">
+    <div className="lp-root">
       <div className="lp-fx" aria-hidden>
         <div className="dot-grid" />
         <div className="ambient-orb ambient-orb--a" />
@@ -433,7 +429,7 @@ export default function LandingPage() {
                 {label}
               </a>
             ))}
-            <button onClick={handleLogin}
+            <button onClick={scrollToUpload}
               style={{ background: 'linear-gradient(135deg, #ff5a1f, #ff7043)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 10, padding: '9px 22px', fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.25), 0 4px 16px rgba(255,90,31,0.3)', whiteSpace: 'nowrap' }}
               onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.35), 0 6px 24px rgba(255,90,31,0.45)'; }}
               onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.25), 0 4px 16px rgba(255,90,31,0.3)'; }}>
@@ -458,7 +454,7 @@ export default function LandingPage() {
                 {label}
               </a>
             ))}
-            <button onClick={() => { setMobileOpen(false); handleLogin(); }}
+            <button onClick={() => { scrollToUpload(); }}
               style={{ marginTop: 8, width: '100%', padding: '12px', borderRadius: 10, background: '#ff5a1f', color: '#fff', border: 'none', fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, fontSize: 11, letterSpacing: '1px', textTransform: 'uppercase', cursor: 'pointer' }}>
               Get Started
             </button>
@@ -495,7 +491,7 @@ export default function LandingPage() {
               </p>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 52 }}>
-                <button onClick={handleLogin}
+                <button onClick={scrollToUpload}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '14px 32px', borderRadius: 12, background: 'linear-gradient(135deg, #ff5a1f, #ff7043)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.3), 0 6px 24px rgba(255,90,31,0.35)' }}
                   onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.4), 0 10px 32px rgba(255,90,31,0.5)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.3), 0 6px 24px rgba(255,90,31,0.35)'; }}>
@@ -583,6 +579,36 @@ export default function LandingPage() {
                 <div className="lp-stat-label">{s.label}</div>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ======= TRY IT — GUEST UPLOAD ======= */}
+      <section id="upload-resume" ref={uploadSectionRef} className="lp-section lp-section-upload reveal">
+        <div className="lp-container">
+          <div className="upload-section-grid">
+            <div className="upload-section-copy reveal reveal-d1">
+              <div className="lp-eyebrow"><span className="lp-eyebrow-line" /> Get Started</div>
+              <h2 className="lp-section-title" style={{ marginBottom: 16 }}>Tailor your resume for any job in under 60 seconds</h2>
+              <p className="lp-section-sub" style={{ marginBottom: 28, maxWidth: 440 }}>
+                Paste a job description and get an ATS-optimized, honestly tailored PDF — with fit score, keyword matching, and LaTeX-quality formatting. Upload your base resume to begin.
+              </p>
+              <ul className="upload-section-list">
+                {[
+                  'Tailored per job — keywords woven from your real experience',
+                  'Honest fit score + gap analysis before you apply',
+                  '3 free tailors per day — no credit card needed',
+                ].map((item) => (
+                  <li key={item}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="upload-section-panel reveal reveal-d2">
+              <GuestResumeUpload variant="section" />
+            </div>
           </div>
         </div>
       </section>

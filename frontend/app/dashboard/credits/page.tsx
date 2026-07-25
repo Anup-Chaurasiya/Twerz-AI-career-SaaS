@@ -4,6 +4,7 @@ import { creditsApi, paymentsApi } from '@/lib/api/endpoints';
 import { CreditPack, TimePassTier, CreditTransaction } from '@/types';
 import { useCreditStore } from '@/lib/stores/creditStore';
 import { formatCurrency, formatDate, getStatusColor } from '@/lib/utils';
+import { openRazorpayCheckout } from '@/lib/razorpay';
 
 function SubscriptionPlans() {
   const [plans, setPlans] = useState<any[]>([]);
@@ -49,9 +50,8 @@ function SubscriptionPlans() {
         },
         theme: { color: '#01A9DB' },
       };
-      const rzp = new (window as any).Razorpay(options);
+      const rzp = await openRazorpayCheckout(options);
       rzp.on('payment.failed', () => alert('Payment failed or cancelled.'));
-      rzp.open();
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Failed to start checkout.');
     } finally {
@@ -175,9 +175,8 @@ export default function CreditsPage() {
         },
         theme: { color: '#01A9DB' }
       };
-      const rzp = new (window as any).Razorpay(options);
+      const rzp = await openRazorpayCheckout(options);
       rzp.on('payment.failed', () => alert('Payment failed or cancelled.'));
-      rzp.open();
     } catch {
       alert('Failed to initiate payment.');
     } finally {

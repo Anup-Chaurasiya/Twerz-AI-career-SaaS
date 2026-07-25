@@ -1,72 +1,19 @@
 import hashlib
 import struct
-from datetime import datetime, date, timezone
 from fastapi import Depends, Header
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text
+from sqlalchemy import text
 from app.database.session import get_db
 from app.config import get_settings, Settings
 from app.services.auth.jwt_handler import verify_token
 from app.models import User
-from app.models.credit import UserCredit
 from app.exceptions import AuthenticationError, ForbiddenError
-
-DEV_USER_GOOGLE_ID = "dev-bypass-user"
-DEV_USER_EMAIL = "dev@localhost"
-DEV_USER_NAME = "Dev User"
-
-
-async def _get_or_create_dev_user(db: AsyncSession) -> User:
-    result = await db.execute(select(User).where(User.google_id == DEV_USER_GOOGLE_ID))
-    user = result.scalar_one_or_none()
-    if not user:
-        user = User(
-            google_id=DEV_USER_GOOGLE_ID,
-            email=DEV_USER_EMAIL,
-            name=DEV_USER_NAME,
-            consent_accepted=True,
-            consent_accepted_at=datetime.now(timezone.utc),
-        )
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-
-    # Ensure UserCredit row exists
-    uc_result = await db.execute(select(UserCredit).where(UserCredit.user_id == user.id))
-    if not uc_result.scalar_one_or_none():
-        uc = UserCredit(
-            user_id=user.id,
-            balance=0,
-            daily_free_used=0,
-            daily_free_reset_date=datetime.now(timezone.utc).date(),
-        )
-        db.add(uc)
-        await db.commit()
-
-    return user
-
 
 async def get_current_user(
     authorization: Optional[str] = Header(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    settings = get_settings()
-
-    if settings.DEV_AUTH_BYPASS:
-        if settings.ENVIRONMENT not in ("DEV", "dev"):
-            raise RuntimeError("DEV_AUTH_BYPASS cannot be enabled outside DEV environment")
-        # Prefer a real JWT when present so Google OAuth works alongside dev bypass
-        if authorization and authorization.startswith("Bearer "):
-            try:
-                payload = verify_token(authorization[7:])
-                user = await db.get(User, payload["sub"])
-                if user:
-                    return user
-            except AuthenticationError:
-                pass
-        return await _get_or_create_dev_user(db)
-
     if not authorization or not authorization.startswith("Bearer "):
         raise AuthenticationError("Invalid authorization header")
     token = authorization[7:]

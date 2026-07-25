@@ -152,6 +152,16 @@ async def _recover_stuck_items():
         )
 
 
+async def _cleanup_expired_guest_profiles():
+    from app.database.session import async_session_factory
+    from app.services.profile.service import ProfileService
+
+    async with async_session_factory() as db:
+        count = await ProfileService().cleanup_expired_guest_profiles(db)
+        if count:
+            logger.info("Soft-deleted %d expired guest profile(s)", count)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown logic."""
@@ -160,6 +170,7 @@ async def lifespan(app: FastAPI):
 
     try:
         await _recover_stuck_items()
+        await _cleanup_expired_guest_profiles()
     except Exception:
         logger.exception("Failed to recover stuck items on startup (DB may not be ready yet)")
 

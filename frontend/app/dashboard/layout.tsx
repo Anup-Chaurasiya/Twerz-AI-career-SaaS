@@ -94,7 +94,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (!mounted || isLoading) {
     return (
-      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--deep)' }}>
+      <div suppressHydrationWarning style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--deep)' }}>
         <div style={{ textAlign: 'center' }}>
           <div className="spinner spinner-lg" style={{ margin: '0 auto 16px' }} />
           <p style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--text-dim)' }}>Loading...</p>
@@ -278,7 +278,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           </div>
         </header>
-        <main style={{ flex: 1, overflow: 'hidden' }}>{children}</main>
+        <main className="dashboard-main">{children}</main>
       </div>
       <OnboardingWelcomeModal />
     </div>

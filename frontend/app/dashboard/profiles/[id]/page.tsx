@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { profilesApi } from '@/lib/api/endpoints';
 import { Profile, ResumeInfo } from '@/types';
@@ -10,6 +10,8 @@ import { MarkdownInline } from '@/components/MarkdownInline';
 export default function ProfileDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const showWelcome = searchParams.get('welcome') === 'profile';
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -144,6 +146,18 @@ export default function ProfileDetailPage() {
       </Link>
 
       {error && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', padding: '12px 16px', borderRadius: 6, marginBottom: 24, color: 'var(--red)', fontSize: 13 }}>{error}</div>}
+
+      {showWelcome && profile.status === 'READY' && (
+        <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', padding: '16px 20px', borderRadius: 8, marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontWeight: 600, color: 'var(--green)', marginBottom: 4 }}>Resume saved to your account</div>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>Create your first tailored resume for a job you&apos;re targeting.</p>
+          </div>
+          <Link href={`/dashboard/jobs/new?profile_id=${profile.id}`} className="btn-primary" style={{ padding: '10px 18px', fontSize: 12, whiteSpace: 'nowrap' }}>
+            Tailor for a job →
+          </Link>
+        </div>
+      )}
 
       {profile.status === 'FAILED' && (
         <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', padding: '16px 20px', borderRadius: 6, marginBottom: 24, fontSize: 13, color: 'var(--red)', lineHeight: 1.6 }}>

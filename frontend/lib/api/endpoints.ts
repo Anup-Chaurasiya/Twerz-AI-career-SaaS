@@ -4,17 +4,24 @@ import {
   Job, JobCreatePayload, Roast, RoastUploadResponse, CreditPack, TimePassTier,
   CreditBalance, CreditTransaction, CreateOrderResponse, ChatMessage,
   AdminOverview, Tenant, AdminUser, DomainRule, PromoCode, ResumeInfo,
+  GuestProfileUploadResponse, GuestProfilePreview, ClaimGuestProfileResponse,
 } from '@/types';
 
 export const authApi = {
-  getGoogleLoginUrl: (ref?: string) =>
+  getGoogleLoginUrl: (ref?: string, guestToken?: string) =>
     client.get<LoginResponse>('/auth/google/login', {
-      params: ref ? { ref } : undefined,
+      params: {
+        ...(ref ? { ref } : {}),
+        ...(guestToken ? { guest_token: guestToken } : {}),
+      },
+      withCredentials: true,
     }),
   getMe: () => client.get<User>('/auth/me'),
   refresh: () => client.post<{ access_token: string }>('/auth/refresh'),
   completeOnboarding: () =>
     client.post<{ success: boolean; onboarding_completed: boolean }>('/auth/onboarding-complete'),
+  claimGuestProfile: (guestToken: string) =>
+    client.post<ClaimGuestProfileResponse>('/auth/claim-guest-profile', { guest_token: guestToken }),
   setAttribution: (payload: { source: string; share_id?: string | null }) =>
     client.post<{
       success: boolean;
@@ -308,4 +315,42 @@ export const analyticsApi = {
       }>;
       nudge_message: string;
     }>('/analytics/me'),
+};
+
+async function publicFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, init);
+  if (!res.ok) {
+    let detail = 'Request failed';
+    try {
+      const body = await res.json();
+      detail = body.detail || detail;
+    } catch {
+      /* ignore */
+    }
+    const err = new Error(typeof detail === 'string' ? detail : 'Request failed') as Error & {
+      status?: number;
+    };
+    err.status = res.status;
+    throw err;
+  }
+  return res.json() as Promise<T>;
+}
+
+export const publicApi = {
+  uploadProfile: async (file: File): Promise<GuestProfileUploadResponse> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return publicFetch<GuestProfileUploadResponse>('/public/profile-upload', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+  getGuestStatus: (profileId: number, guestToken: string) =>
+    publicFetch<{ id: number; status: string }>(`/public/profiles/${profileId}/status`, {
+      headers: { 'X-Guest-Token': guestToken },
+    }),
+  getGuestPreview: (profileId: number, guestToken: string) =>
+    publicFetch<GuestProfilePreview>(`/public/profiles/${profileId}/preview`, {
+      headers: { 'X-Guest-Token': guestToken },
+    }),
 };

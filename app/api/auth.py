@@ -12,20 +12,22 @@ from app.services.auth import google_oauth
 from app.services.auth.google_oauth import OAUTH_CSRF_COOKIE
 from app.services.auth.referral import ensure_user_referral_code, generate_unique_referral_code
 from typing import Optional
-from app.services.auth.jwt_handler import create_access_token, decode_expired_token
+from app.services.auth.jwt_handler import create_access_token, decode_expired_token, verify_guest_token
 from app.dependencies import get_current_user
-from app.exceptions import AuthenticationError
+from app.exceptions import AuthenticationError, ProfileNotFoundError, ConflictError
+from app.services.profile.service import ProfileService
 from logging import getLogger
 
 logger = getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+profile_service = ProfileService()
 
 
 def _get_redirect_uri() -> str:
-    """OAuth callback must hit the API (e.g. :8000), not the Next.js dev server (:3000)."""
+    """OAuth callback on the frontend origin (CSRF cookie is set there via /auth proxy)."""
     settings = get_settings()
-    base = (settings.API_BASE_URL or settings.FRONTEND_URL).rstrip("/")
+    base = settings.FRONTEND_URL.rstrip("/")
     return f"{base}/auth/google/callback"
 
 
@@ -49,11 +51,12 @@ from app.utils.client_ip import client_ip as _client_ip
 async def google_login(
     response: Response,
     ref: Optional[str] = Query(default=None, max_length=32),
+    guest_token: Optional[str] = Query(default=None, max_length=512),
 ):
-    """Return Google OAuth URL. Optional `ref` referral code is embedded in OAuth state."""
+    """Return Google OAuth URL. Optional `ref` referral code and `guest_token` embedded in OAuth state."""
     settings = get_settings()
     csrf = google_oauth.new_oauth_csrf_token()
-    state = google_oauth.encode_oauth_state(ref=ref, csrf=csrf)
+    state = google_oauth.encode_oauth_state(ref=ref, csrf=csrf, guest_token=guest_token)
     url = google_oauth.get_login_url(_get_redirect_uri(), state=state)
     response.set_cookie(
         key=OAUTH_CSRF_COOKIE,
@@ -62,7 +65,7 @@ async def google_login(
         secure=settings.ENVIRONMENT.upper() != "DEV",
         samesite="lax",
         max_age=600,
-        path="/auth",
+        path="/",
     )
     return {"url": url}
 
@@ -168,10 +171,24 @@ async def google_callback(
 
     jwt_token = create_access_token(user.id, user.email)
 
+    guest_token = (state_data.get("guest") or "").strip()
+    claimed_profile_id: int | None = None
+    if guest_token:
+        try:
+            profile_id = verify_guest_token(guest_token)
+            claimed = await profile_service.claim_guest_profile(db, profile_id, user.id, guest_token)
+            claimed_profile_id = claimed.id
+            logger.info("Guest profile %s claimed by user %s during OAuth", profile_id, user.id)
+        except (ProfileNotFoundError, ConflictError, AuthenticationError) as e:
+            logger.warning("Guest profile claim during OAuth failed for user %s: %s", user.id, e)
+
     settings = get_settings()
     frontend_url = settings.FRONTEND_URL.rstrip("/")
-    redirect = RedirectResponse(url=f"{frontend_url}/login#token={jwt_token}")
-    redirect.delete_cookie(OAUTH_CSRF_COOKIE, path="/auth")
+    redirect_url = f"{frontend_url}/login#token={jwt_token}"
+    if claimed_profile_id is not None:
+        redirect_url += f"&claimed_profile={claimed_profile_id}"
+    redirect = RedirectResponse(url=redirect_url)
+    redirect.delete_cookie(OAUTH_CSRF_COOKIE, path="/")
     return redirect
 
 
@@ -224,6 +241,27 @@ async def get_me(
         "tenant_id": current_user.tenant_id,
         "tenant_name": tenant_name,
         "referral_code": current_user.referral_code,
+    }
+
+
+@router.post("/claim-guest-profile")
+async def claim_guest_profile(
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bind an unclaimed guest profile to the authenticated user."""
+    guest_token = (payload.get("guest_token") or "").strip()
+    if not guest_token:
+        raise AuthenticationError("guest_token_required")
+    profile_id = verify_guest_token(guest_token)
+    profile = await profile_service.claim_guest_profile(
+        db, profile_id, current_user.id, guest_token
+    )
+    return {
+        "success": True,
+        "profile_id": profile.id,
+        "status": profile.status.value,
     }
 
 

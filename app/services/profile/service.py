@@ -18,13 +18,18 @@ from app.services.ai.prompts import (
 from app.schemas.profile import LinkedInOptimizeResult
 from app.schemas.tailor import BulletQualityResult, EvidenceMap
 from app.config import get_settings
-from app.exceptions import ProfileNotFoundError
+from app.exceptions import ProfileNotFoundError, ConflictError, UsageLimitExceeded
+from app.services.auth.jwt_handler import verify_guest_token
 from logging import getLogger
 
 logger = getLogger(__name__)
 
 # OCR text longer than this with empty experience → sparse parse warning
 _SPARSE_OCR_MIN_CHARS = 200
+
+
+def _inference_user_id(profile: Profile) -> str:
+    return profile.user_id or "guest"
 
 
 def _resume_info_as_dict(result: object) -> dict:
@@ -101,6 +106,164 @@ class ProfileService:
         await db.refresh(profile)
         return profile.id
 
+    async def create_guest_profile(
+        self,
+        db: AsyncSession,
+        pdf_bytes: bytes,
+        *,
+        guest_ip: str | None = None,
+        source_filename: str | None = None,
+    ) -> int:
+        from datetime import datetime, timezone, timedelta
+
+        settings = get_settings()
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=settings.GUEST_PROFILE_TTL_HOURS)
+        profile = Profile(
+            user_id=None,
+            status=ProfileStatus.PENDING,
+            source_filename=(source_filename or None),
+            guest_expires_at=expires_at,
+            guest_ip=(guest_ip or None),
+        )
+        db.add(profile)
+        await db.commit()
+        await db.refresh(profile)
+        return profile.id
+
+    async def enforce_guest_upload_limits(self, db: AsyncSession, guest_ip: str) -> None:
+        from datetime import datetime, timezone, timedelta
+
+        settings = get_settings()
+        now = datetime.now(timezone.utc)
+        start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        daily_count = (
+            await db.execute(
+                select(func.count())
+                .select_from(Profile)
+                .where(
+                    Profile.user_id.is_(None),
+                    Profile.guest_ip == guest_ip,
+                    Profile.created_at >= start_of_day,
+                )
+            )
+        ).scalar() or 0
+        if daily_count >= settings.GUEST_UPLOAD_MAX_PER_IP_PER_DAY:
+            raise UsageLimitExceeded(
+                "Daily free upload limit reached. Sign in to continue uploading resumes."
+            )
+
+        cooldown_since = now - timedelta(seconds=settings.GUEST_UPLOAD_COOLDOWN_SECONDS)
+        recent = (
+            await db.execute(
+                select(Profile.id)
+                .where(
+                    Profile.user_id.is_(None),
+                    Profile.guest_ip == guest_ip,
+                    Profile.created_at >= cooldown_since,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if recent is not None:
+            raise UsageLimitExceeded("Please wait a moment before uploading again.")
+
+    async def get_guest_profile_by_token(
+        self, db: AsyncSession, profile_id: int, guest_token: str
+    ) -> Profile:
+        token_profile_id = verify_guest_token(guest_token)
+        if token_profile_id != profile_id:
+            raise ProfileNotFoundError(f"Profile {profile_id} not found")
+        return await self._get_unclaimed_guest_profile(db, profile_id)
+
+    async def _get_unclaimed_guest_profile(self, db: AsyncSession, profile_id: int) -> Profile:
+        from datetime import datetime, timezone
+
+        result = await db.execute(
+            select(Profile).where(
+                Profile.id == profile_id,
+                Profile.user_id.is_(None),
+                Profile.is_active == True,
+            )
+        )
+        profile = result.scalar_one_or_none()
+        if not profile:
+            raise ProfileNotFoundError(f"Profile {profile_id} not found")
+        if profile.guest_expires_at and profile.guest_expires_at < datetime.now(timezone.utc):
+            raise ProfileNotFoundError(f"Profile {profile_id} not found")
+        return profile
+
+    async def get_guest_preview(self, db: AsyncSession, profile_id: int, guest_token: str) -> dict:
+        profile = await self.get_guest_profile_by_token(db, profile_id, guest_token)
+        info = profile.resume_info or {}
+        experiences = info.get("past_experience") or []
+        skills = info.get("skills") or []
+        if isinstance(skills, dict):
+            skills_count = sum(len(v or []) for v in skills.values())
+        elif isinstance(skills, list):
+            skills_count = len(skills)
+        else:
+            skills_count = 0
+        return {
+            "id": profile.id,
+            "status": profile.status.value,
+            "source_filename": profile.source_filename,
+            "name": (info.get("name") or "").strip() or None,
+            "title": (info.get("title") or info.get("headline") or "").strip() or None,
+            "experience_count": len(experiences) if isinstance(experiences, list) else 0,
+            "skills_count": skills_count,
+        }
+
+    async def claim_guest_profile(
+        self, db: AsyncSession, profile_id: int, user_id: str, guest_token: str
+    ) -> Profile:
+        from datetime import datetime, timezone
+
+        token_profile_id = verify_guest_token(guest_token)
+        if token_profile_id != profile_id:
+            raise ProfileNotFoundError(f"Profile {profile_id} not found")
+
+        result = await db.execute(select(Profile).where(Profile.id == profile_id))
+        profile = result.scalar_one_or_none()
+        if not profile or not profile.is_active:
+            raise ProfileNotFoundError(f"Profile {profile_id} not found")
+
+        if profile.user_id == user_id:
+            return profile
+
+        if profile.user_id is not None and profile.user_id != user_id:
+            raise ConflictError("This resume has already been claimed by another account.")
+
+        if profile.guest_expires_at and profile.guest_expires_at < datetime.now(timezone.utc):
+            raise ProfileNotFoundError("Guest session expired. Please upload your resume again.")
+
+        now = datetime.now(timezone.utc)
+        profile.user_id = user_id
+        profile.claimed_at = now
+        profile.guest_expires_at = None
+        profile.guest_ip = None
+        await db.commit()
+        await db.refresh(profile)
+        return profile
+
+    async def cleanup_expired_guest_profiles(self, db: AsyncSession) -> int:
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        result = await db.execute(
+            select(Profile).where(
+                Profile.user_id.is_(None),
+                Profile.guest_expires_at.isnot(None),
+                Profile.guest_expires_at < now,
+            )
+        )
+        expired = list(result.scalars().all())
+        for profile in expired:
+            profile.is_active = False
+        if expired:
+            await db.commit()
+        return len(expired)
+
     async def extract_text_fast(self, pdf_bytes: bytes) -> str:
         """pdfplumber extraction, run in thread to avoid blocking the event loop.
 
@@ -151,7 +314,7 @@ class ProfileService:
                 logger.info(f"[profile:{profile_id}] Using vision path (text_len={len(text.strip())}, high_non_ascii={self.extractor._has_high_non_ascii_ratio(text)})")
                 result = await self.extractor.extract_and_structure_via_vision(
                     pdf_bytes,
-                    user_id=profile.user_id,
+                    user_id=_inference_user_id(profile),
                     reference_id=str(profile_id),
                 )
             else:
@@ -161,7 +324,7 @@ class ProfileService:
                     system_prompt=STRUCTURED_RESUME_SYSTEM_PROMPT,
                     inputs=[text],
                     structured_output_schema=ResumeInfo,
-                    user_id=profile.user_id,
+                    user_id=_inference_user_id(profile),
                     purpose="profile_structuring",
                     reference_id=str(profile_id),
                 )

@@ -19,11 +19,12 @@ def new_oauth_csrf_token() -> str:
     return secrets.token_urlsafe(16)
 
 
-def encode_oauth_state(*, ref: str | None = None, csrf: str | None = None) -> str:
-    """Encode CSRF token + optional referral code into OAuth state param."""
+def encode_oauth_state(*, ref: str | None = None, csrf: str | None = None, guest_token: str | None = None) -> str:
+    """Encode CSRF token + optional referral code + guest token into OAuth state param."""
     payload = {
         "csrf": (csrf or new_oauth_csrf_token()).strip(),
         "ref": (ref or "").strip()[:32],
+        "guest": (guest_token or "").strip()[:512],
     }
     raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")

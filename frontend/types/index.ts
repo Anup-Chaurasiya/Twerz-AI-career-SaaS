@@ -91,6 +91,36 @@ export interface ProfileUploadResponse {
   extracted_text?: string;
 }
 
+export interface GuestProfileUploadResponse {
+  profile_id: number;
+  guest_token: string;
+  status: string;
+  extracted_text?: string;
+  expires_in_hours: number;
+}
+
+export interface GuestProfilePreview {
+  id: number;
+  status: ProfileStatus;
+  source_filename?: string | null;
+  name?: string | null;
+  title?: string | null;
+  experience_count: number;
+  skills_count: number;
+}
+
+export interface GuestProfileSession {
+  profileId: number;
+  guestToken: string;
+  expiresAt: string;
+}
+
+export interface ClaimGuestProfileResponse {
+  success: boolean;
+  profile_id: number;
+  status: string;
+}
+
 // JOB
 export type JobStatus =
   | 'PENDING'

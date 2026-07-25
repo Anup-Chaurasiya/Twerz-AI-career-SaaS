@@ -19,7 +19,7 @@ function applyBodyScrollClasses(pathname: string) {
   document.documentElement.removeAttribute('data-scroll');
 }
 
-/** Syncs body scroll-lock for dashboard/login routes. Landing scrolls via .lp-scroll in CSS. */
+/** Syncs body scroll-lock for dashboard/login. Landing uses native document scroll. */
 export function BodyRouteManager() {
   const pathname = usePathname();
 
