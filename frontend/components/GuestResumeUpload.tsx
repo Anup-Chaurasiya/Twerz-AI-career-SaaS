@@ -13,7 +13,21 @@ import {
 
 type UploadPhase = 'idle' | 'uploading' | 'processing' | 'ready' | 'failed' | 'expired';
 
-const PROCESS_STEPS = ['Parsing PDF', 'Extracting content', 'Structuring with AI', 'Almost done'];
+const PROCESS_STEPS = ['Reading document', 'Extracting content', 'Structuring with AI', 'Almost done'];
+
+const ACCEPTED_RESUME_EXTENSIONS = ['.pdf', '.docx'] as const;
+const ACCEPTED_RESUME_MIME_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+] as const;
+
+function isAcceptedResumeFile(file: File): boolean {
+  const name = file.name.toLowerCase();
+  if (ACCEPTED_RESUME_EXTENSIONS.some((ext) => name.endsWith(ext))) return true;
+  return ACCEPTED_RESUME_MIME_TYPES.includes(
+    file.type as (typeof ACCEPTED_RESUME_MIME_TYPES)[number],
+  );
+}
 
 function getInitials(name: string): string {
   return name
@@ -71,19 +85,44 @@ export interface GuestResumeUploadProps {
   variant?: 'section' | 'inline';
 }
 
+function getInitialGuestUploadState(): {
+  phase: UploadPhase;
+  profileId: number | null;
+  guestToken: string | null;
+} {
+  if (typeof window === 'undefined') {
+    return { phase: 'idle', profileId: null, guestToken: null };
+  }
+  const session = loadGuestProfileSession();
+  if (!session || isLoggedIn()) {
+    return { phase: 'idle', profileId: null, guestToken: null };
+  }
+  return {
+    phase: 'processing',
+    profileId: session.profileId,
+    guestToken: session.guestToken,
+  };
+}
+
 export default function GuestResumeUpload({ variant = 'section' }: GuestResumeUploadProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialGuestState = getInitialGuestUploadState();
+  const resumedSessionRef = useRef(
+    initialGuestState.phase === 'processing'
+      ? { profileId: initialGuestState.profileId!, guestToken: initialGuestState.guestToken! }
+      : null,
+  );
 
-  const [phase, setPhase] = useState<UploadPhase>('idle');
+  const [phase, setPhase] = useState<UploadPhase>(initialGuestState.phase);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState('');
   const [extractedText, setExtractedText] = useState('');
   const [processStep, setProcessStep] = useState(0);
   const [preview, setPreview] = useState<GuestProfilePreview | null>(null);
-  const [guestToken, setGuestToken] = useState<string | null>(null);
-  const [profileId, setProfileId] = useState<number | null>(null);
+  const [guestToken, setGuestToken] = useState<string | null>(initialGuestState.guestToken);
+  const [profileId, setProfileId] = useState<number | null>(initialGuestState.profileId);
   const [signingIn, setSigningIn] = useState(false);
 
   const stopPolling = useCallback(() => {
@@ -116,7 +155,7 @@ export default function GuestResumeUpload({ variant = 'section' }: GuestResumeUp
           }
           if (status.status === 'FAILED') {
             setPhase('failed');
-            setError('We could not parse this resume. Try a different PDF or a simpler layout.');
+            setError('We could not parse this resume. Try a different PDF/DOCX or a simpler layout.');
             return;
           }
           pollRef.current = setTimeout(tick, 3000);
@@ -131,11 +170,8 @@ export default function GuestResumeUpload({ variant = 'section' }: GuestResumeUp
   );
 
   useEffect(() => {
-    const session = loadGuestProfileSession();
-    if (!session || isLoggedIn()) return;
-    setProfileId(session.profileId);
-    setGuestToken(session.guestToken);
-    setPhase('processing');
+    const session = resumedSessionRef.current;
+    if (!session) return;
     pollStatus(session.profileId, session.guestToken);
     return stopPolling;
   }, [pollStatus, stopPolling]);
@@ -150,8 +186,8 @@ export default function GuestResumeUpload({ variant = 'section' }: GuestResumeUp
 
   const handleFile = async (file: File) => {
     if (!file) return;
-    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-      setError('Only PDF files are supported.');
+    if (!isAcceptedResumeFile(file)) {
+      setError('Please upload a PDF or DOCX resume file.');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -245,7 +281,7 @@ export default function GuestResumeUpload({ variant = 'section' }: GuestResumeUp
 
   return (
     <div className={`guest-upload${variant === 'section' ? ' guest-upload--section' : ''}${phase === 'ready' ? ' guest-upload--ready' : ''}`}>
-      {error && phase !== 'idle' && (
+      {error && (
         <div className="guest-upload-error">{error}</div>
       )}
 
@@ -272,22 +308,36 @@ export default function GuestResumeUpload({ variant = 'section' }: GuestResumeUp
               if (e.target.files?.[0]) handleFile(e.target.files[0]);
             }}
             style={{ display: 'none' }}
-            accept=".pdf,application/pdf"
+            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           />
-          <div className="guest-upload-icon">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
-          </div>
-          <div className="guest-upload-title">
-            {phase === 'expired' ? 'Session expired' : 'Drop your PDF here'}
-          </div>
-          <div className="guest-upload-sub">
-            {phase === 'expired'
-              ? 'Upload again — no signup needed'
-              : phase === 'failed'
-                ? 'Try another file'
-                : 'or click to browse · PDF only · Max 5MB'}
+          <div className="guest-upload-zone-inner">
+            <div className="guest-upload-icon" aria-hidden>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="12" y1="18" x2="12" y2="12" />
+                <polyline points="9 15 12 12 15 15" />
+              </svg>
+            </div>
+            <h3 className="guest-upload-title">
+              {phase === 'expired' ? 'Session expired' : 'Drop your resume here'}
+            </h3>
+            <p className="guest-upload-sub">
+              {phase === 'expired'
+                ? 'Upload again — no signup needed'
+                : phase === 'failed'
+                  ? 'Try another file'
+                  : 'Drag and drop or click to browse'}
+            </p>
+            {phase === 'idle' && (
+              <div className="guest-upload-formats" aria-label="Supported file formats">
+                <span className="guest-upload-format">PDF</span>
+                <span className="guest-upload-format">DOCX</span>
+              </div>
+            )}
+            {phase === 'idle' && (
+              <span className="guest-upload-limit">Max 5 MB · No account needed</span>
+            )}
           </div>
           {(phase === 'failed' || phase === 'expired') && (
             <button

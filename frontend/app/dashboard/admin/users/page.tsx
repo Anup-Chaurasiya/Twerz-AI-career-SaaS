@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { adminApi } from '@/lib/api/endpoints';
 import { AdminUser, Tenant } from '@/types';
@@ -23,18 +23,18 @@ export default function AdminUsersPage() {
     adminApi.listTenants(1, 100).then(res => setTenants(res.data.items)).catch(() => {});
   }, []);
 
-  const fetchUsers = () => {
+  const fetchUsers = useCallback(() => {
     setLoading(true);
     adminApi.listUsers(page, 20, search).then(res => {
       setUsers(res.data.items);
       setLoading(false);
     }).catch(() => setLoading(false));
-  };
+  }, [page, search]);
 
   useEffect(() => {
     const delay = setTimeout(fetchUsers, 300);
     return () => clearTimeout(delay);
-  }, [page, search]);
+  }, [fetchUsers]);
 
   const handleGrantCredits = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -25,7 +25,7 @@ from app.schemas.roast import RoastResult
 from app.services.ai.inference import LLMInference
 from app.services.ai.prompts import ROAST_SYSTEM_PROMPT
 from app.services.auth.jwt_handler import create_guest_token
-from app.services.ocr.extractor import PDFExtractor
+from app.services.ocr.extractor import PDFExtractor, detect_resume_format
 from app.services.profile.service import ProfileService
 from app.services.storage.gcs import GCSClient
 from app.utils.client_ip import client_ip
@@ -37,15 +37,19 @@ router = APIRouter(prefix="/public", tags=["public"])
 profile_service = ProfileService()
 
 
-def _validate_public_pdf(file: UploadFile, pdf_bytes: bytes) -> None:
+def _validate_public_resume(file: UploadFile, file_bytes: bytes) -> None:
     settings = get_settings()
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise ValueError("Only PDF files are supported")
-    if not pdf_bytes or len(pdf_bytes) < 100:
-        raise ValueError("Uploaded PDF file is empty or corrupted")
-    if len(pdf_bytes) > settings.PUBLIC_UPLOAD_MAX_BYTES:
+    if not file.filename:
+        raise ValueError("Only PDF and DOCX files are supported")
+    try:
+        detect_resume_format(file.filename, file_bytes)
+    except ValueError as exc:
+        raise ValueError(str(exc)) from exc
+    if not file_bytes or len(file_bytes) < 100:
+        raise ValueError("Uploaded file is empty or corrupted")
+    if len(file_bytes) > settings.PUBLIC_UPLOAD_MAX_BYTES:
         raise ValueError(
-            f"PDF too large. Maximum size is {settings.PUBLIC_UPLOAD_MAX_BYTES // 1_000_000}MB."
+            f"File too large. Maximum size is {settings.PUBLIC_UPLOAD_MAX_BYTES // 1_000_000}MB."
         )
 
 
@@ -130,27 +134,30 @@ async def public_profile_upload(
     db: AsyncSession = Depends(get_db),
 ):
     """No-auth guest resume upload — full AI structuring, claimable after sign-in."""
-    pdf_bytes = await file.read()
-    _validate_public_pdf(file, pdf_bytes)
+    file_bytes = await file.read()
+    _validate_public_resume(file, file_bytes)
 
     ip = client_ip(request)
     await profile_service.enforce_guest_upload_limits(db, ip)
 
     profile_id = await profile_service.create_guest_profile(
         db,
-        pdf_bytes,
+        file_bytes,
         guest_ip=ip,
         source_filename=file.filename,
     )
     guest_token = create_guest_token(profile_id)
-    extracted_text = await profile_service.extract_text_fast(pdf_bytes)
+    extracted_text = await profile_service.extract_text_fast(
+        file_bytes, source_filename=file.filename
+    )
 
     settings = get_settings()
+    ext = detect_resume_format(file.filename, file_bytes)
     await _spawn_profile_processing(
         profile_id,
-        pdf_bytes,
+        file_bytes,
         extracted_text,
-        gcs_path=f"uploads/guest/{profile_id}.pdf",
+        gcs_path=f"uploads/guest/{profile_id}.{ext}",
     )
 
     return {

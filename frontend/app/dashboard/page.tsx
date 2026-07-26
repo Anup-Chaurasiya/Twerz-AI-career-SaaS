@@ -45,7 +45,7 @@ export default function DashboardPage() {
         <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-1px', marginBottom: 6, background: 'linear-gradient(135deg, var(--text-primary) 0%, #3D4F66 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
           Welcome back, <span style={{ background: 'linear-gradient(135deg, #ff5a1f, #ff8254)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{user?.name?.split(' ')[0]}</span>
         </h1>
-        <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Your AI resume tailoring hub. Let's land that interview.</p>
+        <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Your AI resume tailoring hub. Let&apos;s land that interview.</p>
       </div>
 
       {/* KPIs */}

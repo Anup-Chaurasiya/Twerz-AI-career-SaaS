@@ -28,7 +28,15 @@ export default function AdminReferralsPage() {
     }).catch(() => setLoading(false));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    adminApi.listFlaggedReferrals(1, 50, 'pending').then(res => {
+      if (cancelled) return;
+      setItems(res.data.items as ReferralReview[]);
+      setLoading(false);
+    }).catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   const handleApprove = async (id: number) => {
     setActing(id);

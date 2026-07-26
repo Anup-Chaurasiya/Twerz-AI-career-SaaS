@@ -22,7 +22,15 @@ export default function AdminTenantsPage() {
     }).catch(() => setLoading(false));
   };
 
-  useEffect(() => { fetchTenants(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    adminApi.listTenants(1, 100).then(res => {
+      if (cancelled) return;
+      setTenants(res.data.items);
+      setLoading(false);
+    }).catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   const handleOpenModal = (t?: Tenant) => {
     if (t) { setEditId(t.id); setName(t.name); }

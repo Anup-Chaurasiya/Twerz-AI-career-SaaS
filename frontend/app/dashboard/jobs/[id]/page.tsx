@@ -104,6 +104,17 @@ export default function JobDetailPage() {
     }
   };
 
+  const fetchChatHistory = useCallback(async () => {
+    try {
+      const res = await jobsApi.getChatHistory(jobId);
+      if (res.data.messages.length > 0) {
+        setChatMessages(res.data.messages);
+      } else {
+        setChatMessages([{ role: 'assistant', content: "Hi! I've tailored your resume. How would you like to tweak it further? You can say things like 'Make the summary shorter' or 'Add React to my skills'." }]);
+      }
+    } catch {}
+  }, [jobId]);
+
   useEffect(() => {
     return () => {
       if (jsonValidateTimer.current) clearTimeout(jsonValidateTimer.current);
@@ -173,7 +184,7 @@ export default function JobDetailPage() {
       }
     };
     fetchJob();
-  }, [jobId, originalJsonValue]);
+  }, [jobId, originalJsonValue, fetchChatHistory]);
 
   // Use SSE for progress updates when job is processing
   useProgressSSE({
@@ -239,18 +250,7 @@ export default function JobDetailPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [isProcessing, jobId]);
-
-  const fetchChatHistory = async () => {
-    try {
-      const res = await jobsApi.getChatHistory(jobId);
-      if (res.data.messages.length > 0) {
-        setChatMessages(res.data.messages);
-      } else {
-        setChatMessages([{ role: 'assistant', content: "Hi! I've tailored your resume. How would you like to tweak it further? You can say things like 'Make the summary shorter' or 'Add React to my skills'." }]);
-      }
-    } catch {}
-  };
+  }, [isProcessing, jobId, fetchChatHistory]);
 
   useEffect(() => {
     const el = chatRef.current;

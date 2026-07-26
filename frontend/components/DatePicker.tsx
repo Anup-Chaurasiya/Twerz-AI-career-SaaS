@@ -31,11 +31,8 @@ export default function DatePicker({
   const [open, setOpen] = useState(false);
   const selected = parseValue(value);
   const [month, setMonth] = useState<Date>(() => selected ?? new Date());
+  const calendarMonth = selected ?? month;
   const display = selected ? format(selected, 'MMMM d, yyyy') : '';
-
-  useEffect(() => {
-    if (selected) setMonth(selected);
-  }, [value]);
 
   useEffect(() => {
     if (!open) return;
@@ -85,7 +82,7 @@ export default function DatePicker({
           <DayPicker
             mode="single"
             selected={selected}
-            month={month}
+            month={calendarMonth}
             onMonthChange={setMonth}
             onSelect={(date) => {
               if (date) {

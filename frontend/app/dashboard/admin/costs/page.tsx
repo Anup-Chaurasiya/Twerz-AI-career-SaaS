@@ -12,12 +12,14 @@ export default function AdminCostsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
+    let cancelled = false;
     Promise.all([adminApi.getLlmCosts(days), adminApi.getFreeTierUsage()]).then(([costRes, freeRes]) => {
+      if (cancelled) return;
       setCosts(costRes.data.by_purpose);
       setFreeTier(freeRes.data);
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [days]);
 
   const totalCost = costs.reduce((s, c) => s + c.estimated_cost_usd, 0);
@@ -26,7 +28,7 @@ export default function AdminCostsPage() {
     <div className="fade-slide-in">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h2 style={{ fontSize: 20, fontWeight: 700 }}>Cost Breakdown</h2>
-        <select className="input-field" value={days} onChange={e => setDays(Number(e.target.value))} style={{ width: 120 }}>
+        <select className="input-field" value={days} onChange={e => { setDays(Number(e.target.value)); setLoading(true); }} style={{ width: 120 }}>
           <option value={7}>7 days</option>
           <option value={14}>14 days</option>
           <option value={30}>30 days</option>

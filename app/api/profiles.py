@@ -28,9 +28,9 @@ async def upload_profile(
         db, current_user.id, pdf_bytes, source_filename=file.filename
     )
 
-    # Fast-path: extract text immediately (pdfplumber is near-instant)
+    # Fast-path: extract text immediately (pdfplumber/docx is near-instant)
     # so the frontend can animate through the content while AI structures in background
-    extracted_text = await service.extract_text_fast(pdf_bytes)
+    extracted_text = await service.extract_text_fast(pdf_bytes, source_filename=file.filename)
 
     # Process in background — pass extracted text so it doesn't re-extract
     from app.database.session import async_session_factory

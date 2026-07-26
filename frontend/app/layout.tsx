@@ -5,14 +5,14 @@ import './globals.css';
 export const metadata: Metadata = {
   metadataBase: new URL('https://resume.twerz'),
   title: {
-    default: 'Shortlyst — AI Resume Tailoring for Every Job',
-    template: '%s | Shortlyst',
+    default: 'Twerz — AI Resume Tailoring for Every Job',
+    template: '%s | Twerz',
   },
   description:
-    'Shortlyst turns one profile into role-perfect PDFs — with honest fit scores, zero fabricated skills, and LaTeX-grade output. A product of Twerz.',
+    'Twerz turns one profile into role-perfect PDFs — with honest fit scores, zero fabricated skills, and LaTeX-grade output.',
   keywords: [
-    'Shortlyst',
     'Twerz',
+    'resume.twerz',
     'ATS resume optimizer',
     'resume tailoring',
     'AI resume builder',
@@ -23,15 +23,15 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'en_US',
     url: 'https://resume.twerz',
-    title: 'Shortlyst — AI Resume Tailoring for Every Job',
+    title: 'Twerz — AI Resume Tailoring for Every Job',
     description:
-      'Role-perfect resumes with honest fit scores — no fabricated skills. Powered by Twerz.',
-    siteName: 'Shortlyst by Twerz',
+      'Role-perfect resumes with honest fit scores — no fabricated skills.',
+    siteName: 'Twerz',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Shortlyst — AI Resume Tailoring for Every Job',
-    description: 'Role-perfect resumes with honest fit scores. A product of Twerz.',
+    title: 'Twerz — AI Resume Tailoring for Every Job',
+    description: 'Role-perfect resumes with honest fit scores.',
   },
   robots: { index: true, follow: true },
 };

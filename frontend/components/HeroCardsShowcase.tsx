@@ -55,6 +55,7 @@ export default function HeroCardsShowcase() {
 
   const focusCard = useCallback((card: 'editor' | 'fit', manual = true) => {
     setFocus(card);
+    if (card !== 'fit') setDisplayScore(0);
     if (manual) pauseUntilRef.current = Date.now() + MANUAL_PAUSE_MS;
     if (card === 'editor') setChatCycle((c) => c + 1);
   }, []);
@@ -64,7 +65,10 @@ export default function HeroCardsShowcase() {
       if (paused || Date.now() < pauseUntilRef.current) return;
       setFocus((prev) => {
         const next = prev === 'fit' ? 'editor' : 'fit';
-        if (next === 'editor') setChatCycle((c) => c + 1);
+        if (next === 'editor') {
+          setChatCycle((c) => c + 1);
+          setDisplayScore(0);
+        }
         return next;
       });
     }, AUTO_ROTATE_MS);
@@ -73,7 +77,6 @@ export default function HeroCardsShowcase() {
 
   useEffect(() => {
     if (focus !== 'fit') {
-      setDisplayScore(0);
       return;
     }
     const target = 87;
@@ -210,7 +213,7 @@ export default function HeroCardsShowcase() {
                   <span className="led-pulse" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
                   <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, fontWeight: 700, letterSpacing: '2px', color: '#64748B', userSelect: 'none' }}>FIT ANALYSIS</span>
                 </div>
-                <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: '#6366f1', fontWeight: 600 }}>Shortlyst</span>
+                <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: '#6366f1', fontWeight: 600 }}>Twerz</span>
               </div>
               <div className="hero-fit-body">
                 <div className="hero-fit-score-row">
@@ -229,7 +232,7 @@ export default function HeroCardsShowcase() {
                   <div className="hero-fit-gap hero-fit-gap--warn msg-fade-in delay-3">△ Kubernetes — gap noted, not invented</div>
                 </div>
                 <div className="hero-fit-ats-lift msg-fade-in delay-4">
-                  ATS score: 62 → 94 after Shortlyst tailor
+                  ATS score: 62 → 94 after Twerz tailor
                 </div>
               </div>
             </div>

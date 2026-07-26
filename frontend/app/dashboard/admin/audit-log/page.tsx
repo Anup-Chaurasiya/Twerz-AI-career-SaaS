@@ -10,17 +10,19 @@ export default function AdminAuditLogPage() {
   const [action, setAction] = useState('');
 
   useEffect(() => {
-    setLoading(true);
+    let cancelled = false;
     adminApi.listAuditLog(1, 100, action ? { action } : undefined).then(res => {
+      if (cancelled) return;
       setItems(res.data.items);
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [action]);
 
   return (
     <div className="fade-slide-in">
       <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>Admin Audit Log</h2>
-      <input type="text" className="input-field" placeholder="Filter by action..." value={action} onChange={e => setAction(e.target.value)} style={{ width: 280, marginBottom: 16 }} />
+      <input type="text" className="input-field" placeholder="Filter by action..." value={action} onChange={e => { setAction(e.target.value); setLoading(true); }} style={{ width: 280, marginBottom: 16 }} />
       {loading ? <div className="spinner" /> : (
         <div className="widget-card" style={{ padding: 0, overflow: 'hidden' }}>
           <table className="data-table admin-table">

@@ -1,29 +1,19 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { authApi } from '@/lib/api/endpoints';
 import { clearGuestProfileSession, loadGuestProfileSession } from '@/lib/guestProfile';
+import BrandLogo from '@/components/BrandLogo';
 
 const BOOT_LINES = [
-  { text: '> initializing Shortlyst job hunt OS...', cls: '' },
+  { text: '> initializing Twerz resume engine...', cls: '' },
   { text: '> loading AI resume engine... ok', cls: 'ok' },
   { text: '> connecting to LaTeX renderer... ok', cls: 'ok' },
   { text: '> fit analysis module... ready', cls: 'ok' },
   { text: '> awaiting authentication...', cls: 'warn' },
 ] as const;
-
-function BrandMark() {
-  return (
-    <a href="/" className="login-brand">
-      <div className="brand-logo-mark">S</div>
-      <div className="brand-logo-text">
-        <span className="brand-logo-name">Shortlyst</span>
-        <span className="brand-logo-by">by Twerz</span>
-      </div>
-    </a>
-  );
-}
 
 /** Persist OAuth JWT before any useEffect (avoids race with AuthInitializer.fetchMe). */
 function persistOAuthTokenFromUrl(): { handled: boolean; claimedProfileId: number | null } {
@@ -51,18 +41,23 @@ export default function LoginPage() {
   const [booting, setBooting] = useState(true);
   const [lines, setLines] = useState<{ text: string; cls: string }[]>([]);
   const [loginLoading, setLoginLoading] = useState(false);
-  const [completingLogin, setCompletingLogin] = useState(false);
   const [error, setError] = useState('');
-  const [hasGuestResume, setHasGuestResume] = useState(false);
+  const [hasGuestResume] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    return Boolean(loadGuestProfileSession()?.guestToken) || params.get('guest') === '1';
+  });
   const [oauthResult] = useState(() => persistOAuthTokenFromUrl());
   const oauthTokenHandled = oauthResult.handled;
   const oauthClaimedProfileId = oauthResult.claimedProfileId;
+  const [completingLogin] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return oauthResult.handled || !!localStorage.getItem('token');
+  });
 
   useEffect(() => {
     let i = 0;
     let cancelled = false;
-    setLines([]);
-    setBooting(true);
     const interval = setInterval(() => {
       if (cancelled) return;
       if (i < BOOT_LINES.length) {
@@ -99,9 +94,6 @@ export default function LoginPage() {
     if (ref) {
       sessionStorage.setItem('signup_referral_code', ref);
     }
-
-    const guestSession = loadGuestProfileSession();
-    setHasGuestResume(Boolean(guestSession?.guestToken) || params.get('guest') === '1');
 
     const finishLoginRedirect = async () => {
       const source = sessionStorage.getItem('signup_utm_source');
@@ -140,7 +132,6 @@ export default function LoginPage() {
     };
 
     if (oauthTokenHandled || localStorage.getItem('token')) {
-      setCompletingLogin(true);
       useAuthStore.getState().fetchMe({ force: true }).then(finishLoginRedirect);
       sessionStorage.removeItem('signup_referral_code');
       return;
@@ -171,7 +162,7 @@ export default function LoginPage() {
 
       <div className="login-inner">
         <header className="login-header">
-          <BrandMark />
+          <BrandLogo className="login-brand" />
           <p className="login-tagline">Every job deserves its own resume.</p>
           <p className="login-sub">AI resume tailoring with honest fit scores — no fabricated skills.</p>
         </header>
@@ -258,7 +249,7 @@ export default function LoginPage() {
         </div>
 
         <p className="login-back">
-          <a href="/">← Back to home</a>
+          <Link href="/">← Back to home</Link>
         </p>
       </div>
     </div>

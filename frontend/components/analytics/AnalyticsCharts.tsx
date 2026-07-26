@@ -179,6 +179,20 @@ function ConversionRates({ bands }: { bands: BandRow[] }) {
   );
 }
 
+function FunnelStats({ stages }: { stages: Array<{ name: string; count: number; fill: string }> }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: 8, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+      {stages.map((s) => (
+        <div key={s.name} style={{ textAlign: 'center' }}>
+          <div style={{ width: 8, height: 8, borderRadius: 2, background: s.fill, margin: '0 auto 6px' }} />
+          <div style={{ fontSize: 10, color: 'var(--text-dim)', marginBottom: 2 }}>{s.name}</div>
+          <div style={{ fontFamily: 'JetBrains Mono', fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{s.count}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function AnalyticsCharts({ data, hasData }: { data: AnalyticsChartData; hasData: boolean }) {
   const appliedTotal = data.by_band.reduce((s, b) => s + b.applied_jobs, 0);
   const interviewTotal = data.by_band.reduce((s, b) => s + b.interview_jobs, 0);
@@ -211,20 +225,6 @@ export default function AnalyticsCharts({ data, hasData }: { data: AnalyticsChar
       platform: benchmark && benchmark.sample_size >= 10 ? +(benchmark.interview_rate * 100).toFixed(1) : null,
     };
   }).filter(Boolean) as Array<{ fit_label: string; you: number; platform: number | null }>;
-
-  function FunnelStats() {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: 8, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-        {funnelStages.map((s) => (
-          <div key={s.name} style={{ textAlign: 'center' }}>
-            <div style={{ width: 8, height: 8, borderRadius: 2, background: s.fill, margin: '0 auto 6px' }} />
-            <div style={{ fontSize: 10, color: 'var(--text-dim)', marginBottom: 2 }}>{s.name}</div>
-            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{s.count}</div>
-          </div>
-        ))}
-      </div>
-    );
-  }
 
   if (!hasData) {
     return (
@@ -266,7 +266,7 @@ export default function AnalyticsCharts({ data, hasData }: { data: AnalyticsChar
                 </Funnel>
               </FunnelChart>
             </ResponsiveContainer>
-            <FunnelStats />
+            <FunnelStats stages={funnelStages} />
           </ChartCard>
         )}
       </div>
@@ -288,7 +288,7 @@ export default function AnalyticsCharts({ data, hasData }: { data: AnalyticsChar
               </Funnel>
             </FunnelChart>
           </ResponsiveContainer>
-          <FunnelStats />
+          <FunnelStats stages={funnelStages} />
         </ChartCard>
 
         <ChartCard title="Application Mix" subtitle="Where you're applying by fit label">

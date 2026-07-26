@@ -16,7 +16,15 @@ export default function AdminCreditsConfigPage() {
     }).catch(() => setLoading(false));
   };
 
-  useEffect(() => { fetchConfig(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    adminApi.listCreditPacks(1, 100).then(res => {
+      if (cancelled) return;
+      setPacks(res.data.items);
+      setLoading(false);
+    }).catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <div className="fade-slide-in">

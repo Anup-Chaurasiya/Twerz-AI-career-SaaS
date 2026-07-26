@@ -6,18 +6,50 @@ import { useAuthStore } from '@/lib/stores/authStore';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { BodyRouteManager } from '@/components/BodyRouteManager';
 
+/** Public routes — skip auth API on first paint (marketing + landing). */
+const PUBLIC_PATH_PREFIXES = [
+  '/',
+  '/login',
+  '/features',
+  '/platform',
+  '/pricing',
+  '/how-it-works',
+  '/faq',
+  '/about',
+  '/contact',
+  '/privacy',
+  '/terms',
+  '/dpdp',
+  '/roast',
+];
+
+function isPublicPath(path: string): boolean {
+  if (path === '/') return true;
+  return PUBLIC_PATH_PREFIXES.some(
+    (prefix) => prefix !== '/' && (path === prefix || path.startsWith(`${prefix}/`)),
+  );
+}
+
 function AuthInitializer() {
   useEffect(() => {
-    // /login owns OAuth token capture + session restore.
-    if (window.location.pathname === '/login') return;
+    const path = window.location.pathname;
+    if (path === '/login') return;
 
     const state = useAuthStore.getState();
     if (!localStorage.getItem('token')) {
       state.fetchMe();
       return;
     }
-    // Already validated this session — skip redundant /auth/me on route changes.
     if (state.isLoggedIn && state.user) return;
+
+    // Defer auth check on public pages so navigation stays snappy.
+    if (isPublicPath(path)) {
+      setTimeout(() => {
+        void useAuthStore.getState().fetchMe({ force: true });
+      }, 0);
+      return;
+    }
+
     state.fetchMe({ force: true });
   }, []);
   return null;

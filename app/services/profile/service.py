@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.models.profile import Profile, ProfileStatus
 from app.schemas.resume import ResumeInfo
-from app.services.ocr.extractor import PDFExtractor
+from app.services.ocr.extractor import PDFExtractor, detect_resume_format, extract_docx_text
 from app.services.ai.inference import LLMInference
 from app.services.ai.prompts import (
     STRUCTURED_RESUME_SYSTEM_PROMPT,
@@ -264,13 +264,18 @@ class ProfileService:
             await db.commit()
         return len(expired)
 
-    async def extract_text_fast(self, pdf_bytes: bytes) -> str:
-        """pdfplumber extraction, run in thread to avoid blocking the event loop.
+    async def extract_text_fast(
+        self, file_bytes: bytes, *, source_filename: str | None = None
+    ) -> str:
+        """Fast PDF/DOCX text extraction in a worker thread.
 
-        Returns empty string on failure — the background task will retry with vision fallback.
+        Returns empty string on failure — the background task will retry with vision fallback for PDFs.
         """
         try:
-            return await asyncio.to_thread(self.extractor.extract_text, pdf_bytes)
+            fmt = detect_resume_format(source_filename, file_bytes)
+            if fmt == "docx":
+                return await asyncio.to_thread(extract_docx_text, file_bytes)
+            return await asyncio.to_thread(self.extractor.extract_text, file_bytes)
         except Exception as e:
             logger.warning(f"Fast text extraction failed: {e}")
             return ""
@@ -290,24 +295,37 @@ class ProfileService:
             await db.commit()
             logger.info(f"[profile:{profile_id}] Processing started (pdf_size={len(pdf_bytes)} bytes, pre_extracted={bool(extracted_text.strip())})")
 
-            # Use pre-extracted text if available; always capture page count from PDF bytes
+            resume_format = detect_resume_format(profile.source_filename, pdf_bytes)
+
+            # Use pre-extracted text if available; capture page count for PDFs only
             t0 = time.monotonic()
             text = extracted_text if extracted_text.strip() else ""
-            page_count = await asyncio.to_thread(self.extractor.count_pages, pdf_bytes)
+            page_count = 1
+            if resume_format == "pdf":
+                page_count = await asyncio.to_thread(self.extractor.count_pages, pdf_bytes)
             if not text:
-                text, page_count = await asyncio.to_thread(
-                    self.extractor.extract_text_and_page_count, pdf_bytes
-                )
-                logger.info(
-                    f"[profile:{profile_id}] PDF text extraction: {int((time.monotonic() - t0) * 1000)}ms "
-                    f"({len(text)} chars, {page_count} pages)"
-                )
+                if resume_format == "docx":
+                    text = await asyncio.to_thread(extract_docx_text, pdf_bytes)
+                    logger.info(
+                        f"[profile:{profile_id}] DOCX text extraction: {int((time.monotonic() - t0) * 1000)}ms "
+                        f"({len(text)} chars)"
+                    )
+                else:
+                    text, page_count = await asyncio.to_thread(
+                        self.extractor.extract_text_and_page_count, pdf_bytes
+                    )
+                    logger.info(
+                        f"[profile:{profile_id}] PDF text extraction: {int((time.monotonic() - t0) * 1000)}ms "
+                        f"({len(text)} chars, {page_count} pages)"
+                    )
             else:
                 logger.info(
                     f"[profile:{profile_id}] Using pre-extracted text ({len(text)} chars, {page_count} pages)"
                 )
 
-            needs_vision = len(text.strip()) < 50 or self.extractor._has_high_non_ascii_ratio(text)
+            needs_vision = resume_format == "pdf" and (
+                len(text.strip()) < 50 or self.extractor._has_high_non_ascii_ratio(text)
+            )
 
             t0 = time.monotonic()
             if needs_vision:

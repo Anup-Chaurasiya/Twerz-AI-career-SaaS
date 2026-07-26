@@ -34,7 +34,28 @@ export default function RoastsListPage() {
     }
   };
 
-  useEffect(() => { fetchRoasts(page); }, [page]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await roastsApi.list(page, 10);
+        if (cancelled) return;
+        setRoasts(res.data.items);
+        setTotalPages(res.data.pages);
+        setPage(res.data.page);
+      } catch {
+        if (!cancelled) setError('Failed to load roasts');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [page]);
+
+  const changePage = (next: number | ((prev: number) => number)) => {
+    setLoading(true);
+    setPage(next);
+  };
 
   const handleFile = async (file: File) => {
     if (!file) return;
@@ -160,8 +181,8 @@ export default function RoastsListPage() {
               <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(1,169,219,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>Page {page} of {totalPages}</div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn-ghost" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Prev</button>
-                  <button className="btn-ghost" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>Next</button>
+                  <button className="btn-ghost" disabled={page === 1} onClick={() => changePage(p => p - 1)}>Prev</button>
+                  <button className="btn-ghost" disabled={page === totalPages} onClick={() => changePage(p => p + 1)}>Next</button>
                 </div>
               </div>
             )}

@@ -1,6 +1,10 @@
 import asyncio
 import base64
+import zipfile
 from io import BytesIO
+from typing import Literal
+from xml.etree import ElementTree
+
 import pdfplumber
 from pdf2image import convert_from_bytes
 from app.services.ai.inference import LLMInference
@@ -10,6 +14,42 @@ from app.config import get_settings
 from logging import getLogger
 
 logger = getLogger(__name__)
+
+ResumeFormat = Literal["pdf", "docx"]
+_W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+
+def detect_resume_format(filename: str | None, file_bytes: bytes) -> ResumeFormat:
+    """Detect uploaded resume format from filename and magic bytes."""
+    name = (filename or "").lower()
+    if name.endswith(".docx"):
+        return "docx"
+    if name.endswith(".pdf") or file_bytes[:4].startswith(b"%PDF"):
+        return "pdf"
+    if file_bytes[:2] == b"PK":
+        try:
+            with zipfile.ZipFile(BytesIO(file_bytes)) as zf:
+                if "word/document.xml" in zf.namelist():
+                    return "docx"
+        except zipfile.BadZipFile:
+            pass
+    raise ValueError("Only PDF and DOCX files are supported")
+
+
+def extract_docx_text(docx_bytes: bytes) -> str:
+    """Extract plain text from a .docx file without external dependencies."""
+    with zipfile.ZipFile(BytesIO(docx_bytes)) as zf:
+        xml_content = zf.read("word/document.xml")
+    root = ElementTree.fromstring(xml_content)
+    parts: list[str] = []
+    for node in root.iter(f"{{{_W_NS}}}t"):
+        if node.text:
+            parts.append(node.text)
+        if node.tail:
+            parts.append(node.tail)
+    text = " ".join(parts)
+    text = " ".join(text.split())
+    return text.replace("\x00", "")
 
 
 class PDFExtractor:

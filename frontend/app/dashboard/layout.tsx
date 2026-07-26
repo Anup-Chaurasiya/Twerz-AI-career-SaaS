@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useSyncExternalStore, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/stores/authStore';
@@ -50,13 +50,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const notifsLoadedRef = useRef(false);
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(() => () => {}, () => true, () => false);
 
   const unreadCount = notifs.filter((n) => !n.is_read).length;
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const loadNotifs = () => {
     notificationsApi.list(false).then((res) => setNotifs(res.data.items || [])).catch(() => {});

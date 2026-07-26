@@ -19,7 +19,16 @@ export default function AdminCalibrationPage() {
     }).catch(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    adminApi.getCalibration().then(res => {
+      if (cancelled) return;
+      setRows(res.data.rows);
+      setMinSample(res.data.min_sample_size);
+      setLoading(false);
+    }).catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   const chartData = rows.map(r => ({
     name: `${r.fit_label} / ${r.ats_bucket}`,

@@ -37,7 +37,7 @@ export default function RoastDetailPage() {
       <div className="page-scroll" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
         <div className="spinner spinner-lg" style={{ marginBottom: 16, borderTopColor: 'var(--orange)' }} />
         <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--orange)', marginBottom: 8, fontFamily: 'JetBrains Mono' }}>ROASTING IN PROGRESS</div>
-        <p style={{ fontSize: 13, color: 'var(--text-secondary)', maxWidth: 400, textAlign: 'center', lineHeight: 1.6 }}>The AI is currently analyzing your resume's weaknesses. Prepare to be offended (constructively).</p>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', maxWidth: 400, textAlign: 'center', lineHeight: 1.6 }}>The AI is currently analyzing your resume&apos;s weaknesses. Prepare to be offended (constructively).</p>
       </div>
     );
   }
@@ -76,7 +76,7 @@ export default function RoastDetailPage() {
             {data.score}
             <span style={{ fontSize: 24, color: 'var(--text-dim)', letterSpacing: 0 }}>/100</span>
           </div>
-          <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 16 }}>"{data.headline}"</h1>
+          <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 16 }}>&ldquo;{data.headline}&rdquo;</h1>
           <p style={{ fontSize: 16, color: 'var(--text-secondary)', maxWidth: 600, margin: '0 auto', lineHeight: 1.6 }}>{data.verdict}</p>
         </div>
       </div>

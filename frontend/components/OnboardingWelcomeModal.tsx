@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { authApi } from '@/lib/api/endpoints';
 import { useAuthStore } from '@/lib/stores/authStore';
 
@@ -10,33 +10,25 @@ export function OnboardingWelcomeModal() {
   const user = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
   const [saving, setSaving] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [dismissed, setDismissed] = useState(
+    () => typeof window !== 'undefined' && sessionStorage.getItem(CACHE_KEY) === '1',
+  );
 
-  useEffect(() => {
-    if (!user) return;
-    if (user.onboarding_completed) {
-      setOpen(false);
-      return;
-    }
-    if (typeof window !== 'undefined' && sessionStorage.getItem(CACHE_KEY) === '1') {
-      setOpen(false);
-      return;
-    }
-    setOpen(true);
-  }, [user]);
+  const open = Boolean(user && !user.onboarding_completed && !dismissed);
 
-  if (!user || user.onboarding_completed || !open) return null;
+  if (!open) return null;
 
   const dismiss = async () => {
+    if (!user) return;
     setSaving(true);
     try {
       await authApi.completeOnboarding();
       setUser({ ...user, onboarding_completed: true });
       sessionStorage.setItem(CACHE_KEY, '1');
-      setOpen(false);
+      setDismissed(true);
     } catch {
       sessionStorage.setItem(CACHE_KEY, '1');
-      setOpen(false);
+      setDismissed(true);
     } finally {
       setSaving(false);
     }
