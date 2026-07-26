@@ -497,7 +497,7 @@ export default function GuestResumeUpload({ variant = 'section' }: GuestResumeUp
           <div className="guest-success-trust">
             <span>🔒 Encrypted</span>
             <span className="guest-success-trust-dot" />
-            <span>3 free/day</span>
+            <span>20 free/day</span>
             <span className="guest-success-trust-dot" />
             <span>No card</span>
           </div>
@@ -509,7 +509,7 @@ export default function GuestResumeUpload({ variant = 'section' }: GuestResumeUp
           <div className="guest-upload-trust">
             <span>🔒 Encrypted</span>
             <span className="guest-upload-trust-dot" />
-            <span>⚡ 3 free/day</span>
+            <span>⚡ 100 signup + 20 free/day</span>
             <span className="guest-upload-trust-dot" />
             <span>No card needed</span>
           </div>

@@ -66,7 +66,7 @@ compiled into an ATS-optimized PDF using LaTeX. THAT is where the downloadable P
 **Roast (separate page, via the sidebar):** A free feature where users can get their resume "roasted" — a
 comedic + serious analysis of their resume with an ATS readiness checklist. No PDF is generated here.
 
-**Credits:** Generating tailored resumes costs credits. Users get 3 free per day. Additional credit packs
+**Credits:** Generating tailored resumes costs 10 credits each. New users get 100 signup credits plus 20 free credits per day. Additional credit packs
 can be purchased. Roasts are free.
 
 ### Handling download/PDF questions

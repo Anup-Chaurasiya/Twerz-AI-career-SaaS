@@ -233,7 +233,10 @@ async def get_job(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.models.profile import Profile
+
     job = await service.get_job(db, job_id, current_user.id)
+    profile = await db.get(Profile, job.profile_id)
     return {
         "id": job.id,
         "profile_id": job.profile_id,
@@ -258,8 +261,16 @@ async def get_job(
         "ats_score_after": job.ats_score_after,
         "ats_score_detail": job.ats_score_detail,
         "bullet_diff": job.bullet_diff,
+        "template_id": job.template_id or "classic",
+        "docx_source": job.docx_source,
+        "pdf_source": job.pdf_source,
+        "output_mode": job.output_mode or "preserve_original",
+        "suggested_template_id": job.template_id or "classic",
+        "source_format": profile.source_format if profile else None,
+        "preservation_eligible": profile.preservation_eligible if profile else None,
+        "layout_signals": profile.layout_signals if profile else None,
         "resume_versions": [
-            {"version": v.get("version"), "label": v.get("label")}
+            {"version": v.get("version"), "label": v.get("label"), "template_id": v.get("template_id")}
             for v in (job.resume_versions or [])
         ],
         "cover_letter": job.cover_letter,
@@ -297,6 +308,34 @@ async def analyze_fit(
     }
 
 
+@router.patch("/{job_id}/output-mode", status_code=202)
+async def update_output_mode(
+    job_id: int,
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Toggle between preserved original layout and house LaTeX template."""
+    output_mode = payload.get("output_mode")
+    if output_mode not in ("preserve_original", "house_template"):
+        raise ValueError("output_mode must be preserve_original or house_template")
+
+    job = await service.update_output_mode(db, job_id, current_user.id, output_mode)
+
+    from app.database.session import async_session_factory
+
+    user_id = current_user.id
+
+    async def _recompile():
+        async with async_session_factory() as bg_db:
+            await service.generate_pdf(bg_db, job_id, user_id, recompile=True)
+
+    if job.custom_resume_data:
+        create_tracked_task(_recompile())
+
+    return {"job_id": job_id, "output_mode": job.output_mode, "status": "GENERATING_PDF"}
+
+
 @router.post("/{job_id}/fix-gaps", status_code=200)
 async def fix_gaps(
     job_id: int,
@@ -313,10 +352,36 @@ async def fix_gaps(
         "custom_resume_data": job.custom_resume_data,
         "status": job.status.value,
         "resume_versions": [
-            {"version": v.get("version"), "label": v.get("label")}
+            {"version": v.get("version"), "label": v.get("label"), "template_id": v.get("template_id")}
             for v in (job.resume_versions or [])
         ],
     }
+
+
+@router.patch("/{job_id}/template", status_code=202)
+async def update_template(
+    job_id: int,
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Switch resume template and recompile PDF for free (no credit charge)."""
+    template_id = payload.get("template_id")
+    if not template_id or not isinstance(template_id, str):
+        raise ValueError("template_id is required")
+
+    job = await service.update_template(db, job_id, current_user.id, template_id)
+
+    from app.database.session import async_session_factory
+
+    user_id = current_user.id
+
+    async def _recompile():
+        async with async_session_factory() as bg_db:
+            await service.generate_pdf(bg_db, job_id, user_id, recompile=True)
+
+    create_tracked_task(_recompile())
+    return {"job_id": job_id, "template_id": job.template_id, "status": "GENERATING_PDF"}
 
 
 @router.post("/{job_id}/restore-version", status_code=200)
@@ -330,10 +395,23 @@ async def restore_version(
     if not isinstance(version, int):
         raise ValueError("version must be an integer")
     job = await service.restore_version(db, job_id, current_user.id, version)
+
+    from app.database.session import async_session_factory
+
+    user_id = current_user.id
+
+    async def _recompile():
+        async with async_session_factory() as bg_db:
+            await service.generate_pdf(bg_db, job_id, user_id, recompile=True)
+
+    if job.custom_resume_data:
+        create_tracked_task(_recompile())
+
     return {
         "success": True,
         "custom_resume_data": job.custom_resume_data,
         "status": job.status.value,
+        "template_id": job.template_id,
     }
 
 
@@ -452,17 +530,30 @@ async def download_docx(
 ):
     from app.services.latex.docx_builder import build_docx_bytes
     from app.exceptions import NotFoundError
+    from pathlib import Path
 
     job = await service.get_job(db, job_id, current_user.id)
     if not job.custom_resume_data:
         raise NotFoundError("No tailored resume data available")
-    docx_bytes = build_docx_bytes(job.custom_resume_data)
+
+    docx_source = "generated"
+    if job.preserved_docx_path and Path(job.preserved_docx_path).exists():
+        docx_bytes = await asyncio.to_thread(Path(job.preserved_docx_path).read_bytes)
+        docx_source = "preserved"
+    else:
+        docx_bytes = build_docx_bytes(job.custom_resume_data)
+        if job.docx_source == "fallback":
+            docx_source = "fallback"
+
     jd = job.job_description or {}
     filename = f"Resume_{(jd.get('role') or 'tailored').replace(' ', '_')}.docx"
     return Response(
         content=docx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Docx-Source": docx_source,
+        },
     )
 
 
@@ -486,75 +577,40 @@ async def get_job_status(
 async def download_pdf(
     job_id: int,
     inline: bool = Query(False),
+    force_house: bool = Query(False, description="Force house LaTeX PDF instead of preserved layout"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Download a job's PDF resume.
-    
-    Priority order:
-    1. If PDF is in GCS → redirect to signed URL (1 hour expiry)
-    2. If PDF exists locally → stream it directly
-    3. If neither available → return 404 with recompile option
-    
-    Signed URLs are preferred for GCS-stored PDFs because:
-    - They survive Cloud Run container restarts
-    - They offload bandwidth from our servers
-    - They provide temporary secure access without auth
-    """
-    from app.services.storage.gcs import GCSClient
-    from fastapi.responses import RedirectResponse
+    """Download a job's PDF resume (preserved original layout or house LaTeX template)."""
     from app.exceptions import NotFoundError
-    
+
     job = await service.get_job(db, job_id, current_user.id)
-    
-    # Priority 1: Try GCS with signed URL (best for production)
-    if job.pdf_gcs_path and not job.gcs_upload_failed:
-        # Path should be relative like "resumes/user_id/job_id.pdf"
-        if not job.pdf_gcs_path.startswith("/"):
-            try:
-                gcs = GCSClient()
-                # Generate 1-hour signed URL
-                signed_url = await asyncio.to_thread(
-                    gcs.generate_signed_url, job.pdf_gcs_path, expiration_seconds=3600
-                )
-                logger.info(f"[job:{job_id}] Redirecting to signed GCS URL (expires in 1h)")
-                return RedirectResponse(url=signed_url)
-            except Exception as e:
-                logger.warning(f"[job:{job_id}] Failed to generate signed URL, falling back to local: {e}")
-    
-    # Priority 2: Try local file (fallback for dev or if GCS failed)
-    local_candidates = []
-    if job.pdf_gcs_path and job.pdf_gcs_path.startswith("/"):
-        local_candidates.append(Path(job.pdf_gcs_path))
-    # Also check known temp path
-    local_candidates.append(PDF_DIR / f"{current_user.id}_{job_id}.pdf")
-    
-    for local_path in local_candidates:
-        if await asyncio.to_thread(local_path.exists):
-            pdf_bytes = await asyncio.to_thread(local_path.read_bytes)
-            filename = _pdf_filename(job)
-            ascii_filename = filename.encode("ascii", "replace").decode("ascii")
-            encoded_filename = quote(filename)
-            disposition = "inline" if inline else "attachment"
-            logger.info(f"[job:{job_id}] Serving PDF from local file: {local_path}")
-            return Response(
-                content=pdf_bytes,
-                media_type="application/pdf",
-                headers={
-                    "Content-Disposition": (
-                        f'{disposition}; filename="{ascii_filename}"; '
-                        f"filename*=UTF-8''{encoded_filename}"
-                    )
-                },
-            )
-    
-    # Priority 3: PDF not available anywhere
-    # This can happen if Cloud Run container restarted and GCS upload failed
-    can_recompile = job.status.value in ("RESUME_GENERATED", "READY") and job.custom_resume_data
-    
-    raise NotFoundError(
-        "PDF not available. This can happen if our servers restarted. "
-        + ("You can recompile your PDF for free." if can_recompile else "Please regenerate your resume.")
+
+    try:
+        pdf_bytes, pdf_source = await service.get_pdf(
+            db, job_id, current_user.id, force_house=force_house
+        )
+    except ValueError:
+        can_recompile = job.status.value in ("RESUME_GENERATED", "READY") and job.custom_resume_data
+        raise NotFoundError(
+            "PDF not available. This can happen if our servers restarted. "
+            + ("You can recompile your PDF for free." if can_recompile else "Please regenerate your resume.")
+        )
+
+    filename = _pdf_filename(job)
+    ascii_filename = filename.encode("ascii", "replace").decode("ascii")
+    encoded_filename = quote(filename)
+    disposition = "inline" if inline else "attachment"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                f'{disposition}; filename="{ascii_filename}"; '
+                f"filename*=UTF-8''{encoded_filename}"
+            ),
+            "X-Pdf-Source": pdf_source,
+        },
     )
 
 
@@ -587,23 +643,18 @@ async def update_custom_resume(
         validated_data = CustomResumeInfo(**custom_resume_data)
     except ValidationError as e:
         raise BadRequestError(f"Invalid resume data: {e.errors()}")
-    
-    # Update the job
-    job.custom_resume_data = validated_data.model_dump()
-    
-    # PDF is now outdated, set status back to RESUME_GENERATED
-    if job.status == JobStatus.READY:
-        job.status = JobStatus.RESUME_GENERATED
-    
-    await db.commit()
-    await db.refresh(job)
-    
+
+    job = await service.update_custom_resume(
+        db, job_id, current_user.id, validated_data.model_dump()
+    )
+
     return {
         "success": True,
         "job": {
             "id": job.id,
             "status": job.status.value,
             "custom_resume_data": job.custom_resume_data,
+            "template_id": job.template_id,
             "updated_at": job.updated_at.isoformat(),
         }
     }

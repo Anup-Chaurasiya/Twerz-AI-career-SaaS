@@ -34,8 +34,10 @@ class Settings(BaseSettings):
     RAZORPAY_WEBHOOK_SECRET: str = ""
 
     # Credits
-    DAILY_FREE_CREDITS: int = 3
-    REFERRAL_BONUS_CREDITS: int = 2  # bonus credits granted to both accounts on first successful generation
+    RESUME_GENERATION_CREDIT_COST: int = 10
+    DAILY_FREE_CREDITS: int = 20
+    SIGNUP_BONUS_CREDITS: int = 100  # one-time grant on first OAuth signup
+    REFERRAL_BONUS_CREDITS: int = 20  # bonus credits granted to both accounts on first successful generation
     REFERRAL_VELOCITY_MAX: int = 5  # max referral bonus grants per referrer in velocity window
     REFERRAL_VELOCITY_WINDOW_HOURS: int = 1
 

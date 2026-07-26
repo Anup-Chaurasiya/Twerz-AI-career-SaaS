@@ -141,7 +141,7 @@ async def check_latex():
 OK
 \end{rSection}
 \end{document}
-""")
+""", template_id="classic")
         elapsed = (time.monotonic() - t0) * 1000
         passed = pdf[:5] == b"%PDF-"
         report("LaTeX compiler (pdflatex)", passed, f"{len(pdf)} bytes", elapsed)

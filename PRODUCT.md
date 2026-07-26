@@ -48,7 +48,7 @@ Google login
   → AI structures your profile (editable)
   → Paste job description (or capture via browser extension)
   → Optional: Analyze Fit (score + gaps)
-  → Generate tailored resume (uses 1 credit)
+  → Generate tailored resume (uses 10 credits)
   → Review Fit / ATS, edit, chat, cover letter, interview pack
   → Download PDF / DOCX
   → Track application status until offer
@@ -115,7 +115,7 @@ flowchart LR
 
 - Create job with company / role / job description
 - **Analyze fit** (free pre-check before spending a credit)
-- **Generate resume** (1 credit) via multi-pass tailor pipeline
+- **Generate resume** (10 credits) via multi-pass tailor pipeline
 - Fit Score, Fit Label, gap list, evidence checklist
 - ATS score **before → after**
 - Headline + professional summary on the PDF
@@ -151,13 +151,16 @@ flowchart LR
 
 ### Credits & payments
 
-- Daily free credits (configurable; default 3/day UTC)
-- Purchasable credit packs (Razorpay)
+- **100 signup credits** on first Google OAuth signup (configurable via `SIGNUP_BONUS_CREDITS`)
+- Daily free credit pool (configurable; default **20 credits/day** UTC — ~2 tailors)
+- **10 credits per tailored resume** (configurable via `RESUME_GENERATION_CREDIT_COST`)
+- Purchasable credit packs: Starter 500@₹279 · Sprint 1,200@₹599 · Job Hunt 2,500@₹949 (same features — credits only)
 - Unlimited **time passes** (stackable expiry)
 - Promo codes (credits or time pass)
-- Spend priority: active time pass → daily free → purchased balance → paywall (HTTP 429)
-- Refund if resume generation fails (except unlimited time-pass usage)
-- **Job Hunt Pro** subscription plan (monthly credits + tracker / interview / extension positioning)
+- Spend priority: active time pass → daily free pool → purchased balance → paywall (HTTP 429)
+- Split deduction when daily pool partially covers cost
+- Refund full cost if resume generation fails (except unlimited time-pass usage)
+- **Job Hunt Pro** subscription: 800 credits/month (~80 tailors) @ ₹299 + tracker / interview / extension
 
 ### Admin (super admins)
 

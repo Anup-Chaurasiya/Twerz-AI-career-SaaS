@@ -438,10 +438,12 @@ body{{background:#0a0f1e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height
     from app.api.extension import router as extension_router
     from app.api.analytics import router as analytics_router
     from app.api.public import router as public_router
+    from app.api.templates import router as templates_router
     app.include_router(account_router)
     app.include_router(extension_router)
     app.include_router(analytics_router)
     app.include_router(public_router)
+    app.include_router(templates_router)
 
 
     # Legacy landing URL → Next.js frontend

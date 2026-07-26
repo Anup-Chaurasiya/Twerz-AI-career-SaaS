@@ -140,11 +140,13 @@ async def public_profile_upload(
     ip = client_ip(request)
     await profile_service.enforce_guest_upload_limits(db, ip)
 
+    ext = detect_resume_format(file.filename, file_bytes)
     profile_id = await profile_service.create_guest_profile(
         db,
         file_bytes,
         guest_ip=ip,
         source_filename=file.filename,
+        file_ext=ext,
     )
     guest_token = create_guest_token(profile_id)
     extracted_text = await profile_service.extract_text_fast(
@@ -152,12 +154,12 @@ async def public_profile_upload(
     )
 
     settings = get_settings()
-    ext = detect_resume_format(file.filename, file_bytes)
+    gcs_path = f"uploads/guest/{profile_id}.{ext}"
     await _spawn_profile_processing(
         profile_id,
         file_bytes,
         extracted_text,
-        gcs_path=f"uploads/guest/{profile_id}.{ext}",
+        gcs_path=gcs_path,
     )
 
     return {

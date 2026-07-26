@@ -10,6 +10,9 @@ from app.schemas.job import JobDescription
 from app.services.job.tailor_pipeline import TailorPipeline, _append_version
 from app.services.latex.builder import build_resume
 from app.services.latex.compiler import compile_latex
+from app.services.latex.templates import DEFAULT_TEMPLATE_ID, get_template_spec
+from app.services.latex.docx_preserver import preserve_docx_format
+from app.services.latex.pdf_preserver import preserve_pdf_format
 from app.services.latex.sanitizer import sanitize_special_chars
 from app.services.storage.gcs import GCSClient
 from app.config import get_settings
@@ -20,6 +23,10 @@ logger = getLogger(__name__)
 # Local temp directory for PDFs before GCS upload
 PDF_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "pdfs"
 PDF_DIR.mkdir(parents=True, exist_ok=True)
+PRESERVED_PDF_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "pdfs" / "preserved"
+PRESERVED_PDF_DIR.mkdir(parents=True, exist_ok=True)
+DOCX_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "docx"
+DOCX_DIR.mkdir(parents=True, exist_ok=True)
 
 GCS_UPLOAD_RETRIES = 3
 GCS_UPLOAD_BACKOFF = 2.0  # seconds, exponential
@@ -204,11 +211,22 @@ class JobService:
         if profile.status != ProfileStatus.READY:
             raise ValueError(f"Profile {profile_id} is not ready (status: {profile.status})")
 
+        from app.services.ocr.layout_signals import suggest_template_id
+
+        template_id = suggest_template_id(
+            profile.layout_signals,
+            original_page_count=profile.original_page_count,
+        )
+
+        output_mode = "preserve_original" if profile.preservation_eligible else "house_template"
+
         job = Job(
             user_id=user_id,
             profile_id=profile_id,
             job_description=job_description.model_dump(),
             status=JobStatus.PENDING,
+            template_id=template_id,
+            output_mode=output_mode,
         )
         db.add(job)
         await db.commit()
@@ -260,6 +278,7 @@ class JobService:
                 user_id=user_id,
                 reference_id=str(job_id),
                 original_page_count=profile.original_page_count,
+                template_id=job.template_id or DEFAULT_TEMPLATE_ID,
             )
             ai_ms = int((time.monotonic() - t0) * 1000)
             logger.info(f"[job:{job_id}] Tailor pipeline: {ai_ms}ms {'(SLOW >60s)' if ai_ms > 60000 else ''}")
@@ -373,12 +392,13 @@ class JobService:
             t0 = time.monotonic()
             sanitized = sanitize_special_chars(job.custom_resume_data)
             resume_info = CustomResumeInfo.model_validate(sanitized)
-            latex_code = build_resume(resume_info)
-            logger.info(f"[job:{job_id}] LaTeX build: {int((time.monotonic() - t0) * 1000)}ms ({len(latex_code)} chars)")
+            template_id = job.template_id or DEFAULT_TEMPLATE_ID
+            latex_code = build_resume(resume_info, template_id=template_id)
+            logger.info(f"[job:{job_id}] LaTeX build ({template_id}): {int((time.monotonic() - t0) * 1000)}ms ({len(latex_code)} chars)")
 
             # Compile PDF
             t0 = time.monotonic()
-            pdf_bytes = await compile_latex(latex_code)
+            pdf_bytes = await compile_latex(latex_code, template_id=template_id)
             logger.info(f"[job:{job_id}] pdflatex compile: {int((time.monotonic() - t0) * 1000)}ms ({len(pdf_bytes)} bytes)")
 
             actual_pages = await asyncio.to_thread(_count_pdf_pages_sync, pdf_bytes)
@@ -389,6 +409,11 @@ class JobService:
                 if profile and profile.original_page_count:
                     target_pages = profile.original_page_count
                     job.target_page_count = target_pages
+
+            # Compact template always targets one page
+            if template_id == "compact_one_page":
+                target_pages = 1
+                job.target_page_count = 1
 
             if target_pages and actual_pages < target_pages:
                 logger.warning(
@@ -414,9 +439,9 @@ class JobService:
                     job.custom_resume_data = restored
                     sanitized = sanitize_special_chars(restored)
                     resume_info = CustomResumeInfo.model_validate(sanitized)
-                    latex_code = build_resume(resume_info)
+                    latex_code = build_resume(resume_info, template_id=template_id)
                     job.resume_latex_code = latex_code
-                    pdf_bytes = await compile_latex(latex_code)
+                    pdf_bytes = await compile_latex(latex_code, template_id=template_id)
                     actual_pages = await asyncio.to_thread(_count_pdf_pages_sync, pdf_bytes)
                     job.pdf_page_count = actual_pages
                     logger.info(
@@ -431,12 +456,41 @@ class JobService:
                         job_id,
                     )
             elif target_pages and actual_pages > target_pages:
-                logger.info(
-                    "[job:%s] PDF %s pages exceeds target %s — leaving as-is (no trim)",
-                    job_id,
-                    actual_pages,
-                    target_pages,
-                )
+                if template_id == "compact_one_page" and job.evidence_map and job.custom_resume_data:
+                    profile = await db.get(Profile, job.profile_id)
+                    if profile:
+                        restored = await self.pipeline.restore_resume_for_page_count(
+                            resume=job.custom_resume_data,
+                            profile_info=profile.resume_info or {},
+                            job_description=job.job_description or {},
+                            jd_analysis=job.jd_analysis or {},
+                            evidence_map=job.evidence_map,
+                            fit_label=job.fit_label or "STRONG",
+                            target_page_count=1,
+                            actual_page_count=actual_pages,
+                            user_id=user_id,
+                            reference_id=str(job_id),
+                        )
+                        job.custom_resume_data = restored
+                        sanitized = sanitize_special_chars(restored)
+                        resume_info = CustomResumeInfo.model_validate(sanitized)
+                        latex_code = build_resume(resume_info, template_id=template_id)
+                        job.resume_latex_code = latex_code
+                        pdf_bytes = await compile_latex(latex_code, template_id=template_id)
+                        actual_pages = await asyncio.to_thread(_count_pdf_pages_sync, pdf_bytes)
+                        job.pdf_page_count = actual_pages
+                        logger.info(
+                            "[job:%s] Compact template trimmed to %s pages (target 1)",
+                            job_id,
+                            actual_pages,
+                        )
+                else:
+                    logger.info(
+                        "[job:%s] PDF %s pages exceeds target %s — leaving as-is (no trim)",
+                        job_id,
+                        actual_pages,
+                        target_pages,
+                    )
 
             # Save locally first (immediate availability)
             t0 = time.monotonic()
@@ -459,7 +513,7 @@ class JobService:
                 )
                 # One automatic retry: rebuild LaTeX + recompile
                 try:
-                    pdf_bytes_retry = await compile_latex(latex_code)
+                    pdf_bytes_retry = await compile_latex(latex_code, template_id=template_id)
                     verified_retry = await asyncio.to_thread(
                         _verify_pdf_readable_sync, pdf_bytes_retry, job.custom_resume_data
                     )
@@ -483,6 +537,11 @@ class JobService:
                 f"[job:{job_id}] PDF readability: {'PASS' if verified else 'FAIL'} "
                 f"({int((time.monotonic() - t0) * 1000)}ms)"
             )
+
+            profile = await db.get(Profile, job.profile_id)
+            job.pdf_source = "house"
+            await self._try_preserve_docx(db, job, profile)
+            await self._try_preserve_pdf(db, job, profile)
 
             await db.commit()
             await _publish_job_progress(job_id, "READY", "PDF ready")
@@ -576,12 +635,20 @@ class JobService:
     async def get_job(self, db: AsyncSession, job_id: int, user_id: str, *, for_update: bool = False) -> Job:
         return await self._get_job(db, job_id, user_id, for_update=for_update)
 
-    async def get_pdf(self, db: AsyncSession, job_id: int, user_id: str) -> bytes:
-        """Download PDF: try GCS first, fall back to local file, then regenerate from LaTeX.
-
-        If regenerated, schedules a background GCS upload.
-        """
+    async def get_pdf(
+        self, db: AsyncSession, job_id: int, user_id: str, *, force_house: bool = False
+    ) -> tuple[bytes, str]:
+        """Download PDF bytes and source label (preserved | house)."""
         job = await self._get_job(db, job_id, user_id)
+
+        if (
+            not force_house
+            and job.output_mode == "preserve_original"
+            and job.preserved_pdf_path
+            and Path(job.preserved_pdf_path).exists()
+        ):
+            pdf_bytes = await asyncio.to_thread(Path(job.preserved_pdf_path).read_bytes)
+            return pdf_bytes, "preserved"
 
         if not job.pdf_gcs_path and not job.resume_latex_code:
             raise ValueError("PDF not yet generated for this job")
@@ -590,7 +657,7 @@ class JobService:
         if job.pdf_gcs_path and not job.pdf_gcs_path.startswith("/"):
             try:
                 gcs = GCSClient()
-                return await asyncio.to_thread(gcs.download_pdf, job.pdf_gcs_path)
+                return await asyncio.to_thread(gcs.download_pdf, job.pdf_gcs_path), "house"
             except Exception:
                 logger.warning(f"GCS download failed for job {job_id}, trying local/regenerate")
 
@@ -598,23 +665,130 @@ class JobService:
         local_candidates = []
         if job.pdf_gcs_path and job.pdf_gcs_path.startswith("/"):
             local_candidates.append(Path(job.pdf_gcs_path))
-        # Also check the known temp path (file may still exist if GCS upload just completed)
         local_candidates.append(PDF_DIR / f"{user_id}_{job_id}.pdf")
         for local_path in local_candidates:
             if await asyncio.to_thread(local_path.exists):
                 pdf_bytes = await asyncio.to_thread(local_path.read_bytes)
                 _spawn_gcs_upload(pdf_bytes, user_id, job_id)
-                return pdf_bytes
+                return pdf_bytes, "house"
 
         # 3. Regenerate from stored LaTeX
         if job.resume_latex_code:
             logger.info(f"Regenerating PDF from LaTeX for job {job_id}")
-            pdf_bytes = await compile_latex(job.resume_latex_code)
-            # Schedule background GCS upload
+            pdf_bytes = await compile_latex(
+                job.resume_latex_code, template_id=job.template_id or DEFAULT_TEMPLATE_ID
+            )
             _spawn_gcs_upload(pdf_bytes, user_id, job_id)
-            return pdf_bytes
+            return pdf_bytes, "house"
 
         raise ValueError("PDF not available — no GCS path, local file, or LaTeX code found")
+
+    async def _try_preserve_docx(
+        self, db: AsyncSession, job: Job, profile: Profile | None
+    ) -> None:
+        """Attempt DOCX format preservation for docx-original profiles."""
+        if not profile or profile.source_format != "docx":
+            job.docx_source = "generated"
+            return
+
+        docx_path = profile.original_docx_path
+        if not docx_path or not Path(docx_path).exists():
+            job.docx_source = "generated"
+            return
+
+        try:
+            original_bytes = await asyncio.to_thread(Path(docx_path).read_bytes)
+            preserved_bytes, status = await asyncio.to_thread(
+                preserve_docx_format,
+                original_bytes,
+                profile.resume_info or {},
+                job.custom_resume_data or {},
+                profile.docx_field_index,
+            )
+            if status == "preserved" and preserved_bytes:
+                out_path = DOCX_DIR / f"{job.user_id}_{job.id}.docx"
+                await asyncio.to_thread(out_path.write_bytes, preserved_bytes)
+                job.preserved_docx_path = str(out_path)
+                job.docx_source = "preserved"
+                logger.info("[job:%s] DOCX format preserved at %s", job.id, out_path)
+            else:
+                job.docx_source = "fallback"
+                job.preserved_docx_path = None
+                logger.info("[job:%s] DOCX preservation fallback — using house template", job.id)
+        except Exception:
+            logger.exception("[job:%s] DOCX preservation failed", job.id)
+            job.docx_source = "fallback"
+            job.preserved_docx_path = None
+
+    async def _try_preserve_pdf(
+        self, db: AsyncSession, job: Job, profile: Profile | None
+    ) -> None:
+        """Attempt PDF layout preservation for digital PDF-original profiles."""
+        if not profile or profile.source_format != "pdf":
+            return
+        if not profile.preservation_eligible:
+            job.pdf_source = job.pdf_source or "house"
+            return
+        if job.output_mode == "house_template":
+            job.pdf_source = "house"
+            job.preserved_pdf_path = None
+            return
+
+        pdf_path = profile.original_pdf_path
+        if not pdf_path or not Path(pdf_path).exists() or not profile.pdf_field_index:
+            job.pdf_source = job.pdf_source or "house"
+            return
+
+        try:
+            original_bytes = await asyncio.to_thread(Path(pdf_path).read_bytes)
+            preserved_bytes, status = await asyncio.to_thread(
+                preserve_pdf_format,
+                original_bytes,
+                profile.pdf_field_index,
+                job.custom_resume_data or {},
+            )
+            if status == "preserved" and preserved_bytes:
+                out_path = PRESERVED_PDF_DIR / f"{job.user_id}_{job.id}.pdf"
+                await asyncio.to_thread(out_path.write_bytes, preserved_bytes)
+                job.preserved_pdf_path = str(out_path)
+                job.pdf_source = "preserved"
+                logger.info("[job:%s] PDF layout preserved at %s", job.id, out_path)
+            else:
+                job.pdf_source = "fallback"
+                job.preserved_pdf_path = None
+                logger.info("[job:%s] PDF preservation fallback — using house template", job.id)
+        except Exception:
+            logger.exception("[job:%s] PDF preservation failed", job.id)
+            job.pdf_source = "fallback"
+            job.preserved_pdf_path = None
+
+    async def update_output_mode(
+        self, db: AsyncSession, job_id: int, user_id: str, output_mode: str
+    ) -> Job:
+        if output_mode not in ("preserve_original", "house_template"):
+            raise ValueError("output_mode must be preserve_original or house_template")
+        job = await self._get_job(db, job_id, user_id)
+        job.output_mode = output_mode
+        if job.status == JobStatus.READY:
+            job.status = JobStatus.RESUME_GENERATED
+        await db.commit()
+        await db.refresh(job)
+        return job
+
+    async def update_template(
+        self, db: AsyncSession, job_id: int, user_id: str, template_id: str
+    ) -> Job:
+        """Switch resume template (free recompile, no version snapshot)."""
+        get_template_spec(template_id)  # validates
+        job = await self._get_job(db, job_id, user_id)
+        if not job.custom_resume_data:
+            raise ValueError("No resume data — generate a tailored resume first")
+        job.template_id = template_id
+        if job.status == JobStatus.READY:
+            job.status = JobStatus.RESUME_GENERATED
+        await db.commit()
+        await db.refresh(job)
+        return job
 
     async def update_custom_resume(
         self, db: AsyncSession, job_id: int, user_id: str, custom_resume_data: dict
@@ -622,7 +796,10 @@ class JobService:
         job = await self._get_job(db, job_id, user_id)
         job.custom_resume_data = custom_resume_data
         job.resume_versions = _append_version(
-            job.resume_versions, custom_resume_data, "manual_edit"
+            job.resume_versions,
+            custom_resume_data,
+            "manual_edit",
+            template_id=job.template_id or DEFAULT_TEMPLATE_ID,
         )
         if job.status == JobStatus.READY:
             job.status = JobStatus.RESUME_GENERATED
@@ -648,7 +825,12 @@ class JobService:
             reference_id=str(job_id),
         )
         job.custom_resume_data = updated
-        job.resume_versions = _append_version(job.resume_versions, updated, "gap_fix")
+        job.resume_versions = _append_version(
+            job.resume_versions,
+            updated,
+            "gap_fix",
+            template_id=job.template_id or DEFAULT_TEMPLATE_ID,
+        )
         if job.status == JobStatus.READY:
             job.status = JobStatus.RESUME_GENERATED
         await db.commit()
@@ -664,8 +846,15 @@ class JobService:
         if not match:
             raise ValueError(f"Version {version} not found")
         data = match["data"]
+        restored_template = match.get("template_id") or job.template_id or DEFAULT_TEMPLATE_ID
         job.custom_resume_data = data
-        job.resume_versions = _append_version(versions, data, f"restore_v{version}")
+        job.template_id = restored_template
+        job.resume_versions = _append_version(
+            versions,
+            data,
+            f"restore_v{version}",
+            template_id=restored_template,
+        )
         if job.status == JobStatus.READY:
             job.status = JobStatus.RESUME_GENERATED
         await db.commit()

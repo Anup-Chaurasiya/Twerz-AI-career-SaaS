@@ -81,7 +81,7 @@ export const jobsApi = {
       { keywords }
     ),
   restoreVersion: (id: number, version: number) =>
-    client.post<{ success: boolean; custom_resume_data: ResumeInfo; status: string }>(
+    client.post<{ success: boolean; custom_resume_data: ResumeInfo; status: string; template_id?: string }>(
       `/jobs/${id}/restore-version`,
       { version }
     ),
@@ -100,8 +100,11 @@ export const jobsApi = {
   ) => client.patch(`/jobs/${id}/application`, payload),
   updateCustomResume: (id: number, customResumeData: ResumeInfo) =>
     client.put<{ success: boolean; job: Partial<Job> }>(`/jobs/${id}/custom-resume`, customResumeData),
-  downloadPdf: async (id: number): Promise<Blob> => {
-    const response = await client.get(`/jobs/${id}/pdf`, { responseType: 'blob' });
+  downloadPdf: async (id: number, forceHouse = false): Promise<Blob> => {
+    const response = await client.get(`/jobs/${id}/pdf`, {
+      responseType: 'blob',
+      params: forceHouse ? { force_house: true } : undefined,
+    });
     return response.data;
   },
   downloadDocx: async (id: number): Promise<Blob> => {
@@ -126,6 +129,18 @@ export const jobsApi = {
   }),
   updateContacts: (id: number, contacts: Array<{ name: string; role?: string; relationship?: string; email?: string; linkedin?: string }>) =>
     client.put<{ known_contacts: unknown; job_id: number }>(`/jobs/${id}/contacts`, contacts),
+  updateTemplate: (id: number, templateId: string) =>
+    client.patch<{ job_id: number; template_id: string; status: string }>(`/jobs/${id}/template`, {
+      template_id: templateId,
+    }),
+  updateOutputMode: (id: number, outputMode: 'preserve_original' | 'house_template') =>
+    client.patch<{ job_id: number; output_mode: string; status: string }>(`/jobs/${id}/output-mode`, {
+      output_mode: outputMode,
+    }),
+};
+
+export const templatesApi = {
+  listResume: () => client.get<import('@/types').ResumeTemplate[]>('/templates/resume'),
 };
 
 export const roastsApi = {

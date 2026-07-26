@@ -47,6 +47,43 @@ def edit_resume(operations: list[dict], tool_context: ToolContext) -> dict:
         return {"status": "error", "message": str(e)}
 
 
+def set_template(
+    template_id: str,
+    tool_context: ToolContext,
+    confirm_ats_tradeoff: bool = False,
+) -> dict:
+    """Switch resume layout template. Free — no credits.
+
+    Valid template_id values: classic, modern_two_col, compact_one_page.
+    For modern_two_col, set confirm_ats_tradeoff=true after explaining the ATS tradeoff.
+    """
+    from app.services.latex.templates import get_template_spec
+
+    try:
+        spec = get_template_spec(template_id)
+    except ValueError as exc:
+        return {"status": "error", "message": str(exc)}
+
+    if spec.ats_tier == "tradeoff" and not confirm_ats_tradeoff:
+        return {
+            "status": "needs_ack",
+            "template_id": template_id,
+            "message": (
+                f"{spec.label} may score lower on blind ATS scans. "
+                "Ask the user to confirm they understand the tradeoff, then call again with "
+                "confirm_ats_tradeoff=true."
+            ),
+            "ats_warning": spec.ats_warning,
+        }
+
+    tool_context.state["pending_template_id"] = template_id
+    return {
+        "status": "success",
+        "template_id": template_id,
+        "message": f"Template switch to {spec.label} queued — PDF will recompile.",
+    }
+
+
 # ── System prompt template ──────────────────────────────────────────────
 
 CHAT_SYSTEM_PROMPT = """You are a resume editing assistant. The user has a tailored resume for a specific job.
@@ -54,13 +91,20 @@ Help them refine it through conversation.
 
 ## How This Works
 You edit **structured JSON data** (CustomResumeInfo), not the PDF directly. After each edit, the system
-automatically compiles the updated data into a PDF using a fixed LaTeX template. There is only ONE resume
-format — you cannot change the layout, fonts, margins, or section ordering. You can only change the content
-within each field.
+automatically compiles the updated data into a PDF using the user's selected LaTeX template. You can also
+switch templates with set_template — free, no credits.
 
-## PDF Layout (fixed template — cannot be modified)
-The compiled PDF uses a single-column, ATS-friendly format with tight margins (0.4in sides, 0.3in top/bottom).
-Sections appear in this fixed order (empty sections are automatically omitted):
+## Available templates
+- **classic** — Classic ATS: single-column, maximum ATS parseability (default).
+- **compact_one_page** — Compact One-Page: dense layout that fits more on one sheet.
+- **modern_two_col** — Modern Two-Column: sidebar layout; may score lower on blind ATS scans. Requires
+  confirm_ats_tradeoff=true after user acknowledges the tradeoff.
+
+Template switching and PDF recompilation are free and do not cost credits.
+
+## PDF Layout (selected template)
+The compiled PDF uses one of the house templates above. Sections appear in a fixed order per template
+(empty sections are automatically omitted):
 
 1. **Header**: Name centered, then contact info (phone, email, DOB) and links (as clickable hyperlinks)
 2. **Experience**: Each entry has company name, date range, role title, then bullet points
@@ -80,6 +124,9 @@ to bold in the PDF. No other markdown is supported.
 - edit_resume: Apply changes using JSON Patch (RFC 6902) operations.
   Supported ops: "replace", "add", "remove"
   Example: [{{"op": "replace", "path": "/past_experience/0/description/0", "value": "New bullet text"}}]
+- set_template: Switch layout template (classic, compact_one_page, modern_two_col). Free recompile.
+  For modern_two_col, explain the ATS tradeoff first, get user confirmation, then call with
+  confirm_ats_tradeoff=true.
 
 ## Resume Structure (CustomResumeInfo)
 - /name, /email, /mobile_number, /date_of_birth — personal info
@@ -109,8 +156,8 @@ resume as markdown/text in chat. Do NOT fabricate buttons or UI elements that do
 - If the request is ambiguous, ask for clarification before editing.
 - If an edit fails, explain the error and suggest alternatives.
 - **Keep responses concise** unless the user explicitly asks for a detailed explanation or analysis. Get to the point.
-- If the user asks to change the format, layout, fonts, or template: explain that there is one
-  fixed ATS-optimized format and you can only modify content, not presentation.
+- If the user asks to change the format, layout, fonts, or template: use set_template (free). For modern_two_col,
+  explain the ATS tradeoff and require explicit confirmation before confirm_ats_tradeoff=true.
 - If the user asks to rearrange or reorder sections: explain that the section order (Experience → Projects →
   Skills → Education → Achievements → Certifications) is already optimized for maximum ATS compatibility.
   Most ATS parsers expect Experience and Skills near the top. This ordering is based on how recruiters and
@@ -206,7 +253,7 @@ class ChatService:
             model=self.flash_model,
             name="resume_editor",
             instruction=system_prompt,
-            tools=[get_resume, edit_resume],
+            tools=[get_resume, edit_resume, set_template],
             after_model_callback=_after_model_callback,
         )
 
@@ -246,6 +293,7 @@ class ChatService:
 
         response_text = ""
         resume_modified = False
+        pending_template_id: str | None = None
         t0 = time.monotonic()
 
         async for event in run_agent_with_retry(
@@ -257,6 +305,8 @@ class ChatService:
             if event.actions and event.actions.state_delta:
                 if "resume" in event.actions.state_delta:
                     resume_modified = True
+                if "pending_template_id" in event.actions.state_delta:
+                    pending_template_id = event.actions.state_delta["pending_template_id"]
             if event.is_final_response() and event.content:
                 for part in event.content.parts:
                     if part.text:
@@ -270,16 +320,20 @@ class ChatService:
             app_name=APP_NAME, user_id=user_id, session_id=session_id,
         )
         updated_resume = updated_session.state.get("resume") if updated_session else None
+        if updated_session and not pending_template_id:
+            pending_template_id = updated_session.state.get("pending_template_id")
 
         return {
             "response": response_text,
             "resume_modified": resume_modified,
             "custom_resume_data": updated_resume,
+            "pending_template_id": pending_template_id,
         }
 
     _TOOL_LABELS = {
         "get_resume": "Reading resume...",
         "edit_resume": "Editing resume...",
+        "set_template": "Switching template...",
     }
 
     async def chat_stream(
@@ -318,6 +372,7 @@ class ChatService:
 
         response_text = ""
         resume_modified = False
+        pending_template_id: str | None = None
         t0 = time.monotonic()
 
         async for event in run_agent_with_retry(
@@ -336,6 +391,8 @@ class ChatService:
             if event.actions and event.actions.state_delta:
                 if "resume" in event.actions.state_delta:
                     resume_modified = True
+                if "pending_template_id" in event.actions.state_delta:
+                    pending_template_id = event.actions.state_delta["pending_template_id"]
 
             if event.is_final_response() and event.content:
                 for part in event.content.parts:
@@ -349,12 +406,15 @@ class ChatService:
             app_name=APP_NAME, user_id=user_id, session_id=session_id,
         )
         updated_resume = updated_session.state.get("resume") if updated_session else None
+        if updated_session and not pending_template_id:
+            pending_template_id = updated_session.state.get("pending_template_id")
 
         yield {
             "type": "response",
             "response": response_text,
             "resume_modified": resume_modified,
             "custom_resume_data": updated_resume,
+            "pending_template_id": pending_template_id,
         }
 
     async def get_history(self, job_id: int, user_id: str) -> list[dict]:
@@ -384,3 +444,11 @@ class ChatService:
                             "timestamp": event.timestamp,
                         })
         return messages
+
+    async def clear_pending_template(self, job_id: int, user_id: str) -> None:
+        session_id = f"job_chat_{job_id}"
+        session = await self.session_service.get_session(
+            app_name=APP_NAME, user_id=user_id, session_id=session_id,
+        )
+        if session and session.state.get("pending_template_id"):
+            session.state.pop("pending_template_id", None)

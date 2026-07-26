@@ -77,6 +77,14 @@ async def test_get_balance(client, user_credit):
 
 
 @pytest.mark.asyncio
+async def test_get_balance_includes_generation_cost(client, user_credit):
+    resp = await client.get("/credits/me")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data.get("resume_generation_cost") == 10
+
+
+@pytest.mark.asyncio
 async def test_get_history_empty(client, user_credit):
     resp = await client.get("/credits/history")
     assert resp.status_code == 200

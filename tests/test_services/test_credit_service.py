@@ -1,14 +1,26 @@
 import pytest
-from datetime import date, datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta
 from unittest.mock import patch
 from app.models.credit import (
     UserCredit, TimePassTier, PromoCode, CreditTransaction,
     TransactionType, PromoType,
 )
-from app.services.credit.service import CreditService
+from app.services.credit.service import CreditService, _parse_consumption_split
 from app.exceptions import UsageLimitExceeded
 
 service = CreditService()
+
+
+def _mock_settings(**overrides):
+    defaults = {
+        "RESUME_GENERATION_CREDIT_COST": 10,
+        "DAILY_FREE_CREDITS": 20,
+        "REFERRAL_BONUS_CREDITS": 20,
+        "SIGNUP_BONUS_CREDITS": 100,
+    }
+    defaults.update(overrides)
+    mock = patch("app.services.credit.service.get_settings")
+    return mock, type("S", (), defaults)()
 
 
 @pytest.mark.asyncio
@@ -29,25 +41,46 @@ async def test_ensure_user_credit_idempotent(db_session, test_user):
 @pytest.mark.asyncio
 async def test_check_and_deduct_daily_free(db_session, test_user):
     await service.ensure_user_credit(db_session, test_user.id)
-    with patch("app.services.credit.service.get_settings") as mock_settings:
-        mock_settings.return_value.DAILY_FREE_CREDITS = 3
+    mock, settings = _mock_settings()
+    with mock as m:
+        m.return_value = settings
         source = await service.check_and_deduct(db_session, test_user.id, 1)
     assert source == "daily_free"
+    uc = await service.ensure_user_credit(db_session, test_user.id)
+    assert uc.daily_free_used == 10
 
 
 @pytest.mark.asyncio
 async def test_check_and_deduct_purchased(db_session, test_user):
     uc = await service.ensure_user_credit(db_session, test_user.id)
-    uc.daily_free_used = 3  # Exhaust free
-    uc.balance = 5
+    uc.daily_free_used = 20
+    uc.balance = 50
     await db_session.commit()
 
-    with patch("app.services.credit.service.get_settings") as mock_settings:
-        mock_settings.return_value.DAILY_FREE_CREDITS = 3
+    mock, settings = _mock_settings()
+    with mock as m:
+        m.return_value = settings
         source = await service.check_and_deduct(db_session, test_user.id, 2)
     assert source == "purchased"
     await db_session.refresh(uc)
-    assert uc.balance == 4
+    assert uc.balance == 40
+
+
+@pytest.mark.asyncio
+async def test_check_and_deduct_mixed_split(db_session, test_user):
+    uc = await service.ensure_user_credit(db_session, test_user.id)
+    uc.daily_free_used = 15  # 5 daily remaining
+    uc.balance = 50
+    await db_session.commit()
+
+    mock, settings = _mock_settings()
+    with mock as m:
+        m.return_value = settings
+        source = await service.check_and_deduct(db_session, test_user.id, 3)
+    assert source == "mixed"
+    await db_session.refresh(uc)
+    assert uc.daily_free_used == 20
+    assert uc.balance == 45
 
 
 @pytest.mark.asyncio
@@ -60,8 +93,9 @@ async def test_check_and_deduct_time_pass(db_session, test_user):
 
     await service.activate_time_pass(db_session, test_user.id, tier.id)
 
-    with patch("app.services.credit.service.get_settings") as mock_settings:
-        mock_settings.return_value.DAILY_FREE_CREDITS = 3
+    mock, settings = _mock_settings()
+    with mock as m:
+        m.return_value = settings
         source = await service.check_and_deduct(db_session, test_user.id, 3)
     assert source == "time_pass"
 
@@ -69,12 +103,13 @@ async def test_check_and_deduct_time_pass(db_session, test_user):
 @pytest.mark.asyncio
 async def test_check_and_deduct_raises_when_exhausted(db_session, test_user):
     uc = await service.ensure_user_credit(db_session, test_user.id)
-    uc.daily_free_used = 3
-    uc.balance = 0
+    uc.daily_free_used = 20
+    uc.balance = 5
     await db_session.commit()
 
-    with patch("app.services.credit.service.get_settings") as mock_settings:
-        mock_settings.return_value.DAILY_FREE_CREDITS = 3
+    mock, settings = _mock_settings()
+    with mock as m:
+        m.return_value = settings
         with pytest.raises(UsageLimitExceeded):
             await service.check_and_deduct(db_session, test_user.id, 4)
 
@@ -90,14 +125,50 @@ async def test_add_credits(db_session, test_user):
 
 
 @pytest.mark.asyncio
-async def test_refund_credit(db_session, test_user):
+async def test_refund_credit_purchased(db_session, test_user):
     uc = await service.ensure_user_credit(db_session, test_user.id)
-    uc.balance = 5
+    uc.daily_free_used = 20
+    uc.balance = 50
     await db_session.commit()
 
-    await service.refund_credit(db_session, test_user.id, 99)
+    mock, settings = _mock_settings()
+    with mock as m:
+        m.return_value = settings
+        await service.check_and_deduct(db_session, test_user.id, 99)
     await db_session.refresh(uc)
-    assert uc.balance == 6
+    assert uc.balance == 40
+
+    await service.refund_credit(db_session, test_user.id, 99, "purchased")
+    await db_session.refresh(uc)
+    assert uc.balance == 50
+
+
+@pytest.mark.asyncio
+async def test_refund_credit_mixed(db_session, test_user):
+    uc = await service.ensure_user_credit(db_session, test_user.id)
+    uc.daily_free_used = 15
+    uc.balance = 50
+    await db_session.commit()
+
+    mock, settings = _mock_settings()
+    with mock as m:
+        m.return_value = settings
+        await service.check_and_deduct(db_session, test_user.id, 7)
+    await db_session.refresh(uc)
+    assert uc.daily_free_used == 20
+    assert uc.balance == 45
+
+    await service.refund_credit(db_session, test_user.id, 7, "mixed")
+    await db_session.refresh(uc)
+    assert uc.daily_free_used == 15
+    assert uc.balance == 50
+
+
+@pytest.mark.asyncio
+async def test_parse_consumption_split():
+    desc = "Resume generation (daily free: 5 + purchased: 5)"
+    assert _parse_consumption_split(desc) == (5, 5)
+    assert _parse_consumption_split("Resume generation (daily free)") is None
 
 
 @pytest.mark.asyncio
@@ -111,17 +182,15 @@ async def test_time_pass_stacking(db_session, test_user):
     utp1 = await service.activate_time_pass(db_session, test_user.id, tier.id)
     utp2 = await service.activate_time_pass(db_session, test_user.id, tier.id)
 
-    # Second pass should start at first pass's expiry
     assert utp2.starts_at >= utp1.expires_at - timedelta(seconds=1)
     assert utp2.expires_at > utp1.expires_at
 
 
 @pytest.mark.asyncio
 async def test_daily_reset(db_session, test_user):
-    from datetime import timezone
     utc_today = datetime.now(timezone.utc).date()
     uc = await service.ensure_user_credit(db_session, test_user.id)
-    uc.daily_free_used = 3
+    uc.daily_free_used = 18
     uc.daily_free_reset_date = utc_today - timedelta(days=1)
     await db_session.commit()
 
@@ -167,13 +236,51 @@ async def test_redeem_promo_inactive_fails(db_session, test_user):
 @pytest.mark.asyncio
 async def test_get_balance(db_session, test_user):
     await service.ensure_user_credit(db_session, test_user.id)
-    with patch("app.services.credit.service.get_settings") as mock_settings:
-        mock_settings.return_value.DAILY_FREE_CREDITS = 3
+    mock, settings = _mock_settings()
+    with mock as m:
+        m.return_value = settings
         balance = await service.get_balance(db_session, test_user.id)
     assert balance["balance"] == 0
-    assert balance["daily_free_remaining"] == 3
-    assert balance["daily_free_total"] == 3
+    assert balance["daily_free_remaining"] == 20
+    assert balance["daily_free_total"] == 20
+    assert balance["resume_generation_cost"] == 10
     assert balance["has_unlimited"] is False
+
+
+@pytest.mark.asyncio
+async def test_has_credits_available(db_session, test_user):
+    uc = await service.ensure_user_credit(db_session, test_user.id)
+    uc.daily_free_used = 20
+    uc.balance = 9
+    await db_session.commit()
+
+    mock, settings = _mock_settings()
+    with mock as m:
+        m.return_value = settings
+        assert not await service.has_credits_available(db_session, test_user.id)
+
+    uc.balance = 10
+    await db_session.commit()
+    with mock as m:
+        m.return_value = settings
+        assert await service.has_credits_available(db_session, test_user.id)
+
+
+@pytest.mark.asyncio
+async def test_signup_bonus_grant(db_session, test_user):
+    """Mirrors OAuth signup welcome bonus via add_credits."""
+    await service.ensure_user_credit(db_session, test_user.id)
+    mock, settings = _mock_settings(SIGNUP_BONUS_CREDITS=100)
+    with mock as m:
+        m.return_value = settings
+        uc = await service.add_credits(
+            db_session,
+            test_user.id,
+            settings.SIGNUP_BONUS_CREDITS,
+            TransactionType.ADMIN_GRANT,
+            description="Welcome bonus — first signup",
+        )
+    assert uc.balance == 100
 
 
 @pytest.mark.asyncio

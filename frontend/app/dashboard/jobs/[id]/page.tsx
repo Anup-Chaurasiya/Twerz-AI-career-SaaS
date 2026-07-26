@@ -10,6 +10,7 @@ import { MarkdownInline } from '@/components/MarkdownInline';
 import { useProgressSSE, ProgressEvent } from '@/lib/hooks/useProgressSSE';
 import { useCreditStore } from '@/lib/stores/creditStore';
 import JobDetailTabs from '@/components/JobDetailTabs';
+import TemplatePicker from '@/components/TemplatePicker';
 import ChatMessageBubble from '@/components/ChatMessageBubble';
 import ChatComposer, { ChatComposerHandle } from '@/components/ChatComposer';
 
@@ -82,6 +83,7 @@ export default function JobDetailPage() {
   const chatAllowed = job?.status === 'READY' || job?.status === 'RESUME_GENERATED';
   const fetchBalance = useCreditStore((s) => s.fetchBalance);
   const hasPro = !!useCreditStore((s) => s.balance?.subscription?.active || s.balance?.has_unlimited);
+  const resumeCost = useCreditStore((s) => s.balance?.resume_generation_cost ?? 10);
   const isLowFit = job?.fit_label === 'STRETCH' || job?.fit_label === 'MISMATCH';
   const awaitingGenerate =
     (job?.status === 'PENDING' || job?.status === 'FAILED') &&
@@ -114,6 +116,10 @@ export default function JobDetailPage() {
       }
     } catch {}
   }, [jobId]);
+
+  useEffect(() => {
+    fetchBalance();
+  }, [fetchBalance]);
 
   useEffect(() => {
     return () => {
@@ -297,11 +303,11 @@ export default function JobDetailPage() {
       cancelled = true;
       if (objectUrl) window.URL.revokeObjectURL(objectUrl);
     };
-  }, [job?.status, jobId, needsRecompile]);
+  }, [job?.status, jobId, needsRecompile, job?.template_id]);
 
-  const handleDownload = async () => {
+  const handleDownload = async (forceHouse = false) => {
     try {
-      const blob = await jobsApi.downloadPdf(jobId);
+      const blob = await jobsApi.downloadPdf(jobId, forceHouse);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -552,26 +558,50 @@ export default function JobDetailPage() {
               <span className="editor-company-name">{job.job_description.company}</span>
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <button className="btn-secondary" onClick={async () => {
-              try {
-                const blob = await jobsApi.downloadDocx(jobId);
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `Resume_${job?.job_description.company.replace(/\s+/g, '_')}.docx`;
-                a.click();
-                window.URL.revokeObjectURL(url);
-              } catch (err: any) {
-                setNotice({ type: 'error', message: err.response?.data?.detail || 'DOCX download failed' });
-              }
-            }} disabled={!job.custom_resume_data} style={{ padding: '10px 16px', fontSize: 12 }}>
-              DOCX
-            </button>
-            <button className="btn-primary" onClick={handleDownload} disabled={job.status !== 'READY'} style={{ padding: '10px 20px', fontSize: 12 }}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            {job.docx_source === 'preserved' && (
+              <button className="btn-primary" onClick={async () => {
+                try {
+                  const blob = await jobsApi.downloadDocx(jobId);
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `Resume_${job?.job_description.company.replace(/\s+/g, '_')}.docx`;
+                  a.click();
+                  window.URL.revokeObjectURL(url);
+                } catch (err: any) {
+                  setNotice({ type: 'error', message: err.response?.data?.detail || 'DOCX download failed' });
+                }
+              }} disabled={!job.custom_resume_data} style={{ padding: '10px 16px', fontSize: 12 }}>
+                Download — your Word layout
+              </button>
+            )}
+            {job.pdf_source === 'preserved' && job.output_mode === 'preserve_original' && (
+              <button className="btn-primary" onClick={() => handleDownload(false)} disabled={job.status !== 'READY'} style={{ padding: '10px 16px', fontSize: 12 }}>
+                Download — your PDF layout
+              </button>
+            )}
+            <button className="btn-primary" onClick={() => handleDownload(true)} disabled={job.status !== 'READY'} style={{ padding: '10px 20px', fontSize: 12 }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Download PDF
+              {job.pdf_source === 'preserved' ? 'Download — house ATS PDF' : 'Download PDF'}
             </button>
+            {job.docx_source !== 'preserved' && (
+              <button className="btn-secondary" onClick={async () => {
+                try {
+                  const blob = await jobsApi.downloadDocx(jobId);
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `Resume_${job?.job_description.company.replace(/\s+/g, '_')}.docx`;
+                  a.click();
+                  window.URL.revokeObjectURL(url);
+                } catch (err: any) {
+                  setNotice({ type: 'error', message: err.response?.data?.detail || 'DOCX download failed' });
+                }
+              }} disabled={!job.custom_resume_data} style={{ padding: '10px 16px', fontSize: 12 }}>
+                Download DOCX export
+              </button>
+            )}
           </div>
         </div>
 
@@ -710,8 +740,8 @@ export default function JobDetailPage() {
               }}>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: 420 }}>
                   {isLowFit
-                    ? 'This role is a stretch or mismatch. Generate a transferable resume anyway (1 credit), or skip with no charge.'
-                    : 'Fit looks strong. Generate a tailored resume for 1 credit.'}
+                    ? `This role is a stretch or mismatch. Generate a transferable resume anyway (${resumeCost} credits), or skip with no charge.`
+                    : `Fit looks strong. Generate a tailored resume for ${resumeCost} credits.`}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {isLowFit ? (
@@ -722,7 +752,7 @@ export default function JobDetailPage() {
                         disabled={generatingResume}
                         onClick={() => startGenerate(true)}
                       >
-                        Generate anyway (1 credit)
+                        Generate anyway ({resumeCost} credits)
                       </button>
                       <Link
                         href="/dashboard/jobs"
@@ -739,7 +769,7 @@ export default function JobDetailPage() {
                       disabled={generatingResume}
                       onClick={() => startGenerate(false)}
                     >
-                      Generate resume (1 credit)
+                      Generate resume ({resumeCost} credits)
                     </button>
                   )}
                 </div>
@@ -916,7 +946,7 @@ export default function JobDetailPage() {
                 )}
                 {!hasPro && (
                   <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 12, lineHeight: 1.5 }}>
-                    Iterate faster with Job Hunt Pro — 40 credits/mo.{' '}
+                    Iterate faster with Job Hunt Pro — 800 credits/mo (~80 tailors).{' '}
                     <Link href="/dashboard/credits" style={{ color: 'var(--teal)' }}>View plans</Link>
                   </p>
                 )}
@@ -945,7 +975,7 @@ export default function JobDetailPage() {
                   </p>
                   {!hasPro && (
                     <p style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 12, lineHeight: 1.5 }}>
-                      Iterate faster with Job Hunt Pro — 40 credits/mo.{' '}
+                      Iterate faster with Job Hunt Pro — 800 credits/mo (~80 tailors).{' '}
                       <Link href="/dashboard/credits" style={{ color: 'var(--teal)' }}>View plans</Link>
                     </p>
                   )}
@@ -1057,9 +1087,14 @@ export default function JobDetailPage() {
                     if (!v) return;
                     try {
                       const res = await jobsApi.restoreVersion(jobId, v);
-                      setJob(prev => prev ? { ...prev, custom_resume_data: res.data.custom_resume_data, status: res.data.status as Job['status'] } : prev);
+                      setJob(prev => prev ? {
+                        ...prev,
+                        custom_resume_data: res.data.custom_resume_data,
+                        status: res.data.status as Job['status'],
+                        template_id: res.data.template_id || prev.template_id,
+                      } : prev);
                       setNeedsRecompile(true);
-                      setNotice({ type: 'warning', message: `Restored version ${v}. Recompile PDF.` });
+                      setNotice({ type: 'warning', message: `Restored version ${v}. Recompiling PDF…` });
                     } catch (err: any) {
                       setNotice({ type: 'error', message: err.response?.data?.detail || 'Restore failed' });
                     }
@@ -1068,7 +1103,9 @@ export default function JobDetailPage() {
                 >
                   <option value="">Restore version…</option>
                   {(job.resume_versions || []).map(v => (
-                    <option key={v.version} value={v.version}>v{v.version} — {v.label}</option>
+                    <option key={v.version} value={v.version}>
+                      v{v.version} — {v.label}{v.template_id ? ` (${v.template_id})` : ''}
+                    </option>
                   ))}
                 </select>
               )}
@@ -1179,6 +1216,86 @@ export default function JobDetailPage() {
 
         {job.status === 'READY' || job.status === 'RESUME_GENERATED' ? (
           <>
+            <TemplatePicker
+              jobId={jobId}
+              currentTemplateId={job.template_id || 'classic'}
+              jobStatus={job.status}
+              onTemplateChanged={(templateId) => {
+                setJob((prev) => (prev ? { ...prev, template_id: templateId, status: 'GENERATING_PDF' } : prev));
+                setNeedsRecompile(true);
+                setPdfPreviewUrl(null);
+              }}
+              onRecompileStarted={() => {
+                setIsProcessing(true);
+                setProgressMessages(['Switching template and recompiling PDF…']);
+              }}
+            />
+
+            {job.layout_signals && (
+              <div className="widget-card" style={{ marginBottom: 16, padding: 12, fontSize: 12, borderColor: 'rgba(1,169,219,0.25)' }}>
+                Closest match to your original layout — you can change anytime.
+              </div>
+            )}
+
+            {job.source_format === 'pdf' && job.preservation_eligible && (
+              <div className="widget-card" style={{ marginBottom: 16, padding: 12, fontSize: 12, color: 'var(--text-secondary)' }}>
+                We&apos;re applying tailored content to your original layout — closest match, not a pixel-perfect clone.
+                Longer bullets may trigger fallback to our Classic template.
+              </div>
+            )}
+
+            {job.source_format === 'pdf' && job.preservation_eligible === false && (
+              <div className="widget-card card-warning" style={{ marginBottom: 16, padding: 12, fontSize: 12 }}>
+                Your upload was scanned or image-based — we use our house templates instead of in-place PDF editing.
+              </div>
+            )}
+
+            {job.pdf_source === 'preserved' && (
+              <div style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>PDF output:</span>
+                <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="output_mode"
+                    checked={job.output_mode !== 'house_template'}
+                    onChange={async () => {
+                      try {
+                        await jobsApi.updateOutputMode(jobId, 'preserve_original');
+                        setJob(prev => prev ? { ...prev, output_mode: 'preserve_original', status: 'GENERATING_PDF' } : prev);
+                        setIsProcessing(true);
+                      } catch (err: any) {
+                        setNotice({ type: 'error', message: err.response?.data?.detail || 'Failed to switch output mode' });
+                      }
+                    }}
+                  />
+                  Use my original layout
+                </label>
+                <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="output_mode"
+                    checked={job.output_mode === 'house_template'}
+                    onChange={async () => {
+                      try {
+                        await jobsApi.updateOutputMode(jobId, 'house_template');
+                        setJob(prev => prev ? { ...prev, output_mode: 'house_template', status: 'GENERATING_PDF' } : prev);
+                        setIsProcessing(true);
+                      } catch (err: any) {
+                        setNotice({ type: 'error', message: err.response?.data?.detail || 'Failed to switch output mode' });
+                      }
+                    }}
+                  />
+                  Use house template
+                </label>
+              </div>
+            )}
+
+            {job.docx_source === 'fallback' && (
+              <div className="widget-card card-warning" style={{ marginBottom: 16, padding: 12, fontSize: 12 }}>
+                We couldn&apos;t safely preserve your original Word layout — your DOCX download uses our Classic house template instead.
+              </div>
+            )}
+
             <div className="widget-card pdf-preview-shell">
               <div className="pdf-preview-toolbar">
                 <span className="pdf-preview-toolbar-label">Resume Preview</span>

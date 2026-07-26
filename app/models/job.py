@@ -61,6 +61,14 @@ class Job(TimestampMixin, Base):
     pdf_verified_readable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     target_page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     pdf_page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    template_id: Mapped[str] = mapped_column(String(32), default="classic", server_default="classic", nullable=False)
+    preserved_docx_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    docx_source: Mapped[str | None] = mapped_column(String(16), nullable=True)  # preserved | generated | fallback
+    preserved_pdf_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pdf_source: Mapped[str | None] = mapped_column(String(16), nullable=True)  # preserved | house | fallback
+    output_mode: Mapped[str] = mapped_column(
+        String(24), default="preserve_original", server_default="preserve_original", nullable=False
+    )
 
     # Application tracker (Phase 2)
     application_status: Mapped[ApplicationStatus] = mapped_column(

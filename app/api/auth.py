@@ -7,7 +7,8 @@ from app.database.session import get_db
 from app.config import get_settings
 from app.models.user import User
 from app.models.tenant import Tenant, TenantDomainRule
-from app.models.credit import UserCredit
+from app.models.credit import UserCredit, TransactionType
+from app.services.credit.service import CreditService
 from app.services.auth import google_oauth
 from app.services.auth.google_oauth import OAUTH_CSRF_COOKIE
 from app.services.auth.referral import ensure_user_referral_code, generate_unique_referral_code
@@ -22,6 +23,7 @@ logger = getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 profile_service = ProfileService()
+credit_service = CreditService()
 
 
 def _get_redirect_uri() -> str:
@@ -45,6 +47,23 @@ async def _resolve_referrer_id(db: AsyncSession, ref: str | None) -> str | None:
 
 
 from app.utils.client_ip import client_ip as _client_ip
+
+
+def _guest_claim_error_code(exc: Exception) -> str:
+    """Map claim failures to stable codes for the login page."""
+    if isinstance(exc, ConflictError):
+        return "already_claimed"
+    if isinstance(exc, AuthenticationError):
+        msg = str(exc)
+        if msg == "guest_token_expired":
+            return "expired"
+        return "invalid"
+    if isinstance(exc, ProfileNotFoundError):
+        msg = str(exc).lower()
+        if "expired" in msg:
+            return "expired"
+        return "invalid"
+    return "invalid"
 
 
 @router.get("/google/login")
@@ -144,6 +163,18 @@ async def google_callback(
             daily_free_reset_date=datetime.now(timezone.utc).date(),
         )
         db.add(user_credit)
+        await db.flush()
+
+        signup_bonus = get_settings().SIGNUP_BONUS_CREDITS
+        if signup_bonus > 0:
+            await credit_service.add_credits(
+                db,
+                user.id,
+                signup_bonus,
+                TransactionType.ADMIN_GRANT,
+                description="Welcome bonus — first signup",
+            )
+
         await db.commit()
 
         logger.info(
@@ -173,6 +204,7 @@ async def google_callback(
 
     guest_token = (state_data.get("guest") or "").strip()
     claimed_profile_id: int | None = None
+    claim_error: str | None = None
     if guest_token:
         try:
             profile_id = verify_guest_token(guest_token)
@@ -180,6 +212,7 @@ async def google_callback(
             claimed_profile_id = claimed.id
             logger.info("Guest profile %s claimed by user %s during OAuth", profile_id, user.id)
         except (ProfileNotFoundError, ConflictError, AuthenticationError) as e:
+            claim_error = _guest_claim_error_code(e)
             logger.warning("Guest profile claim during OAuth failed for user %s: %s", user.id, e)
 
     settings = get_settings()
@@ -187,6 +220,8 @@ async def google_callback(
     redirect_url = f"{frontend_url}/login#token={jwt_token}"
     if claimed_profile_id is not None:
         redirect_url += f"&claimed_profile={claimed_profile_id}"
+    elif claim_error:
+        redirect_url += f"&claim_error={claim_error}"
     redirect = RedirectResponse(url=redirect_url)
     redirect.delete_cookie(OAUTH_CSRF_COOKIE, path="/")
     return redirect

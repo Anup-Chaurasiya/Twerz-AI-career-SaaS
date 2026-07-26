@@ -36,7 +36,7 @@ export default function ReferralsPage() {
 
   const shareOnTwitter = () => {
     const text = encodeURIComponent(
-      '🎯 Just tried ATS Beater - AI-powered resume tailoring that actually works! Get 2 bonus credits when you sign up with my link:'
+      '🎯 Just tried ATS Beater - AI-powered resume tailoring that actually works! Get 20 bonus credits when you sign up with my link:'
     );
     window.open(
       `https://twitter.com/intent/tweet?text=${text}&url=${encodeURIComponent(referralUrl)}`,
@@ -54,7 +54,7 @@ export default function ReferralsPage() {
   const steps = [
     'Share your unique referral link with friends',
     'They sign up using your link',
-    'After their first successful resume generation, you both get 2 credits!',
+    'After their first successful resume generation, you both get 20 credits!',
   ];
 
   const faqs = [
@@ -64,7 +64,7 @@ export default function ReferralsPage() {
     },
     {
       q: 'Is there a limit to referrals?',
-      a: 'No! You can refer unlimited friends and earn 2 credits for each successful referral.',
+      a: 'No! You can refer unlimited friends and earn 20 credits for each successful referral.',
     },
     {
       q: "What if my friend doesn't use my link?",
@@ -78,7 +78,7 @@ export default function ReferralsPage() {
         <div className="section-label">Growth</div>
         <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Refer Friends, Earn Credits</h1>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          Share ATS Beater with friends and both of you get 2 bonus credits.
+          Share ATS Beater with friends and both of you get 20 bonus credits.
         </p>
       </div>
 

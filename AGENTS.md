@@ -64,11 +64,19 @@ Phase 1 and Phase 2 are separate API calls. User can review/edit `CustomResumeIn
 
 ## Credit System
 
-**Business model**: Daily free quota + purchasable credit packs + unlimited time passes.
+**Business model**: Signup bonus + daily free credit pool + purchasable credit packs + unlimited time passes + Job Hunt Pro subscription.
+
+### Credit economics (configurable via `.env`)
+- **Signup bonus**: 100 credits on first OAuth signup (`SIGNUP_BONUS_CREDITS`)
+- **Daily free pool**: 20 credits/day (`DAILY_FREE_CREDITS`) — resets midnight UTC
+- **Per tailor**: 10 credits (`RESUME_GENERATION_CREDIT_COST`) — one tailored resume + cover letter
+- **Referral bonus**: 20 credits to both parties after first successful generation (`REFERRAL_BONUS_CREDITS`)
+- **Paid packs**: Starter 500@₹279 · Sprint 1,200@₹599 · Job Hunt 2,500@₹949 (credits only — same features)
+- **Job Hunt Pro**: 800 credits/mo @ ₹299 — tracker, interview packets, extension
 
 ### Consumption Priority
-1. **Active time pass** → unlimited (no deduction)
-2. **Daily free** → 3/day (configurable via `DAILY_FREE_CREDITS`), resets at midnight UTC
+1. **Active time pass** → unlimited (no balance deduction)
+2. **Daily free pool** → up to remaining daily credits (may split with purchased)
 3. **Purchased credits** → from balance
 4. **No credits** → 429 error, frontend shows paywall modal
 
@@ -273,7 +281,7 @@ Environment variables are documented in `.env.example`.
   - Unique `referral_code` generated on signup (8-char URL-safe token)
   - OAuth callback accepts `?ref=CODE` query param to track referrer
   - `grant_referral_bonus_if_eligible()` triggered after first successful generation
-  - Bonus credits (configurable via `REFERRAL_BONUS_CREDITS=2`) granted to both accounts
+  - Bonus credits (configurable via `REFERRAL_BONUS_CREDITS=20`) granted to both accounts
   - Idempotent via `referral_bonus_granted` flag
 - **Public ATS Check**: `POST /public/ats-check` — no-auth PDF structure check
   - 8-point ATS parseability checklist (reuses ROAST_SYSTEM_PROMPT Part 2)

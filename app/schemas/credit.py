@@ -146,6 +146,7 @@ class CreditBalanceResponse(BaseModel):
     balance: int
     daily_free_remaining: int
     daily_free_total: int
+    resume_generation_cost: int = 10
     active_time_pass: Optional[ActiveTimePassInfo] = None
     has_unlimited: bool
 

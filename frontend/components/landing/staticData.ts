@@ -5,9 +5,9 @@ export const LANDING_FAQS = [
   { q: 'How does the referral program work?', a: 'Share your unique referral link. When a friend signs up and completes their first resume tailor, both of you receive bonus credits automatically.' },
   { q: 'What is Twerz?', a: 'Twerz builds AI-powered career tools designed for honest, evidence-grounded job applications — starting with resume tailoring on resume.twerz.' },
   { q: 'Is my resume data safe?', a: 'Yes. Your resume data is encrypted and stored securely. We never share your data with third parties. You can delete your data at any time. Twerz is built with DPDP Act compliance for India.' },
-  { q: 'How many free credits do I get?', a: 'You get 3 free resume tailors every day. They reset at midnight UTC, and no credit card is needed to start.' },
+  { q: 'How many free credits do I get?', a: 'You get 100 credits when you sign up, plus 20 free credits every day (about 2 tailored resumes). Daily credits reset at midnight UTC — no credit card needed.' },
   { q: 'What file formats are supported?', a: 'Upload your base resume as a PDF or DOCX file. Tailored output is always a clean, professionally formatted PDF or DOCX.' },
-  { q: 'How many applications can I make with 1 credit?', a: 'Each credit gives you one tailored resume + cover letter for one job. Outreach messages, interview prep, and PDF recompiles after edits are included.' },
+  { q: 'How much does one tailored resume cost?', a: 'Each tailored resume + cover letter costs 10 credits. Outreach messages, interview prep, and PDF recompiles after edits are included.' },
   { q: 'What features are included in Twerz?', a: 'Everything from PDF/DOCX upload and honest fit scoring to LaTeX PDF + DOCX export, AI chat editing, cover letters, interview prep, warm/cold outreach, LinkedIn optimization, application tracker, personal analytics, resume roast, Chrome extension, referral bonuses, time passes, promo codes, and DPDP-compliant data export or delete.' },
 ];
 
@@ -24,7 +24,7 @@ export const UPLOAD_HIGHLIGHTS = [
   { title: 'Personal Analytics', desc: 'Conversion rates vs platform benchmarks', accent: '#6366f1', icon: '📊' },
   { title: 'Resume Roast', desc: 'Honest ATS review + shareable link', accent: '#fb7185', icon: '🔥' },
   { title: 'Referral Bonuses', desc: 'Share link — both get credits on first tailor', accent: '#ff5a1f', icon: '🎁' },
-  { title: '3 Free / Day', desc: 'No credit card needed to start', accent: '#10b981', icon: '⚡' },
+  { title: 'Free Credits', desc: '100 on signup + 20 daily', accent: '#10b981', icon: '⚡' },
   { title: 'Encrypted · DPDP', desc: 'India privacy standards built in', accent: '#64748b', icon: '🔒' },
 ];
 
@@ -67,10 +67,4 @@ export const TRUST_ITEMS = [
   { title: 'DPDP Compliant', desc: 'Built for India privacy standards', icon: '🇮🇳' },
 ];
 
-export const PRICING_PLANS = [
-  { name: 'DAY PASS', price: '₹49', per: '10 credits', credits: '≈ 10 applications', features: ['10 AI resume tailorings', 'Outreach + cover letter', 'PDF + DOCX download', 'Chat editing'], featured: false, bestFor: 'Trying it for the first time', accent: '#38bdf8' },
-  { name: 'SPRINT', price: '₹99', per: '30 credits', credits: '≈ 30 applications', features: ['30 AI resume tailorings', 'Unlimited roasts', 'Interview prep + outreach', 'Priority processing', 'All languages'], featured: true, badge: 'Most Popular', bestFor: 'Active job hunting (2–3 weeks)', accent: '#ff5a1f' },
-  { name: 'JOB HUNT', price: '₹199', per: '75 credits', credits: '≈ 75 applications', features: ['75 AI resume tailorings', 'Unlimited roasts', 'Full apply toolkit', 'Referral bonus credits', 'Priority AI'], featured: false, bestFor: 'Intensive search campaigns', accent: '#34d399' },
-];
-
-export { PLATFORM_CATEGORIES } from '@/lib/marketing/content';
+export { PRICING_PLANS, JOB_HUNT_PRO_PLAN, CREDITS_PER_TAILOR, PRICING_FOOTNOTE, CREDIT_PACK_CORE_FEATURES, PLATFORM_CATEGORIES } from '@/lib/marketing/content';

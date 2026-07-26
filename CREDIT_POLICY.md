@@ -10,11 +10,13 @@ This document defines which features cost credits and which are free. The core p
 
 | Feature | Cost | Rationale |
 |---------|------|-----------|
-| **Resume Generation** | 1 credit | Core value prop - expensive LLM calls, LaTeX compilation |
+| **Signup bonus** | **100 credits** (one-time) | Onboarding runway — ~10 tailors before first purchase |
+| **Daily free pool** | **20 credits/day** | ~2 tailors/day; resets midnight UTC |
+| **Resume Generation** | **10 credits** | Core value prop — expensive LLM calls, LaTeX compilation |
 | **PDF Recompilation** | FREE | Encourages iteration after chat/manual edits |
 | **Profile Enhancement** | FREE (3/day limit) | Onboarding friction reducer |
-| **Outreach Messages** | **FREE** | ⚠️ **DECISION NEEDED** |
-| **LinkedIn Optimize** | **FREE** | ⚠️ **DECISION NEEDED** |
+| **Outreach Messages** | **FREE** | Drives application success → testimonials |
+| **LinkedIn Optimize** | **FREE** | Retention play |
 | **Cover Letter** | FREE | Bundled with resume (uses same evidence_map) |
 | **Interview Packet** | Pro/Pass only | Premium feature gate |
 | **Fit Analysis** | FREE | Pre-purchase preview (conversion tool) |
@@ -22,84 +24,41 @@ This document defines which features cost credits and which are free. The core p
 
 ---
 
-## Options for Outreach & LinkedIn Optimize
+## Paid packs (DB-managed)
 
-### **Option A: Keep Free (Status Quo)**
-**Pros:**
-- Reduces friction for users who already paid for resume
-- Encourages full platform adoption (sticky users)
-- Outreach messages increase *real* job success → better testimonials → organic growth
+| Pack | Credits | Price | ~Tailors |
+|------|---------|-------|----------|
+| Starter | 500 | ₹279 | 50 |
+| Sprint | 1,200 | ₹599 | 120 |
+| Job Hunt | 2,500 | ₹949 | 250 |
 
-**Cons:**
-- Users could extract value (LinkedIn profile, outreach templates) without ever buying resume credits
-- No recurring revenue from users who only want networking help
+Credit packs add **credits only** — same platform features for all packs. Interview packets & Chrome extension require **Job Hunt Pro**.
 
-**Recommendation:** Keep free **if** you want to optimize for user success and testimonials over pure revenue extraction.
+Job Hunt Pro subscription: 800 credits/month (~80 tailors) @ ₹299 (includes tracker, interview packets, extension).
 
 ---
 
-### **Option B: Gate Behind Credits**
-**Cost Structure:**
-- Outreach message: 0.5 credits (cheaper than resume, one-off use)
-- LinkedIn optimize: 1 credit (comparable value to resume generation)
+## Consumption & refund rules
 
-**Pros:**
-- Prevents "free value extraction" (get LinkedIn profile without paying for core product)
-- Recurring revenue from users who iterate on outreach
-
-**Cons:**
-- Friction for users who already spent credits on resume
-- LinkedIn optimization becomes a separate purchase decision (conversion drop)
-
-**Recommendation:** Only do this **if** you see abuse (users signing up just for LinkedIn optimization without ever generating resumes).
+1. **Priority**: time pass (unlimited) → daily free pool → purchased balance
+2. **Split deduction**: if daily pool has partial credits (e.g. 8 left, cost 10), uses daily first then purchased
+3. **Refund**: full cost restored to correct bucket(s) if Phase 1 generation fails
+4. **Time pass**: audit-only on refund (unlimited)
 
 ---
 
-### **Option C: Hybrid - First Free, Then Paid**
-- First outreach message per job: FREE
-- Additional outreach messages: 0.5 credits each
-- First LinkedIn optimize per profile: FREE
-- Re-optimization with different JD: 1 credit
+## Recommended Decision: Keep outreach & LinkedIn free (Option A)
 
-**Pros:**
-- Best of both worlds: try before you buy, but prevents unlimited free usage
-- Aligns with "help users succeed" positioning
-
-**Cons:**
-- Complexity in UI ("you have 0 free LinkedIn optimizations left")
-- Requires additional tracking fields
-
----
-
-## **Recommended Decision: Option A (Keep Free)**
-
-### Why?
-1. **These features drive resume success**, which is what generates testimonials and referrals
-2. **Outreach templates** are low-cost to generate (single LLM call, no LaTeX) compared to full resume pipeline
-3. **LinkedIn optimization** is a retention play - users who optimize LinkedIn are more engaged and likely to generate more resumes
-4. **Abuse risk is low** - if someone wants a LinkedIn profile, there are free tools already. They're here for the resume.
-
-### Monitor for Abuse
-Add analytics to track:
-- Users who use LinkedIn optimize but never generate resumes
-- Users who generate >10 outreach messages without any resume generations
-
-If abuse is detected (>5% of users extracting value without core product purchase), revisit with Option C.
+Outreach and LinkedIn optimize remain free — they drive resume success and referrals.
 
 ---
 
 ## Implementation Status
 
-✅ Resume generation - credit gated  
-✅ Profile enhancement - rate limited (3/day), no credits  
-✅ Public ATS check - rate limited (30/min per IP), no credits  
-⚠️ **Outreach messages - currently free, no gate**  
-⚠️ **LinkedIn optimize - currently free, no gate**  
-
----
-
-## Action Required
-
-**Decision needed:** Approve Option A (keep free) or implement Option B/C gates before production launch.
-
-If keeping free (Option A), document this as intentional product strategy in PRODUCT.md.
+✅ Resume generation — 10 credits per tailor  
+✅ Signup bonus — 100 credits on first OAuth signup  
+✅ Daily free — 20 credit pool/day  
+✅ Profile enhancement — rate limited (3/day), no credits  
+✅ Public ATS check — rate limited (30/min per IP), no credits  
+✅ Outreach messages — free  
+✅ LinkedIn optimize — free  

@@ -613,13 +613,16 @@ def _inject_pii(resume: dict, profile_info: dict) -> dict:
     return resume
 
 
-def _append_version(versions: list | None, resume: dict, label: str) -> list:
+def _append_version(
+    versions: list | None, resume: dict, label: str, *, template_id: str = "classic"
+) -> list:
     versions = list(versions or [])
     versions.append(
         {
             "version": len(versions) + 1,
             "label": label,
             "data": resume,
+            "template_id": template_id,
         }
     )
     return versions
@@ -641,6 +644,7 @@ class TailorPipeline:
         user_id: str | None = None,
         reference_id: str | None = None,
         original_page_count: int | None = None,
+        template_id: str = "classic",
     ) -> dict[str, Any]:
         """Full Phase-1 pipeline. Returns dict of fields to persist on Job."""
         normalized_profile = normalize_profile_for_tailor(profile_info)
@@ -897,7 +901,7 @@ class TailorPipeline:
                 )
 
         resume = _inject_pii(resume, profile_info)
-        versions = _append_version([], resume, "initial")
+        versions = _append_version([], resume, "initial", template_id=template_id)
         bullet_diff = build_bullet_diff(profile_info, resume, evidence_map)
         gap_roadmap = await self.build_gap_roadmap(
             jd_analysis, evidence_map, fit, user_id=user_id, reference_id=reference_id

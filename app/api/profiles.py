@@ -9,6 +9,7 @@ from app.models.user import User
 from app.dependencies import get_current_user
 from app.services.profile.service import ProfileService
 from app.services.storage.gcs import GCSClient
+from app.services.ocr.extractor import detect_resume_format
 from app.schemas.profile import UpsertPayload
 
 logger = getLogger(__name__)
@@ -24,8 +25,13 @@ async def upload_profile(
     current_user: User = Depends(get_current_user),
 ):
     pdf_bytes = await file.read()
+    file_ext = detect_resume_format(file.filename, pdf_bytes)
     profile_id = await service.create_profile(
-        db, current_user.id, pdf_bytes, source_filename=file.filename
+        db,
+        current_user.id,
+        pdf_bytes,
+        source_filename=file.filename,
+        file_ext=file_ext,
     )
 
     # Fast-path: extract text immediately (pdfplumber/docx is near-instant)
@@ -45,7 +51,7 @@ async def upload_profile(
     async def _store_pdf():
         try:
             gcs = GCSClient()
-            gcs_path = f"uploads/profiles/{current_user.id}/{profile_id}.pdf"
+            gcs_path = f"uploads/profiles/{current_user.id}/{profile_id}.{file_ext}"
             await asyncio.to_thread(gcs.upload_pdf, pdf_bytes, gcs_path)
         except FileNotFoundError:
             logger.debug("Skipping GCS upload for profile %s (credentials not configured)", profile_id)

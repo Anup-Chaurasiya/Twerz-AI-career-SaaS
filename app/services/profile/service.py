@@ -1,9 +1,10 @@
 import asyncio
 import json
 import time
+from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from app.models.profile import Profile, ProfileStatus
+from app.models.profile import Profile, ProfileStatus, UploadSource
 from app.schemas.resume import ResumeInfo
 from app.services.ocr.extractor import PDFExtractor, detect_resume_format, extract_docx_text
 from app.services.ai.inference import LLMInference
@@ -23,6 +24,11 @@ from app.services.auth.jwt_handler import verify_guest_token
 from logging import getLogger
 
 logger = getLogger(__name__)
+
+DOCX_DIR = Path(__file__).resolve().parent.parent / "data" / "docx"
+DOCX_DIR.mkdir(parents=True, exist_ok=True)
+PDF_ORIGINALS_DIR = Path(__file__).resolve().parent.parent / "data" / "pdfs" / "originals"
+PDF_ORIGINALS_DIR.mkdir(parents=True, exist_ok=True)
 
 # OCR text longer than this with empty experience → sparse parse warning
 _SPARSE_OCR_MIN_CHARS = 200
@@ -93,15 +99,25 @@ class ProfileService:
         self.flash_model = settings.LLM_FLASH_MODEL
 
     async def create_profile(
-        self, db: AsyncSession, user_id: str, pdf_bytes: bytes, *, source_filename: str | None = None
+        self,
+        db: AsyncSession,
+        user_id: str,
+        pdf_bytes: bytes,
+        *,
+        source_filename: str | None = None,
+        file_ext: str | None = None,
     ) -> int:
         """Create profile row (PENDING), then extract and structure in background."""
         profile = Profile(
             user_id=user_id,
             status=ProfileStatus.PENDING,
             source_filename=(source_filename or None),
+            upload_source=UploadSource.AUTHENTICATED,
         )
         db.add(profile)
+        await db.flush()
+        if file_ext:
+            profile.upload_gcs_path = f"uploads/profiles/{user_id}/{profile.id}.{file_ext}"
         await db.commit()
         await db.refresh(profile)
         return profile.id
@@ -113,6 +129,7 @@ class ProfileService:
         *,
         guest_ip: str | None = None,
         source_filename: str | None = None,
+        file_ext: str | None = None,
     ) -> int:
         from datetime import datetime, timezone, timedelta
 
@@ -124,8 +141,12 @@ class ProfileService:
             source_filename=(source_filename or None),
             guest_expires_at=expires_at,
             guest_ip=(guest_ip or None),
+            upload_source=UploadSource.GUEST,
         )
         db.add(profile)
+        await db.flush()
+        if file_ext:
+            profile.upload_gcs_path = f"uploads/guest/{profile.id}.{file_ext}"
         await db.commit()
         await db.refresh(profile)
         return profile.id
@@ -296,6 +317,24 @@ class ProfileService:
             logger.info(f"[profile:{profile_id}] Processing started (pdf_size={len(pdf_bytes)} bytes, pre_extracted={bool(extracted_text.strip())})")
 
             resume_format = detect_resume_format(profile.source_filename, pdf_bytes)
+            profile.source_format = resume_format
+
+            if resume_format == "docx":
+                docx_path = DOCX_DIR / f"{profile_id}.docx"
+                await asyncio.to_thread(docx_path.write_bytes, pdf_bytes)
+                profile.original_docx_path = str(docx_path)
+                profile.original_pdf_path = None
+                profile.pdf_field_index = None
+                profile.preservation_eligible = True
+                profile.layout_signals = None
+            else:
+                profile.original_docx_path = None
+                profile.docx_field_index = None
+                from app.services.ocr.layout_signals import extract_pdf_layout_signals
+
+                profile.layout_signals = await asyncio.to_thread(
+                    extract_pdf_layout_signals, pdf_bytes
+                )
 
             # Use pre-extracted text if available; capture page count for PDFs only
             t0 = time.monotonic()
@@ -326,6 +365,16 @@ class ProfileService:
             needs_vision = resume_format == "pdf" and (
                 len(text.strip()) < 50 or self.extractor._has_high_non_ascii_ratio(text)
             )
+            if needs_vision:
+                profile.layout_signals = None
+                profile.original_pdf_path = None
+                profile.pdf_field_index = None
+                profile.preservation_eligible = False
+            elif resume_format == "pdf":
+                pdf_path = PDF_ORIGINALS_DIR / f"{profile_id}.pdf"
+                await asyncio.to_thread(pdf_path.write_bytes, pdf_bytes)
+                profile.original_pdf_path = str(pdf_path)
+                profile.preservation_eligible = True
 
             t0 = time.monotonic()
             if needs_vision:
@@ -359,6 +408,23 @@ class ProfileService:
 
             profile.resume_info = data
             profile.original_page_count = page_count
+
+            # Build format-preservation indexes after structuring
+            if resume_format == "docx" and profile.original_docx_path:
+                from app.services.latex.docx_field_index import build_docx_field_index
+
+                docx_bytes = await asyncio.to_thread(Path(profile.original_docx_path).read_bytes)
+                profile.docx_field_index = await asyncio.to_thread(
+                    build_docx_field_index, docx_bytes, data
+                )
+            elif resume_format == "pdf" and profile.preservation_eligible and profile.original_pdf_path:
+                from app.services.ocr.pdf_span_index import build_pdf_field_index
+
+                pdf_bytes_stored = await asyncio.to_thread(Path(profile.original_pdf_path).read_bytes)
+                profile.pdf_field_index = await asyncio.to_thread(
+                    build_pdf_field_index, pdf_bytes_stored, data
+                )
+
             profile.status = ProfileStatus.READY
             await db.commit()
             logger.info(f"[profile:{profile_id}] DB save: {int((time.monotonic() - t0) * 1000)}ms")

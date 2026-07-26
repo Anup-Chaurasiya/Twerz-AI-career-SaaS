@@ -11,6 +11,7 @@ function SubscriptionPlans() {
   const [sub, setSub] = useState<any>(null);
   const [processingId, setProcessingId] = useState<number | null>(null);
   const { balance, fetchBalance } = useCreditStore();
+  const tailorCost = balance?.resume_generation_cost ?? 10;
   const isDev = process.env.NODE_ENV === 'development';
 
   useEffect(() => {
@@ -90,7 +91,7 @@ function SubscriptionPlans() {
             <div style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--teal)', marginBottom: 8 }}>{p.name}</div>
             <div style={{ fontSize: 28, fontWeight: 800 }}>{formatCurrency(p.price_paise)}<span style={{ fontSize: 12, color: 'var(--text-dim)' }}>/mo</span></div>
             <ul style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '12px 0 16px', paddingLeft: 18, lineHeight: 1.6 }}>
-              <li>{p.monthly_credits} credits / month</li>
+              <li>{p.monthly_credits} credits / month · ≈ {Math.floor(p.monthly_credits / tailorCost)} tailored resumes</li>
               {p.includes_tracker && <li>Application tracker</li>}
               {p.includes_interview_packets && <li>Interview packets</li>}
               {p.includes_extension && <li>Browser extension capture</li>}
@@ -131,6 +132,8 @@ function SubscriptionPlans() {
 
 export default function CreditsPage() {
   const { balance, fetchBalance } = useCreditStore();
+  const tailorCost = balance?.resume_generation_cost ?? 10;
+  const tailorsFromCredits = (credits: number) => Math.floor(credits / tailorCost);
   const [packs, setPacks] = useState<CreditPack[]>([]);
   const [passes, setPasses] = useState<TimePassTier[]>([]);
   const [history, setHistory] = useState<CreditTransaction[]>([]);
@@ -203,7 +206,9 @@ export default function CreditsPage() {
     <div className="page-scroll">
       <div className="fade-slide-in" style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Credits & Billing</h1>
-        <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Manage your balance and purchase more credits to generate tailored resumes.</p>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          Manage your balance and purchase credits. Each tailored resume costs {balance?.resume_generation_cost ?? 10} credits.
+        </p>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24, marginBottom: 32 }}>
@@ -250,7 +255,9 @@ export default function CreditsPage() {
             <div key={p.id} className="widget-card" style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{ fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>{p.name}</div>
               <div style={{ fontSize: 32, fontWeight: 800, marginBottom: 4 }}>{formatCurrency(p.price_paise)}</div>
-              <div style={{ fontSize: 14, color: 'var(--teal)', fontWeight: 600, marginBottom: 24 }}>{p.credits} Credits</div>
+              <div style={{ fontSize: 14, color: 'var(--teal)', fontWeight: 600, marginBottom: 24 }}>
+                {p.credits} credits · ≈ {tailorsFromCredits(p.credits)} tailored resumes
+              </div>
               <button className="btn-primary" style={{ marginTop: 'auto', width: '100%', justifyContent: 'center', fontSize: 12, padding: '10px 0' }} onClick={() => handleBuy('credit_pack', p.id)} disabled={!!processingId}>
                 {processingId === `credit_pack-${p.id}` ? 'Processing...' : 'Buy Now'}
               </button>

@@ -71,6 +71,9 @@ async def test_guest_upload_creates_unclaimed_profile(public_client, db_session)
     assert profile_row.user_id is None
     assert profile_row.guest_expires_at is not None
     assert profile_row.guest_ip is not None
+    assert profile_row.upload_source is not None
+    assert profile_row.upload_source.value == "guest"
+    assert profile_row.upload_gcs_path == f"uploads/guest/{data['profile_id']}.pdf"
 
 
 @pytest.mark.asyncio

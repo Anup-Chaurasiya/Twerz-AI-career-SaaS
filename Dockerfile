@@ -24,6 +24,7 @@ COPY app/ app/
 COPY alembic/ alembic/
 COPY alembic.ini .
 COPY resume.cls .
+COPY templates/latex/ templates/latex/
 COPY infra/entrypoint.sh /entrypoint.sh
 
 # Install project package into venv

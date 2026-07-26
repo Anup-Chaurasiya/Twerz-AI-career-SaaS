@@ -61,7 +61,7 @@ export function OnboardingWelcomeModal() {
           ATS<span style={{ color: 'var(--orange)' }}>Beater</span>
         </div>
         <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 16 }}>
-          Honest fit scoring before you spend a credit. Tailor only what&apos;s real.
+          You start with 100 free credits. Honest fit scoring before you spend — tailor only what&apos;s real.
         </p>
         <p style={{ fontSize: 13, color: 'var(--text-dim)', lineHeight: 1.55, marginBottom: 24 }}>
           Some JDs will show low fit — that&apos;s the tool protecting you from a doomed application, not a bug.

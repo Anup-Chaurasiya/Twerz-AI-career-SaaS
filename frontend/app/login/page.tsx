@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { authApi } from '@/lib/api/endpoints';
-import { clearGuestProfileSession, loadGuestProfileSession } from '@/lib/guestProfile';
+import { clearGuestProfileSession, loadGuestProfileSession, guestClaimErrorFromApiDetail, guestClaimErrorMessage, normalizeGuestClaimError, type GuestClaimErrorCode } from '@/lib/guestProfile';
 import BrandLogo from '@/components/BrandLogo';
 
 const BOOT_LINES = [
@@ -16,11 +16,18 @@ const BOOT_LINES = [
 ] as const;
 
 /** Persist OAuth JWT before any useEffect (avoids race with AuthInitializer.fetchMe). */
-function persistOAuthTokenFromUrl(): { handled: boolean; claimedProfileId: number | null } {
-  if (typeof window === 'undefined') return { handled: false, claimedProfileId: null };
+function persistOAuthTokenFromUrl(): {
+  handled: boolean;
+  claimedProfileId: number | null;
+  claimError: GuestClaimErrorCode | null;
+} {
+  if (typeof window === 'undefined') {
+    return { handled: false, claimedProfileId: null, claimError: null };
+  }
   const params = new URLSearchParams(window.location.search);
   let token = params.get('token') || params.get('access_token');
   let claimedProfileId: number | null = null;
+  let claimError: GuestClaimErrorCode | null = null;
   if (!token && window.location.hash) {
     const hash = window.location.hash.startsWith('#')
       ? window.location.hash.slice(1)
@@ -29,11 +36,12 @@ function persistOAuthTokenFromUrl(): { handled: boolean; claimedProfileId: numbe
     token = hashParams.get('token') || hashParams.get('access_token');
     const claimed = hashParams.get('claimed_profile');
     if (claimed) claimedProfileId = Number.parseInt(claimed, 10) || null;
+    claimError = normalizeGuestClaimError(hashParams.get('claim_error'));
   }
-  if (!token) return { handled: false, claimedProfileId: null };
+  if (!token) return { handled: false, claimedProfileId: null, claimError: null };
   localStorage.setItem('token', token);
   window.history.replaceState({}, '', '/login');
-  return { handled: true, claimedProfileId };
+  return { handled: true, claimedProfileId, claimError };
 }
 
 export default function LoginPage() {
@@ -42,6 +50,7 @@ export default function LoginPage() {
   const [lines, setLines] = useState<{ text: string; cls: string }[]>([]);
   const [loginLoading, setLoginLoading] = useState(false);
   const [error, setError] = useState('');
+  const [claimError, setClaimError] = useState<GuestClaimErrorCode | null>(null);
   const [hasGuestResume] = useState(() => {
     if (typeof window === 'undefined') return false;
     const params = new URLSearchParams(window.location.search);
@@ -50,6 +59,7 @@ export default function LoginPage() {
   const [oauthResult] = useState(() => persistOAuthTokenFromUrl());
   const oauthTokenHandled = oauthResult.handled;
   const oauthClaimedProfileId = oauthResult.claimedProfileId;
+  const oauthClaimError = oauthResult.claimError;
   const [completingLogin] = useState(() => {
     if (typeof window === 'undefined') return false;
     return oauthResult.handled || !!localStorage.getItem('token');
@@ -109,17 +119,32 @@ export default function LoginPage() {
       }
 
       let profileId = oauthClaimedProfileId;
+      let activeClaimError = oauthClaimError;
       const guestSession = loadGuestProfileSession();
       if (!profileId && guestSession?.guestToken) {
         try {
           const claim = await authApi.claimGuestProfile(guestSession.guestToken);
           profileId = claim.data.profile_id;
-        } catch {
+        } catch (err: unknown) {
           clearGuestProfileSession();
+          const detail =
+            typeof err === 'object' &&
+            err !== null &&
+            'response' in err &&
+            typeof (err as { response?: { data?: { detail?: unknown } } }).response?.data?.detail !== 'undefined'
+              ? (err as { response: { data: { detail: unknown } } }).response.data.detail
+              : undefined;
+          activeClaimError = guestClaimErrorFromApiDetail(detail);
+          setClaimError(activeClaimError);
         }
       }
       if (profileId) {
         clearGuestProfileSession();
+      }
+
+      if (activeClaimError) {
+        setClaimError(activeClaimError);
+        await new Promise((resolve) => setTimeout(resolve, 2500));
       }
 
       if (useAuthStore.getState().isLoggedIn) {
@@ -138,7 +163,7 @@ export default function LoginPage() {
     }
 
     useAuthStore.setState({ isLoading: false });
-  }, [oauthTokenHandled, oauthClaimedProfileId, router]);
+  }, [oauthTokenHandled, oauthClaimedProfileId, oauthClaimError, router]);
 
   const handleLogin = async () => {
     setLoginLoading(true);
@@ -176,7 +201,14 @@ export default function LoginPage() {
                   ? 'Saving your resume…'
                   : 'Signing you in…'}
               </p>
-              <p className="login-status-sub">Taking you to your dashboard</p>
+              {(oauthClaimError || claimError) && (
+                <div className="login-error" style={{ marginTop: '1rem' }}>
+                  {guestClaimErrorMessage(oauthClaimError || claimError!)}
+                </div>
+              )}
+              <p className="login-status-sub">
+                {(oauthClaimError || claimError) ? 'Continuing to your dashboard…' : 'Taking you to your dashboard'}
+              </p>
             </div>
           ) : (
             <>
@@ -236,7 +268,7 @@ export default function LoginPage() {
                       <path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7" />
                       <path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5" />
                     </svg>
-                    <strong>3 free resume tailors per day</strong> — no credit card needed
+                    <strong>100 free credits on signup + 20 daily</strong> — no credit card needed
                   </p>
 
                   <p className="login-legal">

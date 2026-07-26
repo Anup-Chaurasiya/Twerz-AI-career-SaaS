@@ -36,8 +36,8 @@ export const HOMEPAGE_HIGHLIGHTS = [
     tag: 'Score',
   },
   {
-    title: 'Cover letter, interview prep, and outreach \u2014 included',
-    desc: 'One credit gets you the tailored resume plus a matching cover letter, interview packet, and outreach message. Nothing extra to buy.',
+    title: 'Cover letter and outreach — included with every tailor',
+    desc: 'Each 10-credit tailor includes a matching cover letter and outreach copy. Interview prep packets are included with Job Hunt Pro.',
     tag: 'Apply',
   },
   {
@@ -63,7 +63,7 @@ export const HOMEPAGE_HIGHLIGHTS = [
   {
     title: 'Choose your resume template',
     desc: 'Pick the layout before you download \u2014 professional single-column, compact one-page, or modern two-column. Same honest tailored content, the look you want.',
-    tag: 'Coming soon',
+    tag: undefined,
   },
 ] as const;
 
@@ -94,15 +94,19 @@ export const FAQS = [
   },
   {
     q: 'How many free credits do I get?',
-    a: 'You get 3 free resume tailors every day. They reset at midnight UTC, and no credit card is needed to start.',
+    a: 'You get 100 credits when you sign up, plus 20 free credits every day (enough for about 2 tailored resumes). Daily credits reset at midnight UTC — no credit card needed.',
+  },
+  {
+    q: 'What is the difference between credit packs and Job Hunt Pro?',
+    a: 'Credit packs are one-time credit top-ups — same tailor pipeline, chat, PDF/DOCX, outreach, tracker, and roasts for everyone with credits. Job Hunt Pro is a monthly subscription with 800 credits plus interview prep packets and the Chrome extension (Pro-only features).',
   },
   {
     q: 'What file formats are supported?',
     a: 'Upload your base resume as a PDF or DOCX file. Tailored output is always a clean, professionally formatted PDF or DOCX.',
   },
   {
-    q: 'How many applications can I make with 1 credit?',
-    a: 'Each credit gives you one tailored resume + cover letter for one job. Outreach messages, interview prep, and PDF recompiles after edits are included at no extra cost.',
+    q: 'How much does one tailored resume cost?',
+    a: 'Each tailored resume + cover letter costs 10 credits. Outreach messages, interview prep, and PDF recompiles after edits are included at no extra cost.',
   },
   {
     q: 'What features are included in Twerz?',
@@ -360,43 +364,94 @@ export const HOW_IT_WORKS = [
   },
 ] as const;
 
+/** 10 credits = one tailored resume + cover letter (matches backend RESUME_GENERATION_CREDIT_COST). */
+export const CREDITS_PER_TAILOR = 10;
+
+/** Shown under pricing grids — clarifies Pro-only vs credit-pack features. */
+export const PRICING_FOOTNOTE =
+  'Credit packs add credits only. Every tailor (10 credits) includes cover letter, outreach, chat edits & free PDF recompile. Interview packets & Chrome extension require Job Hunt Pro.';
+
+/** Core features included whenever you have credits (same for all packs). */
+export const CREDIT_PACK_CORE_FEATURES = [
+  'Tailored resume + cover letter per job',
+  'Chat editing & free PDF/DOCX recompile',
+  'Outreach messages & honest fit score',
+  'Application tracker & free resume roasts',
+] as const;
+
+export const JOB_HUNT_PRO_PLAN = {
+  name: 'Job Hunt Pro',
+  price: '₹299',
+  per: 'per month · billed monthly',
+  credits: '800 credits / mo · ≈ 80 tailored resumes',
+  features: [
+    '800 credits refreshed every month',
+    'Interview prep packets (Pro-only)',
+    'Chrome extension JD capture (Pro-only)',
+    'Application tracker + all credit-pack features',
+    'Cover letter, outreach & free PDF recompiles with each tailor',
+  ],
+  featured: true,
+  badge: 'Subscription',
+  bestFor: 'Multi-week hunts with tracker + extension',
+  accent: '#6366f1',
+} as const;
+
 export const PRICING_PLANS = [
   {
     name: 'Free Daily',
     price: '₹0',
-    per: '3 credits / day',
-    credits: '3 tailored resumes daily',
-    features: ['3 AI resume tailorings per day', 'Honest fit score', 'Cover letter + outreach', 'No credit card needed'],
+    per: '20 credits / day',
+    credits: '100 signup + ~2 tailors/day free',
+    features: ['100 credits on signup', '20 daily free credits', 'Honest fit score', 'Cover letter + outreach', 'No credit card needed'],
     featured: false,
     bestFor: 'Getting started',
+    accent: '#10b981',
   },
   {
-    name: 'Day Pass',
-    price: '₹49',
-    per: '10 credits',
-    credits: '≈ 10 applications',
-    features: ['10 AI resume tailorings', 'Chat editing', 'PDF + DOCX download', 'Outreach messages'],
+    name: 'Starter',
+    price: '₹279',
+    per: '500 credits',
+    credits: '≈ 50 tailored resumes',
+    features: [
+      '≈ 50 tailored resumes (500 credits)',
+      'Full platform — all tailor tools included',
+      ...CREDIT_PACK_CORE_FEATURES,
+    ],
     featured: false,
-    bestFor: 'Trying it for the first time',
+    bestFor: 'First purchase — try the full pipeline',
+    accent: '#38bdf8',
   },
   {
     name: 'Sprint',
-    price: '₹99',
-    per: '30 credits',
-    credits: '≈ 30 applications',
-    features: ['30 AI resume tailorings', 'Unlimited roasts', 'Interview prep + outreach', 'Priority processing', 'All languages'],
+    price: '₹599',
+    per: '1,200 credits',
+    credits: '≈ 120 tailored resumes',
+    features: [
+      '≈ 120 tailored resumes (1,200 credits)',
+      '2.4× more credits than Starter',
+      '~11% cheaper per resume (~₹4.99 vs ₹5.58)',
+      ...CREDIT_PACK_CORE_FEATURES,
+    ],
     featured: true,
     badge: 'Most Popular',
     bestFor: 'Active job hunting (2–3 weeks)',
+    accent: '#ff5a1f',
   },
   {
     name: 'Job Hunt',
-    price: '₹199',
-    per: '75 credits',
-    credits: '≈ 75 applications',
-    features: ['75 AI resume tailorings', 'Unlimited roasts', 'Full apply toolkit', 'Priority AI', 'Referral bonus credits'],
+    price: '₹949',
+    per: '2,500 credits',
+    credits: '≈ 250 tailored resumes',
+    features: [
+      '≈ 250 tailored resumes (2,500 credits)',
+      '5× Starter volume — full search campaign',
+      '~32% cheaper per resume (~₹3.80) — best one-time deal',
+      ...CREDIT_PACK_CORE_FEATURES,
+    ],
     featured: false,
     bestFor: 'Intensive search campaigns',
+    accent: '#34d399',
   },
 ] as const;
 

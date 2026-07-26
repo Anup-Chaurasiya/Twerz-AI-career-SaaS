@@ -5,7 +5,7 @@ import PricingSection from '@/components/marketing/sections/PricingSection';
 
 export const metadata: Metadata = {
   title: 'Pricing',
-  description: 'Twerz pricing — 3 free resume tailors daily. Credit packs from ₹49.',
+  description: 'Twerz pricing — 100 credits on signup, 20 free daily. Packs from ₹279. Job Hunt Pro ₹299/mo.',
 };
 
 export default function PricingPage() {

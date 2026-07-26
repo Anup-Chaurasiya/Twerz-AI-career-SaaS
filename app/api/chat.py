@@ -98,6 +98,7 @@ async def chat_with_job(
 
     async def run_agent():
         needs_recompile = False
+        pending_template_id: str | None = None
         try:
             async with async_session_factory() as task_db:
                 try:
@@ -120,6 +121,9 @@ async def chat_with_job(
                             await task_db.commit()
                             needs_recompile = True
 
+                        if event_data.get("type") == "response" and event_data.get("pending_template_id"):
+                            pending_template_id = event_data["pending_template_id"]
+
                         await queue.put(event_data)
                 except Exception as e:
                     logger.exception(f"Chat agent error for job {_job_id}")
@@ -138,8 +142,16 @@ async def chat_with_job(
             _active_tasks.pop(task_key, None)
             await queue.put(None)  # sentinel — closes client SSE stream
 
+        if pending_template_id:
+            try:
+                async with async_session_factory() as tpl_db:
+                    await job_service.update_template(tpl_db, _job_id, _user_id, pending_template_id)
+                    await chat_service.clear_pending_template(_job_id, _user_id)
+            except Exception:
+                logger.exception(f"Template switch failed for job {_job_id}")
+
         # Recompile PDF outside all task tracking
-        if needs_recompile:
+        if needs_recompile or pending_template_id:
             try:
                 async with async_session_factory() as pdf_db:
                     await job_service.generate_pdf(pdf_db, _job_id, _user_id, recompile=True)

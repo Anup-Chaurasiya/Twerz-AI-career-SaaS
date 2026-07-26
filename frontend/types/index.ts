@@ -201,7 +201,15 @@ export interface Job {
       pairs: Array<{ original: string; tailored: string; keyword?: string | null }>;
     }>;
   } | null;
-  resume_versions?: Array<{ version: number; label: string }>;
+  resume_versions?: Array<{ version: number; label: string; template_id?: string }>;
+  template_id?: string;
+  docx_source?: 'preserved' | 'generated' | 'fallback' | null;
+  pdf_source?: 'preserved' | 'house' | 'fallback' | null;
+  output_mode?: 'preserve_original' | 'house_template';
+  source_format?: 'pdf' | 'docx' | null;
+  preservation_eligible?: boolean | null;
+  layout_signals?: { columns?: number; font_category?: string } | null;
+  suggested_template_id?: string;
   cover_letter?: string | null;
   interview_packet?: {
     likely_questions?: string[];
@@ -222,6 +230,15 @@ export interface Job {
     email?: string;
     linkedin?: string;
   }> | null;
+}
+
+export interface ResumeTemplate {
+  id: string;
+  label: string;
+  description: string;
+  ats_tier: 'recommended' | 'tradeoff' | string;
+  ats_warning?: string | null;
+  preview_url: string;
 }
 
 export interface JobCreatePayload {
@@ -305,6 +322,7 @@ export interface CreditBalance {
   balance: number;
   daily_free_remaining: number;
   daily_free_total: number;
+  resume_generation_cost?: number;
   active_time_pass?: ActiveTimePassInfo;
   has_unlimited: boolean;
   subscription?: {

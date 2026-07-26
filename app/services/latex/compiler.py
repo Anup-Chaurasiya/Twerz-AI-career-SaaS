@@ -6,27 +6,24 @@ import tempfile
 from pathlib import Path
 from app.config import get_settings
 from app.exceptions import LaTeXCompilationError
+from app.services.latex.templates import DEFAULT_TEMPLATE_ID, cls_path_for, get_template_spec
 from logging import getLogger
 
 logger = getLogger(__name__)
 
-RESUME_CLS_PATH = Path(__file__).parent.parent.parent.parent / "resume.cls"
+# Backward-compatible default (classic template)
+RESUME_CLS_PATH = cls_path_for(DEFAULT_TEMPLATE_ID)
 PDFLATEX_TIMEOUT = 60  # seconds per pass (increased for long resumes)
 PDFLATEX_PASSES = 2  # two passes for hyperref bookmarks/cross-references
 
 
 def _extract_errors(log_text: str) -> str:
-    """Extract meaningful error lines from pdflatex log output.
-
-    Looks for lines starting with '!' (LaTeX errors) and grabs surrounding context.
-    Falls back to the last 20 lines if no '!' errors are found.
-    """
+    """Extract meaningful error lines from pdflatex log output."""
     lines = log_text.splitlines()
     error_blocks = []
     i = 0
     while i < len(lines):
         if lines[i].startswith("!"):
-            # Grab the error line + up to 4 lines of context after it
             block = lines[i : i + 5]
             error_blocks.append("\n".join(block))
             i += 5
@@ -36,12 +33,10 @@ def _extract_errors(log_text: str) -> str:
     if error_blocks:
         return "\n\n".join(error_blocks)
 
-    # No '!' errors — check for common warning patterns
     warnings = [l for l in lines if re.search(r"(Undefined|Missing|Too many|Emergency stop)", l)]
     if warnings:
         return "\n".join(warnings[:10])
 
-    # Last resort: tail of log
     return "\n".join(lines[-20:])
 
 
@@ -90,22 +85,17 @@ def _resolve_pdflatex(tex_bin_path: str) -> str:
     which = shutil.which("pdflatex")
     if which:
         return which
-    # Fall back to bare name so caller gets a clear FileNotFoundError message
     return str(Path(tex_bin_path) / "pdflatex") if tex_bin_path else "pdflatex"
 
 
-async def compile_latex(latex_code: str) -> bytes:
-    """Compile LaTeX code to PDF bytes.
-
-    Runs pdflatex twice for proper cross-references and hyperref bookmarks.
-    Stores error log in jobs.pdf_error_log on failure via exception.
-    Raises LaTeXCompilationError on failure.
-    """
+async def compile_latex(latex_code: str, *, template_id: str = DEFAULT_TEMPLATE_ID) -> bytes:
+    """Compile LaTeX code to PDF bytes using the template's document class."""
     from app.services.latex.sanitizer import validate_latex_content
-    
+
     settings = get_settings()
-    
-    # Pre-validation before compilation
+    spec = get_template_spec(template_id)
+    cls_source = cls_path_for(template_id)
+
     is_valid, validation_error = validate_latex_content(latex_code)
     if not is_valid:
         logger.error(f"LaTeX validation failed: {validation_error}")
@@ -123,18 +113,12 @@ async def compile_latex(latex_code: str) -> bytes:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
 
-        # Copy resume.cls into temp directory
-        cls_dest = tmp_path / "resume.cls"
-        if RESUME_CLS_PATH.exists():
-            shutil.copy2(str(RESUME_CLS_PATH), str(cls_dest))
-        else:
-            raise LaTeXCompilationError(f"resume.cls not found at {RESUME_CLS_PATH}")
+        cls_dest = tmp_path / spec.cls_filename
+        shutil.copy2(str(cls_source), str(cls_dest))
 
-        # Write .tex file
         tex_path = tmp_path / "resume.tex"
         tex_path.write_text(latex_code, encoding="utf-8")
 
-        # Ensure pdflatex is in PATH
         env = os.environ.copy()
         bin_dir = str(Path(pdflatex_bin).parent)
         if bin_dir not in env.get("PATH", ""):
@@ -144,14 +128,12 @@ async def compile_latex(latex_code: str) -> bytes:
         log_path = tmp_path / "resume.log"
         full_error_log = None
 
-        # Run pdflatex twice (cross-references + hyperref bookmarks)
         for pass_num in range(1, PDFLATEX_PASSES + 1):
             returncode, stdout, stderr = await _run_pdflatex(
                 pdflatex_bin, tmp_path, env, pass_num
             )
 
             if returncode != 0:
-                # Read full log file for storage
                 if log_path.exists():
                     full_error_log = log_path.read_text(encoding="utf-8", errors="replace")
                     error_detail = _extract_errors(full_error_log)
@@ -159,13 +141,14 @@ async def compile_latex(latex_code: str) -> bytes:
                     stdout_str = stdout.decode("utf-8", errors="replace")
                     full_error_log = stdout_str
                     error_detail = _extract_errors(stdout_str)
-                
-                # Check if PDF was still produced despite errors (common with nonstopmode warnings)
+
                 if pdf_path.exists() and pdf_path.stat().st_size > 0:
                     logger.warning(f"pdflatex pass {pass_num} returned {returncode} but PDF exists, continuing")
                 else:
                     logger.error(f"LaTeX compilation failed on pass {pass_num}:\n{error_detail}")
-                    raise LaTeXCompilationError(f"LaTeX compilation failed:\n{error_detail}", full_log=full_error_log)
+                    raise LaTeXCompilationError(
+                        f"LaTeX compilation failed:\n{error_detail}", full_log=full_error_log
+                    )
 
         if not pdf_path.exists():
             raise LaTeXCompilationError("PDF file not found after compilation")

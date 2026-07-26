@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, date, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
@@ -18,6 +19,25 @@ logger = getLogger(__name__)
 def _utc_today() -> date:
     """Return today's date in UTC (timezone-independent)."""
     return datetime.now(timezone.utc).date()
+
+
+_SPLIT_CONSUMPTION_RE = re.compile(
+    r"daily free:\s*(\d+)\s*\+\s*purchased:\s*(\d+)", re.IGNORECASE
+)
+
+
+def _daily_free_remaining(settings, uc: UserCredit) -> int:
+    return max(0, settings.DAILY_FREE_CREDITS - uc.daily_free_used)
+
+
+def _parse_consumption_split(description: str | None) -> tuple[int, int] | None:
+    """Return (daily_portion, purchased_portion) when description encodes a split."""
+    if not description:
+        return None
+    match = _SPLIT_CONSUMPTION_RE.search(description)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
 
 
 class CreditService:
@@ -82,8 +102,9 @@ class CreditService:
 
         return {
             "balance": uc.balance,
-            "daily_free_remaining": max(0, settings.DAILY_FREE_CREDITS - uc.daily_free_used),
+            "daily_free_remaining": _daily_free_remaining(settings, uc),
             "daily_free_total": settings.DAILY_FREE_CREDITS,
+            "resume_generation_cost": settings.RESUME_GENERATION_CREDIT_COST,
             "active_time_pass": active_pass_info,
             "has_unlimited": active_pass is not None,
             "subscription": sub_info,
@@ -98,19 +119,17 @@ class CreditService:
         self._reset_daily_if_needed(uc)
         if await self._get_active_time_pass(db, user_id):
             return True
-        if uc.daily_free_used < settings.DAILY_FREE_CREDITS:
-            return True
-        if uc.balance > 0:
-            return True
-        return False
+        cost = settings.RESUME_GENERATION_CREDIT_COST
+        return (_daily_free_remaining(settings, uc) + uc.balance) >= cost
 
     async def check_and_deduct(
         self, db: AsyncSession, user_id: str, job_id: int
     ) -> str:
-        """Deduct one credit. Returns source: 'time_pass', 'daily_free', or 'purchased'.
-        Raises UsageLimitExceeded if no credits available.
+        """Deduct resume generation credits. Returns source: 'time_pass', 'daily_free',
+        'purchased', or 'mixed'. Raises UsageLimitExceeded if insufficient credits.
         """
         settings = get_settings()
+        cost = settings.RESUME_GENERATION_CREDIT_COST
         uc = await self.ensure_user_credit(db, user_id, for_update=True)
         self._reset_daily_if_needed(uc)
 
@@ -118,56 +137,101 @@ class CreditService:
         active_pass = await self._get_active_time_pass(db, user_id)
         if active_pass:
             await self._record_transaction(
-                db, user_id, -1, TransactionType.CONSUMPTION,
+                db, user_id, -cost, TransactionType.CONSUMPTION,
                 reference_id=str(job_id),
                 description="Resume generation (time pass)",
             )
             await db.commit()
             return "time_pass"
 
-        # Priority 2: Daily free
-        if uc.daily_free_used < settings.DAILY_FREE_CREDITS:
-            uc.daily_free_used += 1
-            await self._record_transaction(
-                db, user_id, -1, TransactionType.CONSUMPTION,
-                reference_id=str(job_id),
-                description="Resume generation (daily free)",
+        daily_remaining = _daily_free_remaining(settings, uc)
+        total_available = daily_remaining + uc.balance
+        if total_available < cost:
+            raise UsageLimitExceeded(
+                "No credits available. Purchase a credit pack or time pass to continue."
             )
-            await db.commit()
-            return "daily_free"
 
-        # Priority 3: Purchased credits
-        if uc.balance > 0:
-            uc.balance -= 1
-            await self._record_transaction(
-                db, user_id, -1, TransactionType.CONSUMPTION,
-                reference_id=str(job_id),
-                description="Resume generation (purchased credit)",
+        daily_portion = min(daily_remaining, cost)
+        purchased_portion = cost - daily_portion
+
+        if daily_portion:
+            uc.daily_free_used += daily_portion
+        if purchased_portion:
+            uc.balance -= purchased_portion
+
+        if daily_portion and purchased_portion:
+            description = (
+                f"Resume generation (daily free: {daily_portion} + purchased: {purchased_portion})"
             )
-            await db.commit()
-            return "purchased"
+            source = "mixed"
+        elif daily_portion:
+            description = "Resume generation (daily free)"
+            source = "daily_free"
+        else:
+            description = "Resume generation (purchased credit)"
+            source = "purchased"
 
-        raise UsageLimitExceeded(
-            "No credits available. Purchase a credit pack or time pass to continue."
+        await self._record_transaction(
+            db, user_id, -cost, TransactionType.CONSUMPTION,
+            reference_id=str(job_id),
+            description=description,
         )
+        await db.commit()
+        return source
 
     async def refund_credit(
-        self, db: AsyncSession, user_id: str, job_id: int, source: str = "purchased"
+        self, db: AsyncSession, user_id: str, job_id: int, source: str = "purchased",
+        *, consumption: CreditTransaction | None = None,
     ) -> None:
-        """Refund 1 credit if generation fails after deduction.
-        Refunds to the correct bucket based on source.
-        Time pass consumption is unlimited, so no refund needed — just record it.
+        """Refund credits if generation fails after deduction.
+        Refunds to the correct bucket(s) based on source / consumption description.
+        Time pass consumption is unlimited — audit-only reversal.
         """
+        if consumption is None:
+            result = await db.execute(
+                select(CreditTransaction)
+                .where(
+                    CreditTransaction.user_id == user_id,
+                    CreditTransaction.reference_id == str(job_id),
+                    CreditTransaction.type == TransactionType.CONSUMPTION,
+                )
+                .order_by(CreditTransaction.created_at.desc())
+                .limit(1)
+            )
+            consumption = result.scalar_one_or_none()
+
+        settings = get_settings()
+        amount = settings.RESUME_GENERATION_CREDIT_COST
+        if consumption:
+            amount = abs(consumption.amount)
+            desc = consumption.description or ""
+            if "time pass" in desc.lower():
+                source = "time_pass"
+            elif _parse_consumption_split(desc):
+                source = "mixed"
+            elif "daily free" in desc.lower():
+                source = "daily_free"
+            elif source not in ("time_pass", "mixed", "daily_free", "purchased"):
+                source = "purchased"
+
         uc = await self.ensure_user_credit(db, user_id, for_update=True)
         if source == "time_pass":
-            # Time pass is unlimited — no balance to restore, just record the reversal
             pass
+        elif source == "mixed":
+            split = _parse_consumption_split(consumption.description if consumption else None)
+            if split:
+                daily_portion, purchased_portion = split
+                uc.daily_free_used = max(0, uc.daily_free_used - daily_portion)
+                uc.balance += purchased_portion
+            else:
+                uc.balance += amount
         elif source == "daily_free":
-            uc.daily_free_used = max(0, uc.daily_free_used - 1)
+            uc.daily_free_used = max(0, uc.daily_free_used - amount)
         else:
-            uc.balance += 1
+            uc.balance += amount
+
         await self._record_transaction(
-            db, user_id, 1, TransactionType.REFUND,
+            db, user_id, amount, TransactionType.REFUND,
             reference_id=str(job_id),
             description=f"Refund: resume generation failed ({source})",
         )
@@ -202,15 +266,18 @@ class CreditService:
         desc = (consumption.description or "").lower()
         if "time pass" in desc:
             source = "time_pass"
+        elif _parse_consumption_split(consumption.description):
+            source = "mixed"
         elif "daily free" in desc:
             source = "daily_free"
         else:
             source = "purchased"
         if source == "time_pass":
-            # Record reversal note only (no balance change) for audit trail.
-            await self.refund_credit(db, user_id, job_id, source)
+            await self.refund_credit(
+                db, user_id, job_id, source, consumption=consumption
+            )
             return False
-        await self.refund_credit(db, user_id, job_id, source)
+        await self.refund_credit(db, user_id, job_id, source, consumption=consumption)
         return True
 
     # ── Credit addition ─────────────────────────────────────────

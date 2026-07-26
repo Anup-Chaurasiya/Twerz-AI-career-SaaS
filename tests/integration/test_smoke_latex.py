@@ -7,6 +7,25 @@ from app.services.latex.compiler import compile_latex
 from app.services.latex.sanitizer import sanitize_special_chars
 
 
+from app.services.latex.templates import TEMPLATE_REGISTRY
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("template_id", list(TEMPLATE_REGISTRY.keys()))
+async def test_latex_minimal_resume_all_templates(template_id: str):
+    """Compile a minimal resume per template to PDF."""
+    info = CustomResumeInfo(
+        name="Jane Doe",
+        email="jane@example.com",
+    )
+    latex_code = build_resume(info, template_id=template_id)
+    pdf_bytes = await compile_latex(latex_code, template_id=template_id)
+
+    assert isinstance(pdf_bytes, bytes)
+    assert len(pdf_bytes) > 100
+    assert pdf_bytes[:5] == b"%PDF-"
+
+
 @pytest.mark.asyncio
 async def test_latex_minimal_resume():
     """Compile a minimal resume to PDF and verify we get bytes back."""
@@ -14,8 +33,8 @@ async def test_latex_minimal_resume():
         name="Jane Doe",
         email="jane@example.com",
     )
-    latex_code = build_resume(info)
-    pdf_bytes = await compile_latex(latex_code)
+    latex_code = build_resume(info, template_id="classic")
+    pdf_bytes = await compile_latex(latex_code, template_id="classic")
 
     assert isinstance(pdf_bytes, bytes)
     assert len(pdf_bytes) > 100
@@ -56,8 +75,8 @@ async def test_latex_full_resume():
         achievements=["Dean's List 2018", "Hackathon Winner"],
     )
 
-    latex_code = build_resume(info)
-    pdf_bytes = await compile_latex(latex_code)
+    latex_code = build_resume(info, template_id="classic")
+    pdf_bytes = await compile_latex(latex_code, template_id="classic")
 
     assert pdf_bytes[:5] == b"%PDF-"
     assert len(pdf_bytes) > 500
@@ -74,7 +93,7 @@ async def test_latex_special_chars_survive():
 
     sanitized = sanitize_special_chars(info.model_dump())
     sanitized_info = CustomResumeInfo.model_validate(sanitized)
-    latex_code = build_resume(sanitized_info)
-    pdf_bytes = await compile_latex(latex_code)
+    latex_code = build_resume(sanitized_info, template_id="classic")
+    pdf_bytes = await compile_latex(latex_code, template_id="classic")
 
     assert pdf_bytes[:5] == b"%PDF-"
