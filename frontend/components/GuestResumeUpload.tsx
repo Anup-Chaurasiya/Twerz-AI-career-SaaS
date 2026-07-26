@@ -85,45 +85,21 @@ export interface GuestResumeUploadProps {
   variant?: 'section' | 'inline';
 }
 
-function getInitialGuestUploadState(): {
-  phase: UploadPhase;
-  profileId: number | null;
-  guestToken: string | null;
-} {
-  if (typeof window === 'undefined') {
-    return { phase: 'idle', profileId: null, guestToken: null };
-  }
-  const session = loadGuestProfileSession();
-  if (!session || isLoggedIn()) {
-    return { phase: 'idle', profileId: null, guestToken: null };
-  }
-  return {
-    phase: 'processing',
-    profileId: session.profileId,
-    guestToken: session.guestToken,
-  };
-}
-
 export default function GuestResumeUpload({ variant = 'section' }: GuestResumeUploadProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const initialGuestState = getInitialGuestUploadState();
-  const resumedSessionRef = useRef(
-    initialGuestState.phase === 'processing'
-      ? { profileId: initialGuestState.profileId!, guestToken: initialGuestState.guestToken! }
-      : null,
-  );
 
-  const [phase, setPhase] = useState<UploadPhase>(initialGuestState.phase);
+  const [phase, setPhase] = useState<UploadPhase>('idle');
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState('');
   const [extractedText, setExtractedText] = useState('');
   const [processStep, setProcessStep] = useState(0);
   const [preview, setPreview] = useState<GuestProfilePreview | null>(null);
-  const [guestToken, setGuestToken] = useState<string | null>(initialGuestState.guestToken);
-  const [profileId, setProfileId] = useState<number | null>(initialGuestState.profileId);
+  const [guestToken, setGuestToken] = useState<string | null>(null);
+  const [profileId, setProfileId] = useState<number | null>(null);
   const [signingIn, setSigningIn] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -170,8 +146,12 @@ export default function GuestResumeUpload({ variant = 'section' }: GuestResumeUp
   );
 
   useEffect(() => {
-    const session = resumedSessionRef.current;
-    if (!session) return;
+    setMounted(true);
+    const session = loadGuestProfileSession();
+    if (!session || isLoggedIn()) return;
+    setProfileId(session.profileId);
+    setGuestToken(session.guestToken);
+    setPhase('processing');
     pollStatus(session.profileId, session.guestToken);
     return stopPolling;
   }, [pollStatus, stopPolling]);
@@ -279,15 +259,36 @@ export default function GuestResumeUpload({ variant = 'section' }: GuestResumeUp
   const snippet =
     extractedText.trim().slice(0, 280) + (extractedText.length > 280 ? '…' : '');
 
+  const showSectionChrome = mounted && variant === 'section' && phase === 'idle';
+
   return (
     <div className={`guest-upload${variant === 'section' ? ' guest-upload--section' : ''}${phase === 'ready' ? ' guest-upload--ready' : ''}`}>
       {error && (
         <div className="guest-upload-error">{error}</div>
       )}
 
+      {showSectionChrome && (
+        <div className="guest-upload-steps" aria-label="How it works">
+          <div className="guest-upload-step guest-upload-step--active">
+            <span className="guest-upload-step-dot">1</span>
+            <span>Upload</span>
+          </div>
+          <div className="guest-upload-step-line" aria-hidden />
+          <div className="guest-upload-step">
+            <span className="guest-upload-step-dot">2</span>
+            <span>Sign in</span>
+          </div>
+          <div className="guest-upload-step-line" aria-hidden />
+          <div className="guest-upload-step">
+            <span className="guest-upload-step-dot">3</span>
+            <span>Tailor</span>
+          </div>
+        </div>
+      )}
+
       {(phase === 'idle' || phase === 'failed' || phase === 'expired') && (
         <div
-          className={`guest-upload-zone ${dragOver ? 'dragover' : ''}`}
+          className={`guest-upload-zone ${dragOver ? 'dragover' : ''}${showSectionChrome ? ' guest-upload-zone--rich' : ''}`}
           onDragOver={(e) => {
             e.preventDefault();
             setDragOver(true);
@@ -310,6 +311,17 @@ export default function GuestResumeUpload({ variant = 'section' }: GuestResumeUp
             style={{ display: 'none' }}
             accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           />
+          {showSectionChrome && (
+            <div className="guest-upload-deco" aria-hidden>
+              <div className="guest-upload-deco-page">
+                <div className="guest-upload-deco-line guest-upload-deco-line--title" />
+                <div className="guest-upload-deco-line" style={{ width: '62%' }} />
+                <div className="guest-upload-deco-line" style={{ width: '88%' }} />
+                <div className="guest-upload-deco-line" style={{ width: '74%' }} />
+                <div className="guest-upload-deco-line" style={{ width: '52%' }} />
+              </div>
+            </div>
+          )}
           <div className="guest-upload-zone-inner">
             <div className="guest-upload-icon" aria-hidden>
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
@@ -330,10 +342,15 @@ export default function GuestResumeUpload({ variant = 'section' }: GuestResumeUp
                   : 'Drag and drop or click to browse'}
             </p>
             {phase === 'idle' && (
-              <div className="guest-upload-formats" aria-label="Supported file formats">
-                <span className="guest-upload-format">PDF</span>
-                <span className="guest-upload-format">DOCX</span>
-              </div>
+              <>
+                {showSectionChrome && (
+                  <span className="guest-upload-browse">Browse files</span>
+                )}
+                <div className="guest-upload-formats" aria-label="Supported file formats">
+                  <span className="guest-upload-format">PDF</span>
+                  <span className="guest-upload-format">DOCX</span>
+                </div>
+              </>
             )}
             {phase === 'idle' && (
               <span className="guest-upload-limit">Max 5 MB · No account needed</span>
@@ -351,6 +368,18 @@ export default function GuestResumeUpload({ variant = 'section' }: GuestResumeUp
               Upload again
             </button>
           )}
+        </div>
+      )}
+
+      {showSectionChrome && (
+        <div className="guest-upload-extract" aria-hidden>
+          <span className="guest-upload-extract-label">We extract in seconds</span>
+          <div className="guest-upload-extract-chips">
+            <span>Experience</span>
+            <span>Skills</span>
+            <span>Education</span>
+            <span>Projects</span>
+          </div>
         </div>
       )}
 
@@ -476,9 +505,19 @@ export default function GuestResumeUpload({ variant = 'section' }: GuestResumeUp
       )}
 
       {phase === 'idle' && (
-        <p className="guest-upload-footer">
-          No account needed to start · Unclaimed uploads removed after 72h
-        </p>
+        showSectionChrome ? (
+          <div className="guest-upload-trust">
+            <span>🔒 Encrypted</span>
+            <span className="guest-upload-trust-dot" />
+            <span>⚡ 3 free/day</span>
+            <span className="guest-upload-trust-dot" />
+            <span>No card needed</span>
+          </div>
+        ) : variant !== 'section' ? (
+          <p className="guest-upload-footer">
+            No account needed to start · Unclaimed uploads removed after 72h
+          </p>
+        ) : null
       )}
     </div>
   );

@@ -873,17 +873,27 @@ class TailorPipeline:
 
         if refine_passes >= MAX_REFINE_PASSES:
             coverage = compute_keyword_coverage(resume, evidence_map)
-            if ats_after.score < ats_threshold or (
+            content_v = validate_content_preservation(
+                normalized_profile, resume, split_fn=split_profile_bullets
+            )
+            structure_v = validate_structure(resume)
+            formatting_v = validate_formatting(resume)
+            score_issue = ats_after.score < ats_threshold or (
                 fit.fit_label == FitLabel.STRONG and coverage.supported_pct < supported_target
-            ):
+            )
+            structural_issue = not content_v.passed or not structure_v.passed or not formatting_v.passed
+            if score_issue or structural_issue:
                 logger.warning(
                     "refine_cap_hit reference_id=%s passes=%s ats_score=%s threshold=%s "
-                    "supported_pct=%s",
+                    "supported_pct=%s content_issues=%s structure_issues=%s formatting_issues=%s",
                     reference_id,
                     refine_passes,
                     ats_after.score,
                     ats_threshold,
                     coverage.supported_pct,
+                    content_v.issues,
+                    structure_v.issues,
+                    formatting_v.issues,
                 )
 
         resume = _inject_pii(resume, profile_info)

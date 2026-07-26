@@ -6,7 +6,66 @@ export const COMPANY = {
   tagline: 'AI resume tailoring for serious job seekers.',
   description:
     'Upload once, tailor for every role — with honest fit scores, zero fabricated skills, and LaTeX-grade output.',
+  /** Secondary honesty wedge — hero callout, about page, etc. */
+  honestyLine:
+    'Unlike other AI resume tools, Twerz never invents a skill to hit 100% keyword match.',
+  honestyCallout:
+    'Every requirement is evidence-checked before it lands on your PDF — you\u2019ll see an honest Fit Score before you spend a credit.',
 } as const;
+
+/**
+ * The 9 homepage highlights (3×3 grid) — everything else
+ * (33 features total) lives on /features for people who are already convinced and
+ * want the full list. Leads with the honesty wedge: it's the one thing every
+ * competitor (Rezi, Teal, Jobscan, Kickresume) is called out for getting wrong.
+ */
+export const HOMEPAGE_HIGHLIGHTS = [
+  {
+    title: 'Never invents a skill you don\u2019t have',
+    desc: 'Every JD requirement is marked Supported, Partial, or Missing against your real experience \u2014 Missing items never make it onto your resume, no matter how good they\u2019d look.',
+    tag: 'Honesty',
+  },
+  {
+    title: 'Honest Fit Score before you spend a credit',
+    desc: 'Strong \u00b7 Stretch \u00b7 Mismatch with the actual gaps listed \u2014 so you know if a role is worth applying to before you tailor anything.',
+    tag: 'Honesty',
+  },
+  {
+    title: 'ATS score, before \u2192 after',
+    desc: 'See exactly how much more parseable your resume gets \u2014 not a vague promise, a measured before/after number.',
+    tag: 'Score',
+  },
+  {
+    title: 'Cover letter, interview prep, and outreach \u2014 included',
+    desc: 'One credit gets you the tailored resume plus a matching cover letter, interview packet, and outreach message. Nothing extra to buy.',
+    tag: 'Apply',
+  },
+  {
+    title: 'AI chat editing',
+    desc: 'Refine any tailored section with streaming AI after generation \u2014 shorter summary, stronger bullets, better keywords. Like a career coach sitting next to you.',
+    tag: 'Edit',
+  },
+  {
+    title: 'LaTeX-grade PDF output',
+    desc: 'Typeset like a professional document, not a template export \u2014 recruiters notice the difference.',
+    tag: 'Export',
+  },
+  {
+    title: 'Evidence Report you can copy and share',
+    desc: 'Every requirement mapped to Supported, Partial, or Missing with a quote from your real experience \u2014 copy the report and show a recruiter exactly what you can honestly prove.',
+    tag: 'Honesty',
+  },
+  {
+    title: 'Auto-apply to matching roles',
+    desc: 'Stop copy-pasting across job boards. Submit your tailored, evidence-grounded resume to roles that fit your Fit Score \u2014 one flow from dashboard to application.',
+    tag: 'Coming soon',
+  },
+  {
+    title: 'Choose your resume template',
+    desc: 'Pick the layout before you download \u2014 professional single-column, compact one-page, or modern two-column. Same honest tailored content, the look you want.',
+    tag: 'Coming soon',
+  },
+] as const;
 
 export const FAQS = [
   {

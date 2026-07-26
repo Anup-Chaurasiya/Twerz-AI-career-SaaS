@@ -2573,12 +2573,40 @@ body.dashboard-app .scanline-overlay {
 }
 
 .upload-section-panel {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: linear-gradient(165deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid rgba(56, 189, 248, 0.18);
   border-radius: 20px;
   padding: 28px;
-  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.06);
+  box-shadow:
+    0 12px 40px rgba(15, 23, 42, 0.06),
+    0 0 0 1px rgba(255, 255, 255, 0.8) inset;
   transition: box-shadow 0.4s ease, border-color 0.4s ease, transform 0.4s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.upload-section-panel::before {
+  content: '';
+  position: absolute;
+  top: -80px;
+  right: -80px;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.upload-section-panel::after {
+  content: '';
+  position: absolute;
+  bottom: -60px;
+  left: -60px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 90, 31, 0.06) 0%, transparent 70%);
+  pointer-events: none;
 }
 
 .upload-section-panel:has(.guest-upload--ready) {
@@ -2591,6 +2619,8 @@ body.dashboard-app .scanline-overlay {
 
 .guest-upload {
   width: 100%;
+  position: relative;
+  z-index: 1;
 }
 
 .guest-upload--section .guest-upload-zone {
@@ -2605,6 +2635,184 @@ body.dashboard-app .scanline-overlay {
   padding: 32px 24px;
   cursor: pointer;
   transition: border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.guest-upload-zone--rich {
+  min-height: 300px !important;
+}
+
+.guest-upload-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin-bottom: 18px;
+  position: relative;
+  z-index: 1;
+}
+
+.guest-upload-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: 0.01em;
+}
+
+.guest-upload-step--active {
+  color: #0284c7;
+}
+
+.guest-upload-step-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  background: #f1f5f9;
+  border: 1.5px solid #e2e8f0;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.guest-upload-step--active .guest-upload-step-dot {
+  background: linear-gradient(135deg, #38bdf8, #0284c7);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(56, 189, 248, 0.35);
+}
+
+.guest-upload-step-line {
+  width: 28px;
+  height: 1.5px;
+  background: #e2e8f0;
+  margin: 0 8px;
+  flex-shrink: 0;
+}
+
+.guest-upload-deco {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0.45;
+}
+
+.guest-upload-deco-page {
+  width: 58%;
+  max-width: 200px;
+  padding: 18px 16px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  transform: rotate(-4deg) translateY(-8px);
+}
+
+.guest-upload-deco-line {
+  height: 7px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  margin-bottom: 8px;
+}
+
+.guest-upload-deco-line--title {
+  height: 10px;
+  width: 48% !important;
+  background: #cbd5e1;
+  margin-bottom: 12px;
+}
+
+.guest-upload-deco-line:last-child {
+  margin-bottom: 0;
+}
+
+.guest-upload-browse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+  padding: 9px 22px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
+  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.35);
+  letter-spacing: -0.01em;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.guest-upload-zone:hover .guest-upload-browse,
+.guest-upload-zone.dragover .guest-upload-browse {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(56, 189, 248, 0.45);
+}
+
+.guest-upload-extract {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid #e2e8f0;
+  position: relative;
+  z-index: 1;
+}
+
+.guest-upload-extract-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.guest-upload-extract-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.guest-upload-extract-chips span {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: #475569;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+}
+
+.guest-upload-trust {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 11px;
+  color: #64748b;
+  position: relative;
+  z-index: 1;
+}
+
+.guest-upload-trust-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  flex-shrink: 0;
 }
 
 .guest-upload-zone-inner {
@@ -2617,6 +2825,8 @@ body.dashboard-app .scanline-overlay {
   width: 100%;
   max-width: 320px;
   margin: 0 auto;
+  position: relative;
+  z-index: 1;
 }
 
 .guest-upload-zone:hover,
@@ -3740,7 +3950,7 @@ body.dashboard-app .scanline-overlay {
 .hero-stats-row {
   display: flex;
   align-items: stretch;
-  padding-top: 28px;
+  padding-top: 16px;
   border-top: 1px solid #e2e8f0;
 }
 .hero-stat-item {

@@ -7,8 +7,10 @@ import SiteFooter from '@/components/marketing/SiteFooter';
 import { loadGuestProfileSession } from '@/lib/guestProfile';
 import { ScoreRing, formatStat, iconProps, type WallStats } from '@/components/landing/ui';
 import { UPLOAD_HIGHLIGHTS, PLATFORM_CATEGORIES } from '@/components/landing/staticData';
+import { HOMEPAGE_HIGHLIGHTS, COMPANY } from '@/lib/marketing/content';
 import LandingFeaturesGrid from '@/components/landing/LandingFeaturesGrid';
 import LandingNav from '@/components/landing/sections/LandingNav';
+import GuestResumeUpload from '@/components/GuestResumeUpload';
 import LandingFaqSection from '@/components/landing/sections/LandingFaqSection';
 import LandingPricingSection from '@/components/landing/sections/LandingPricingSection';
 import {
@@ -21,10 +23,6 @@ import {
 
 const HeroCardsShowcase = dynamic(() => import('@/components/HeroCardsShowcase'), {
   loading: () => <div className="hero-cards-wrap" style={{ minHeight: 420 }} />,
-});
-
-const GuestResumeUpload = dynamic(() => import('@/components/GuestResumeUpload'), {
-  loading: () => <div className="upload-section-panel" style={{ minHeight: 320, borderRadius: 16, background: '#fff' }} />,
 });
 
 type Accent = { color: string; soft: string };
@@ -293,7 +291,7 @@ export default function LandingPage() {
       />
 
       {/* ======= HERO ======= */}
-      <section style={{ position: 'relative', minHeight: '100vh', display: 'flex', alignItems: 'center', paddingTop: 120, paddingBottom: 80, overflow: 'hidden' }}>
+      <section style={{ position: 'relative', minHeight: '100vh', display: 'flex', alignItems: 'center', paddingTop: 108, paddingBottom: 48, overflow: 'hidden' }}>
         <div className="hero-grid" />
         <div className="hero-mesh" aria-hidden />
 
@@ -314,11 +312,26 @@ export default function LandingPage() {
                 </span>
               </h1>
 
-              <p style={{ fontSize: 17, lineHeight: 1.78, color: '#475569', maxWidth: 520, marginBottom: 36 }}>
-                Twerz turns one profile into role-perfect PDFs — with honest fit scores, zero fabricated skills, and LaTeX-grade output on resume.twerz.
+              <p style={{ fontSize: 17, lineHeight: 1.78, color: '#475569', maxWidth: 520, marginBottom: 16 }}>
+                Twerz turns one profile into role-perfect PDFs — upload your resume, paste a job description, and get an ATS-optimized, LaTeX-grade tailored resume in under 60 seconds.
               </p>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 52 }}>
+              <p style={{
+                fontSize: 14,
+                lineHeight: 1.65,
+                color: '#64748b',
+                maxWidth: 520,
+                marginBottom: 24,
+                padding: '12px 16px',
+                borderRadius: 10,
+                background: 'linear-gradient(135deg, rgba(255,90,31,0.06), rgba(251,191,36,0.04))',
+                border: '1px solid rgba(255,90,31,0.18)',
+              }}>
+                <span style={{ fontWeight: 600, color: '#ff5a1f' }}>Zero fabricated skills.</span>{' '}
+                {COMPANY.honestyCallout}
+              </p>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 20 }}>
                 <button onClick={scrollToUpload}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '14px 32px', borderRadius: 12, background: 'linear-gradient(135deg, #ff5a1f, #ff7043)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.3), 0 6px 24px rgba(255,90,31,0.35)' }}
                   onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.4), 0 10px 32px rgba(255,90,31,0.5)'; }}
@@ -484,16 +497,25 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ======= FEATURES ======= */}
+      {/* ======= FEATURES (curated highlights — full 33-feature list lives on /features) ======= */}
       <section id="features" className="lp-section lp-section-features">
         <div className="lp-container">
           <div className="lp-section-head lp-section-head--center reveal">
-            <div className="lp-eyebrow lp-eyebrow--center"><span className="lp-eyebrow-line" /> Features</div>
-            <h2 className="lp-section-title reveal reveal-d1">Built for people who apply seriously.</h2>
-            <p className="lp-section-sub reveal reveal-d2">A complete job-hunt workspace — not a one-off PDF generator.</p>
+            <div className="lp-eyebrow lp-eyebrow--center"><span className="lp-eyebrow-line" /> Why it&apos;s different</div>
+            <h2 className="lp-section-title reveal reveal-d1">The one thing every other AI resume tool gets wrong.</h2>
+            <p className="lp-section-sub reveal reveal-d2">Hallucinated skills and generic bullets are the #1 complaint about AI resume builders. Here&apos;s how Twerz avoids both.</p>
           </div>
 
-          <LandingFeaturesGrid />
+          <LandingFeaturesGrid features={HOMEPAGE_HIGHLIGHTS} />
+
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 40 }}>
+            <a href="/features" className="lp-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 26px', borderRadius: 12, background: '#F1F5F9', border: '1px solid #E2E8F0', color: '#0F172A', fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, textDecoration: 'none' }}>
+              See all 33 features
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+              </svg>
+            </a>
+          </div>
         </div>
       </section>
 

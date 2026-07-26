@@ -85,6 +85,9 @@ specific JD (Stage 5: Resume Planner).
 - experience_themes / project_themes: logical domains that GROUP the candidate's real work
   (e.g. "Backend Systems", "AI Platform", "Automation", "Payments", "Developer Experience")
   — derive these from what the candidate actually did, not from the JD in isolation.
+  These themes are labels for emphasis/ordering ONLY — they must never be used to invent a
+  new project, merge bullets from two different employers, or move a bullet out of the
+  employer/project it actually happened under.
 - skill_priorities: candidate's real skills only, ordered by relevance to this JD.
 - key_achievements: the most valuable achievements to foreground — direct or lightly
   paraphrased from the candidate profile, favoring quantified ones.
@@ -128,12 +131,31 @@ You are an expert resume writer creating recruiter-friendly, ATS-optimized resum
 - Mirror JD keywords ONLY where evidence-map support is SUPPORTED or PARTIAL — never for MISSING.
 - Gaps marked MISSING must stay out of the resume (list them nowhere as claimed skills).
 - Mention testing, documentation, CI/CD, or deployment ONLY if evidence exists in the candidate profile.
+- A SUPPORTED item whose only evidence is a bare skills-list entry (no experience/project bullet
+  describes actually using it) may be surfaced in the Skills section and named generically in the
+  summary/headline as a competency — but you may NEVER invent a brand-new experience or project
+  bullet that claims a specific usage, integration, or achievement with that tool (e.g. do not
+  write "Integrated Redis for caching" or "Utilized AWS Lambda for serverless computing" under a
+  job) unless an existing bullet for that exact role/project already describes doing so. Listing a
+  skill honestly is not the same as claiming you built something with it.
+- NEVER invent a new project, or give a project a name, that is not already present in
+  `<candidate_profile>`. Every entry in `past_experience` and `projects` in your output must
+  correspond 1:1 to an entry that already exists in the source profile (same company/role or
+  same project name) — you may rewrite, reorder, and re-emphasize its bullets, but you may
+  never create a new container to hold them.
+- NEVER move a bullet out of the employer or project it actually happened under. A bullet from
+  `past_experience` at Company A must stay under Company A in the output; it can never be
+  relocated into `projects`, into a different employer, or combined with a bullet from a
+  different employer/project into one entry — even if they feel thematically related. Grouping
+  "by logical domain" (below) means reordering bullets within their real, original entry, not
+  regrouping bullets across entries.
 
 ## Readability & structure
 - Prioritize readability over keyword stuffing — weave keywords naturally; never sacrifice clarity for density.
 - Respect the page target below — keep content tight, scannable, and balanced for human recruiters.
 - Group bullets within each role/project by logical domain (e.g., Backend Systems, AI Platform, Automation) —
-  order related bullets together; use a brief **Domain Label:** prefix on the first bullet of each cluster when a role spans multiple domains.
+  order related bullets together WITHOUT moving any bullet to a different role/project; use a brief
+  **Domain Label:** prefix on the first bullet of each cluster when a role spans multiple domains.
 - Use clear section hierarchy: headline → summary → skills → experience → projects → education.
 - The final resume must read naturally for a recruiter while maintaining high ATS compatibility.
 - Follow `<resume_plan>` for section order, experience/project theme grouping, skill priority
@@ -195,7 +217,8 @@ CUSTOM_RESUME_WRITE_USER_PROMPT = """
 
 Weave 100% of SUPPORTED and at least 80% of PARTIAL keywords from the checklist into headline, summary, skills, and bullets.
 Use this bullet formula: Action Verb → Technical Work → Business Impact → Quantified Result (only metrics present in source).
-Group experience bullets by logical domain; reorder skills by JD relevance and deduplicate.
+Group experience bullets by logical domain WITHIN their original role/project only; reorder skills by JD relevance and deduplicate.
+Output past_experience and projects with the exact same company/role/project names as <candidate_profile> — never add a new one.
 
 <resume_plan>
 {resume_plan}
@@ -294,10 +317,23 @@ Improve structure, skills clarity, quantified bullets, and keyword weaving only 
 NEVER reduce bullet density vs the current/original bullets — preserve metrics, scope, tools, outcomes.
 Do not add MISSING tools. Return full CustomResumeInfo.
 
+If the critique below says a bullet count dropped for a specific company/role/project, the fix is
+to RESTORE that bullet under its ORIGINAL entry — never by creating a new project/entry to hold it,
+and never by moving it under a different company or project. Every past_experience and projects
+entry you return must keep the exact same company/role/project name it already has in
+<current_resume> — do not add, rename, split, or merge entries; only edit bullets within them.
+
+If the critique asks you to weave in more keywords, do NOT invent a brand-new bullet claiming
+specific usage/integration of a tool at a job just because that tool is SUPPORTED or appears in
+the keyword checklist — only do this if an existing bullet for that role/project already
+describes using it. A skill that is honestly listed in the Skills section may stay there; it does
+not need an invented experience bullet to "prove" it.
+
 Refinement priorities:
 - Readability over keyword stuffing; natural recruiter-friendly prose with honest ATS keywords.
 - Bullets: Action Verb → Technical Work → Business Impact → Quantified Result (when available).
-- Group bullets by logical domain within each role; vary sentence structures; keep bullets to 1-2 lines.
+- Group bullets by logical domain within each role WITHOUT moving any bullet to a different role/project;
+  vary sentence structures; keep bullets to 1-2 lines.
 - Reorder skills by JD relevance; remove duplicates. Mention testing/CI/CD/deployment only with evidence.
 
 {page_target_block}
