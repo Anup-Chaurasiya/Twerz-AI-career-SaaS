@@ -99,12 +99,12 @@ async def public_ats_check(
         )
 
     extractor = PDFExtractor()
-    ocr_result = extractor.extract(pdf_bytes)
+    extracted_text = extractor.extract_text(pdf_bytes)
 
     llm = LLMInference()
     prompt = (
         "Analyze this resume for the 8-point ATS checklist.\n\n"
-        f"<ocr_extracted_text>\n{ocr_result.text[:4000]}\n</ocr_extracted_text>"
+        f"<ocr_extracted_text>\n{extracted_text[:4000]}\n</ocr_extracted_text>"
     )
 
     raw = await llm.run_inference(

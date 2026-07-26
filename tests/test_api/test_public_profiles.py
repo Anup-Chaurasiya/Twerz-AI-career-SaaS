@@ -2,6 +2,7 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from unittest.mock import AsyncMock, patch
 
 from app.models.base import Base
 from app.models import user, profile, job, token_usage, tenant, roast, roast_view, credit  # noqa: F401
@@ -200,3 +201,39 @@ async def test_guest_upload_rejects_non_pdf(public_client):
         files={"file": ("resume.txt", b"hello world", "text/plain")},
     )
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_public_ats_check_uses_pdf_text_extraction(public_client):
+    mock_result = {
+        "headline": "Needs work",
+        "roast_points": [{"emoji": "📄", "text": "Sparse content"}],
+        "actual_feedback": "Add more detail.",
+        "score": 4,
+        "verdict": "Room to improve",
+        "ats_checklist": [
+            {
+                "label": "Contact Information",
+                "passed": False,
+                "detail": "Missing contact block.",
+                "category": "content",
+            }
+        ],
+    }
+    with patch("app.api.public.LLMInference") as mock_llm_cls:
+        mock_llm = AsyncMock()
+        mock_llm.run_inference.return_value = mock_result
+        mock_llm_cls.return_value = mock_llm
+
+        response = await public_client.post(
+            "/public/ats-check",
+            files={"file": ("resume.pdf", _minimal_pdf(), "application/pdf")},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["passed_count"] == 0
+    assert body["total_checks"] == 1
+    assert body["score_estimate"] == 0
+    assert "cta" in body
+    mock_llm.run_inference.assert_awaited_once()
