@@ -7,7 +7,7 @@ type Accent = { color: string; soft: string };
 export type LandingFeatureItem = {
   title: string;
   desc: string;
-  tag: string;
+  tag?: string;
 };
 
 const TAG_META: Record<string, { accent: Accent; shortTag: string }> = {
@@ -139,7 +139,7 @@ function FeatureIcon({ title }: { title: string }) {
   );
 }
 
-function FeatureVisual({ title, tag, accent }: { title: string; tag: string; accent: Accent }) {
+function FeatureVisual({ title, tag, accent }: { title: string; tag?: string; accent: Accent }) {
   const t = title.toLowerCase();
 
   if (t.includes('upload') && t.includes('docx')) {
@@ -282,7 +282,7 @@ export default function LandingFeaturesGrid({ features = FEATURES }: { features?
   return (
     <div className="features-grid-v2">
       {features.map((feature, index) => {
-        const meta = TAG_META[feature.tag] ?? DEFAULT_META;
+        const meta = (feature.tag ? TAG_META[feature.tag] : undefined) ?? DEFAULT_META;
         const style = {
           '--accent': meta.accent.color,
           '--accent-soft': meta.accent.soft,

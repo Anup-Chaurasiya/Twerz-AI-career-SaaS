@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/authStore';
@@ -51,19 +51,27 @@ export default function LoginPage() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [error, setError] = useState('');
   const [claimError, setClaimError] = useState<GuestClaimErrorCode | null>(null);
-  const [hasGuestResume] = useState(() => {
-    if (typeof window === 'undefined') return false;
+  const [hasGuestResume, setHasGuestResume] = useState(false);
+  const [oauthTokenHandled, setOauthTokenHandled] = useState(false);
+  const [oauthClaimedProfileId, setOauthClaimedProfileId] = useState<number | null>(null);
+  const [oauthClaimError, setOauthClaimError] = useState<GuestClaimErrorCode | null>(null);
+  const [completingLogin, setCompletingLogin] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+
+  // Persist OAuth token before paint; keep first render identical to SSR (avoids hydration mismatch).
+  useLayoutEffect(() => {
+    const oauthResult = persistOAuthTokenFromUrl();
+    setOauthTokenHandled(oauthResult.handled);
+    setOauthClaimedProfileId(oauthResult.claimedProfileId);
+    setOauthClaimError(oauthResult.claimError);
+
     const params = new URLSearchParams(window.location.search);
-    return Boolean(loadGuestProfileSession()?.guestToken) || params.get('guest') === '1';
-  });
-  const [oauthResult] = useState(() => persistOAuthTokenFromUrl());
-  const oauthTokenHandled = oauthResult.handled;
-  const oauthClaimedProfileId = oauthResult.claimedProfileId;
-  const oauthClaimError = oauthResult.claimError;
-  const [completingLogin] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return oauthResult.handled || !!localStorage.getItem('token');
-  });
+    setHasGuestResume(
+      Boolean(loadGuestProfileSession()?.guestToken) || params.get('guest') === '1',
+    );
+    setCompletingLogin(oauthResult.handled || !!localStorage.getItem('token'));
+    setAuthReady(true);
+  }, []);
 
   useEffect(() => {
     let i = 0;
@@ -93,6 +101,8 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
+    if (!authReady) return;
+
     const params = new URLSearchParams(window.location.search);
     const utm = params.get('utm_source');
     const shareId = params.get('share_id');
@@ -163,7 +173,7 @@ export default function LoginPage() {
     }
 
     useAuthStore.setState({ isLoading: false });
-  }, [oauthTokenHandled, oauthClaimedProfileId, oauthClaimError, router]);
+  }, [authReady, oauthTokenHandled, oauthClaimedProfileId, oauthClaimError, router]);
 
   const handleLogin = async () => {
     setLoginLoading(true);
