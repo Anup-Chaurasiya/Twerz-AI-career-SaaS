@@ -1307,6 +1307,68 @@ body.dashboard-app .scanline-overlay {
   min-height: 100vh; display: flex; align-items: center;
   padding-top: 72px; position: relative; overflow: hidden;
 }
+
+/* Landing hero — keep decorative layers clipped, never clip copy or cards */
+.lp-hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: auto;
+  padding-top: clamp(96px, 12vh, 108px);
+  padding-bottom: clamp(48px, 8vh, 72px);
+  overflow: visible;
+}
+.lp-hero-bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+.lp-hero-inner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+}
+.hero-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: clamp(24px, 4vw, 48px);
+  align-items: center;
+}
+.hero-cols__copy,
+.hero-cols__visual {
+  min-width: 0;
+}
+.hero-cols__visual {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  padding-inline: clamp(0px, 2vw, 12px);
+}
+.lp-hero-title {
+  font-family: 'Clash Display', 'Inter', sans-serif;
+  font-size: clamp(36px, 4.8vw, 72px);
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  margin-bottom: 22px;
+}
+.lp-hero-title-accent,
+.lp-hero-title-main {
+  display: block;
+}
+.lp-hero-title-accent {
+  color: #ff5a1f;
+  margin-bottom: 0.08em;
+}
+.lp-hero-title-main {
+  background: linear-gradient(180deg, #0f172a 30%, #334155 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
 .navbar {
   position: fixed; top: 0; left: 0; right: 0; z-index: 100;
   height: 72px; display: flex; align-items: center;
@@ -1391,10 +1453,31 @@ body.dashboard-app .scanline-overlay {
 .hamburger-btn:hover { color: #0F172A; background: #F1F5F9; }
 
 /* ===== HERO & SECTION RESPONSIVE ===== */
+@media (max-width: 1024px) and (min-width: 901px) {
+  .hero-cols {
+    gap: 28px;
+  }
+  .hero-cards-wrap {
+    max-width: min(460px, 100%);
+  }
+  .hero-cards-stack {
+    height: 350px;
+    width: min(460px, 100%);
+  }
+}
 @media (max-width: 900px) {
+  .lp-hero {
+    padding-top: 92px;
+    padding-bottom: 40px;
+  }
   .hero-cols {
     grid-template-columns: 1fr !important;
-    gap: 40px !important;
+    gap: 32px !important;
+  }
+  .hero-cols__visual {
+    padding-inline: 0;
+    max-width: min(520px, 100%);
+    margin-inline: auto;
   }
   .hiw-flow {
     flex-direction: column !important;
@@ -3745,7 +3828,11 @@ body.dashboard-app .scanline-overlay {
   align-items: center;
   justify-content: center;
   gap: 14px;
+  width: 100%;
+  max-width: min(520px, 100%);
+  min-width: 0;
   min-height: 460px;
+  margin-inline: auto;
   animation: heroCardsWrapEnter 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
 }
 @keyframes heroCardsWrapEnter {
@@ -3814,9 +3901,10 @@ body.dashboard-app .scanline-overlay {
 }
 .hero-cards-stack {
   position: relative;
-  width: 100%;
-  max-width: 520px;
+  width: min(520px, 100%);
+  max-width: 100%;
   height: 380px;
+  margin-inline: auto;
   perspective: 1200px;
   transform-style: preserve-3d;
   transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -3827,7 +3915,8 @@ body.dashboard-app .scanline-overlay {
 }
 .hero-card-3d {
   position: absolute;
-  width: 74%;
+  width: 72%;
+  max-width: calc(100% - 24px);
   cursor: pointer;
   transition:
     transform 0.65s cubic-bezier(0.16, 1, 0.3, 1),
@@ -3865,25 +3954,25 @@ body.dashboard-app .scanline-overlay {
 }
 .hero-card-3d--back {
   top: 0;
-  left: 0;
+  left: 6%;
   z-index: 1;
   transform:
-    rotate(-6deg)
-    translate(calc(-6px + var(--hero-shift-x, 0px)), calc(4px + var(--hero-shift-y, 0px)));
+    rotate(-5deg)
+    translate(calc(-2px + var(--hero-shift-x, 0px)), calc(4px + var(--hero-shift-y, 0px)));
 }
 .hero-card-3d--front {
   bottom: 0;
-  right: 0;
+  right: 6%;
   z-index: 2;
   transform:
-    rotate(5deg)
-    translate(calc(6px + var(--hero-shift-x, 0px)), calc(-4px + var(--hero-shift-y, 0px)));
+    rotate(4deg)
+    translate(calc(2px + var(--hero-shift-x, 0px)), calc(-4px + var(--hero-shift-y, 0px)));
 }
 .hero-cards-stack--focus-editor .hero-card-3d--back {
   z-index: 3;
   transform:
     rotate(-2deg)
-    translate(calc(-2px + var(--hero-shift-x, 0px)), calc(-6px + var(--hero-shift-y, 0px)))
+    translate(calc(-1px + var(--hero-shift-x, 0px)), calc(-6px + var(--hero-shift-y, 0px)))
     scale(1.02);
   opacity: 1;
   filter: none;
@@ -3891,8 +3980,8 @@ body.dashboard-app .scanline-overlay {
 .hero-cards-stack--focus-editor .hero-card-3d--front {
   z-index: 1;
   transform:
-    rotate(4deg)
-    translate(calc(28px + var(--hero-shift-x, 0px)), calc(18px + var(--hero-shift-y, 0px)))
+    rotate(3deg)
+    translate(calc(12px + var(--hero-shift-x, 0px)), calc(12px + var(--hero-shift-y, 0px)))
     scale(0.96);
   opacity: 0.82;
   filter: saturate(0.85) blur(0.3px);
@@ -3901,7 +3990,7 @@ body.dashboard-app .scanline-overlay {
   z-index: 3;
   transform:
     rotate(2deg)
-    translate(calc(2px + var(--hero-shift-x, 0px)), calc(-6px + var(--hero-shift-y, 0px)))
+    translate(calc(1px + var(--hero-shift-x, 0px)), calc(-6px + var(--hero-shift-y, 0px)))
     scale(1.02);
   opacity: 1;
   filter: none;
@@ -3909,8 +3998,8 @@ body.dashboard-app .scanline-overlay {
 .hero-cards-stack--focus-fit .hero-card-3d--back {
   z-index: 1;
   transform:
-    rotate(-5deg)
-    translate(calc(-28px + var(--hero-shift-x, 0px)), calc(18px + var(--hero-shift-y, 0px)))
+    rotate(-4deg)
+    translate(calc(-12px + var(--hero-shift-x, 0px)), calc(12px + var(--hero-shift-y, 0px)))
     scale(0.96);
   opacity: 0.82;
   filter: saturate(0.85) blur(0.3px);
@@ -4224,33 +4313,38 @@ body.dashboard-app .scanline-overlay {
 
 @media (max-width: 900px) {
   .hero-cards-wrap {
-    min-height: 400px;
-    margin-top: 16px;
+    min-height: 380px;
+    margin-top: 8px;
   }
   .hero-cards-stack {
-    height: 360px;
-    max-width: 100%;
+    height: 340px;
+    width: min(480px, 100%);
   }
   .hero-card-3d {
-    width: 78%;
+    width: 76%;
   }
   .hero-card-3d--back {
-    transform: rotate(-4deg) translate(-4px, 2px);
+    left: 5%;
+    transform: rotate(-3deg) translate(-2px, 2px);
   }
   .hero-card-3d--front {
-    transform: rotate(3deg) translate(4px, -2px);
+    right: 5%;
+    transform: rotate(2deg) translate(2px, -2px);
   }
   .hero-cards-stack--focus-editor .hero-card-3d--back {
     transform: rotate(-1deg) translate(0, -4px) scale(1.01);
   }
   .hero-cards-stack--focus-editor .hero-card-3d--front {
-    transform: rotate(3deg) translate(20px, 14px) scale(0.97);
+    transform: rotate(2deg) translate(10px, 10px) scale(0.97);
   }
   .hero-cards-stack--focus-fit .hero-card-3d--front {
     transform: rotate(1deg) translate(0, -4px) scale(1.01);
   }
   .hero-cards-stack--focus-fit .hero-card-3d--back {
-    transform: rotate(-3deg) translate(-20px, 14px) scale(0.97);
+    transform: rotate(-2deg) translate(-10px, 10px) scale(0.97);
+  }
+  .hero-stats-row {
+    gap: 4px;
   }
 }
 
@@ -4275,23 +4369,44 @@ body.dashboard-app .scanline-overlay {
     max-width: 100%;
     min-width: 0;
   }
+  .hero-cards-wrap {
+    min-height: 320px;
+  }
   .hero-cards-stack {
-    height: 340px;
+    height: 300px;
+    width: min(420px, 100%);
   }
   .hero-card-3d {
-    width: 82%;
+    width: 80%;
   }
   .hero-card-3d--back {
     top: 0;
-    left: 0;
+    left: 4%;
   }
   .hero-card-3d--front {
     bottom: 0;
-    right: 0;
+    right: 4%;
   }
   .hero-cards-stack--focus-editor .hero-card-3d--front,
   .hero-cards-stack--focus-fit .hero-card-3d--back {
     opacity: 0.82;
+  }
+  .hero-stats-row {
+    flex-wrap: wrap;
+    justify-content: space-between;
+    row-gap: 12px;
+  }
+  .hero-stat-item {
+    flex: 1 1 calc(33.333% - 8px);
+    min-width: 88px;
+    padding: 4px 4px;
+  }
+  .hero-stat-divider {
+    display: none;
+  }
+  .hero-stat-label {
+    font-size: 10px;
+    letter-spacing: 1px;
   }
 }
 

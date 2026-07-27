@@ -291,13 +291,15 @@ export default function LandingPage() {
       />
 
       {/* ======= HERO ======= */}
-      <section style={{ position: 'relative', minHeight: '100vh', display: 'flex', alignItems: 'center', paddingTop: 108, paddingBottom: 48, overflow: 'hidden' }}>
-        <div className="hero-grid" />
-        <div className="hero-mesh" aria-hidden />
+      <section className="lp-hero">
+        <div className="lp-hero-bg" aria-hidden>
+          <div className="hero-grid" />
+          <div className="hero-mesh" />
+        </div>
 
-        <div className="lp-container" style={{ position: 'relative', zIndex: 1 }}>
-          <div className="hero-cols" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'center' }}>
-            <div className="fade-slide-in">
+        <div className="lp-container lp-hero-inner">
+          <div className="hero-cols">
+            <div className="hero-cols__copy fade-slide-in">
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 16px 6px 10px', borderRadius: 100, background: 'linear-gradient(135deg,rgba(255,90,31,0.14),rgba(251,191,36,0.06))', border: '1px solid rgba(255,90,31,0.28)', marginBottom: 28, userSelect: 'none' }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ff5a1f" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M9.813 15.904L9 21l8.982-11.795H14.18l.818-5.096L6 16l3.813-.096z" />
@@ -305,9 +307,9 @@ export default function LandingPage() {
                 <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, fontWeight: 600, color: '#ff5a1f', letterSpacing: '0.6px' }}>AI-Powered Resume Tailoring</span>
               </div>
 
-              <h1 style={{ fontFamily: "'Clash Display','Inter',sans-serif", fontSize: 'clamp(42px,5vw,72px)', fontWeight: 700, lineHeight: 1.06, letterSpacing: '-0.03em', marginBottom: 22 }}>
-                <span style={{ display: 'block', color: '#ff5a1f' }}>Every job</span>
-                <span style={{ display: 'block', background: 'linear-gradient(180deg,#0F172A 30%,#334155 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+              <h1 className="lp-hero-title">
+                <span className="lp-hero-title-accent">Every job</span>
+                <span className="lp-hero-title-main">
                   deserves its own resume.
                 </span>
               </h1>
@@ -361,7 +363,9 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <HeroCardsShowcase />
+            <div className="hero-cols__visual">
+              <HeroCardsShowcase />
+            </div>
           </div>
         </div>
       </section>

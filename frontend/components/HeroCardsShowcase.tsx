@@ -101,7 +101,7 @@ export default function HeroCardsShowcase() {
     const rect = el.getBoundingClientRect();
     const px = (e.clientX - rect.left) / rect.width - 0.5;
     const py = (e.clientY - rect.top) / rect.height - 0.5;
-    setTilt({ x: px * 16, y: py * -11 });
+    setTilt({ x: px * 10, y: py * -7 });
   };
 
   const stackStyle = {
