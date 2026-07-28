@@ -1,10 +1,28 @@
 {
   "name": "Twerz Apply Assist",
   "description": "Capture job descriptions and apply with fit-scored tailored resumes on employer forms.",
-  "version": "0.5.0",
+  "version": "0.6.2",
   "manifest_version": 3,
-  "permissions": ["activeTab", "storage", "tabs"],
-  "host_permissions": ["http://localhost:3000/*", "http://localhost:8000/*", "https://*/*"],
+  "permissions": ["activeTab", "storage", "tabs", "alarms"],
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "http://localhost:8000/*",
+    "http://127.0.0.1:3000/*",
+    "http://127.0.0.1:8000/*"
+  ],
+  "optional_host_permissions": [
+    "https://boards.greenhouse.io/*",
+    "https://*.greenhouse.io/*",
+    "https://jobs.lever.co/*",
+    "https://*.myworkdayjobs.com/*",
+    "https://www.linkedin.com/*",
+    "https://www.naukri.com/*",
+    "https://*.indeed.com/*",
+    "https://wellfound.com/*",
+    "https://www.wellfound.com/*",
+    "https://*.wellfound.com/*",
+    "https://angel.co/*"
+  ],
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -51,8 +69,8 @@
         "https://jobs.lever.co/*",
         "https://*.myworkdayjobs.com/*"
       ],
-      "js": ["jd-extract.js", "form-utils.js", "content.js"],
-      "css": ["apply-assist.css"]
+      "js": ["jd-extract.js", "form-utils.js", "telemetry.js", "capture-flow.js", "content.js"],
+      "css": ["apply-assist.css", "capture-flow.css"]
     },
     {
       "matches": [
@@ -61,8 +79,8 @@
         "https://jobs.lever.co/*",
         "https://*.myworkdayjobs.com/*"
       ],
-      "js": ["form-utils.js", "apply-assist.js"],
-      "css": ["apply-assist.css"]
+      "js": ["form-utils.js", "telemetry.js", "capture-flow.js", "apply-assist.js"],
+      "css": ["apply-assist.css", "capture-flow.css"]
     }
   ]
 }

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Twerz Apply Assist</title>
   <link rel="stylesheet" href="popup.css" />
+  <link rel="stylesheet" href="capture-flow.css" />
 </head>
 <body>
   <div class="popup-shell">
@@ -68,8 +69,19 @@
       </div>
       <p class="hint" id="status"></p>
     </div>
+
+    <div id="results-panel" style="display:none;">
+      <div class="connected-bar">
+        <span class="connected-email" id="results-connected-as"></span>
+        <button type="button" class="advanced-toggle" id="backToCapture" style="margin:0;text-decoration:none;">← Capture</button>
+      </div>
+      <div id="results-content"></div>
+    </div>
   </div>
   <script src="jd-extract.js"></script>
+  <script src="form-utils.js"></script>
+  <script src="telemetry.js"></script>
+  <script src="capture-flow.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

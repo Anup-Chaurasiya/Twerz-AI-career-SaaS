@@ -52,6 +52,22 @@ function runTests() {
   });
 
   cases.push(() => {
+    const win = loadFixture(
+      'wellfound-sidebar-nav.html',
+      'https://wellfound.com/jobs?job_listing_slug=1234567-founding-engineer-intern-mobile-full-stack',
+    );
+    const result = win.abExtractWellfound();
+    assert(result.pageType === 'detail', `expected detail page, got ${result.pageType}`);
+    assert(
+      result.role === 'Founding Engineer Intern (Mobile/Full stack)',
+      `unexpected role: ${result.role}`,
+    );
+    assert(result.company === 'Mindsnack', `unexpected company: ${result.company}`);
+    assert(result.description.includes('MindSnack is a consumer mobile app'), 'missing description body');
+    assert(result.ready === true, 'expected ready capture state');
+  });
+
+  cases.push(() => {
     const win = loadFixture('wellfound-listing.html', 'https://wellfound.com/jobs');
     const result = win.abExtractWellfound();
     assert(result.pageType === 'listing', `expected listing page, got ${result.pageType}`);

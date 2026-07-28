@@ -14,6 +14,21 @@ _WORKDAY_REQ = re.compile(r"_(R\d+)\b", re.IGNORECASE)
 _GREENHOUSE_JOB = re.compile(r"/jobs/(\d+)", re.IGNORECASE)
 _LEVER_POSTING = re.compile(r"jobs\.lever\.co/[^/]+/([a-f0-9-]{36})", re.IGNORECASE)
 
+_SENIORITY_TOKENS = (
+    "senior",
+    "sr",
+    "junior",
+    "jr",
+    "lead",
+    "staff",
+    "principal",
+    "associate",
+    "intern",
+    "ii",
+    "iii",
+    "iv",
+)
+
 
 def normalize_job_url(url: str) -> str:
     if not url:
@@ -22,6 +37,23 @@ def normalize_job_url(url: str) -> str:
     parsed = urlparse(url.lower())
     path = parsed.path.rstrip("/")
     return urlunparse((parsed.scheme, parsed.netloc, path, "", "", ""))
+
+
+def normalize_company(company: str) -> str:
+    if not company:
+        return ""
+    return re.sub(r"[^a-z0-9]+", "", company.lower())
+
+
+def normalize_role(role: str) -> str:
+    """Lowercase role with seniority tokens stripped for fuzzy cross-domain match."""
+    if not role:
+        return ""
+    r = role.lower().strip()
+    for token in _SENIORITY_TOKENS:
+        r = re.sub(rf"\b{re.escape(token)}\.?\b", " ", r)
+    r = re.sub(r"[^a-z0-9]+", "-", r).strip("-")
+    return r
 
 
 def extract_posting_key(url: str) -> str | None:
@@ -70,14 +102,27 @@ def urls_match(candidate: str, reference: str) -> bool:
     return left in right or right in left
 
 
+def _company_role_match(job: Job, page_url: str) -> bool:
+    jd = job.job_description or {}
+    company = normalize_company(jd.get("company") or "")
+    role = normalize_role(jd.get("role") or "")
+    if not company or not role:
+        return False
+    parsed = urlparse(page_url.lower())
+    host_path = re.sub(r"[^a-z0-9]+", "-", f"{parsed.netloc}{parsed.path}").strip("-")
+    company_slug = company
+    role_slug = role.replace("-", "")
+    return company_slug in host_path.replace("-", "") and role_slug in host_path.replace("-", "")
+
+
 async def find_job_by_page_url(
     db: AsyncSession,
     user_id: str,
     page_url: str,
     *,
     limit: int = 200,
-) -> Job | None:
-    """Find the most recent job whose captured source URL matches the active tab."""
+) -> tuple[Job | None, str | None]:
+    """Find the most recent job matching the active tab URL or company+role."""
     result = await db.execute(
         select(Job)
         .where(Job.user_id == user_id)
@@ -85,20 +130,19 @@ async def find_job_by_page_url(
         .limit(limit)
     )
     page_key = extract_posting_key(page_url)
+    company_role_candidate: Job | None = None
+
     for job in result.scalars().all():
         source = job_source_url(job)
         if source and urls_match(page_url, source):
-            return job
+            return job, "url"
         if page_key:
             source_key = extract_posting_key(source or "")
             if source_key and source_key == page_key:
-                return job
-        jd = job.job_description or {}
-        company = (jd.get("company") or "").lower()
-        role = (jd.get("role") or "").lower()
-        parsed = urlparse(page_url.lower())
-        host_path = f"{parsed.netloc}{parsed.path}"
-        if company and company in host_path:
-            if role and role.replace(" ", "-") in host_path.replace(" ", "-"):
-                return job
-    return None
+                return job, "url"
+        if company_role_candidate is None and _company_role_match(job, page_url):
+            company_role_candidate = job
+
+    if company_role_candidate is not None:
+        return company_role_candidate, "company_role"
+    return None, None

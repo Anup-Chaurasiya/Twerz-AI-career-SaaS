@@ -1,0 +1,68 @@
+.ab-results-header { display: flex; flex-direction: column; gap: 10px; }
+.ab-results-rationale { font-size: 12px; color: var(--ab-muted, #94a3b8); margin: 0; line-height: 1.45; }
+.ab-results-gaps { font-size: 11px; margin: 0; color: var(--ab-muted, #94a3b8); }
+.ab-gap-chip {
+  display: inline-block;
+  background: rgba(99, 102, 241, 0.15);
+  color: #a5b4fc;
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin-right: 4px;
+}
+.ab-results-block { font-size: 11px; color: var(--ab-warn, #fbbf24); margin: 0; }
+.ab-results-progress { font-size: 11px; color: var(--ab-muted, #94a3b8); min-height: 16px; }
+.ab-results-progress--ready { color: var(--ab-success, #34d399); font-weight: 600; }
+.ab-results-progress--error { color: var(--ab-danger, #f87171); }
+.ab-results-progress--busy { color: #a5b4fc; font-weight: 600; }
+.ab-results-error { font-size: 11px; color: var(--ab-danger, #f87171); margin: 0; }
+.ab-results-override { font-size: 11px; }
+.ab-btn--loading {
+  opacity: 0.85;
+  cursor: wait;
+  position: relative;
+}
+.ab-btn--loading::after {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-left: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: ab-spin 0.7s linear infinite;
+  vertical-align: -2px;
+}
+@keyframes ab-spin {
+  to { transform: rotate(360deg); }
+}
+.ab-consent-banner {
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+.ab-consent-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.ab-fill-summary {
+  font-size: 11px;
+  line-height: 1.5;
+  margin-top: 8px;
+  padding: 8px;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 8px;
+}
+.ab-fill-summary li { margin: 2px 0; }
+.ab-job-picker { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.ab-job-picker-item {
+  text-align: left;
+  background: var(--ab-surface-2, #1e293b);
+  border: 1px solid var(--ab-border, #334155);
+  border-radius: 8px;
+  padding: 8px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+}
+.ab-job-picker-item:hover { border-color: #6366f1; }

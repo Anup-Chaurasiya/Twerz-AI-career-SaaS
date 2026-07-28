@@ -92,22 +92,24 @@ function openCapturePanel() {
     </div>
     <div class="ab-body">
       <div class="ab-warn" id="ab-cap-warn" style="${jd.ready ? 'display:none' : ''}">${jd.message || 'Edit fields if needed.'}</div>
+      <label class="ab-field-label" id="ab-cap-profile-wrap" style="display:none;">Profile<select id="ab-cap-profile"></select></label>
       <label class="ab-field-label">Company<input id="ab-cap-company" value="${escapeAttr(jd.company || '')}" /></label>
       <label class="ab-field-label">Role<input id="ab-cap-role" value="${escapeAttr(jd.role || '')}" /></label>
       <label class="ab-field-label">Description<textarea id="ab-cap-desc" rows="5">${escapeHtml(jd.description || '')}</textarea></label>
-      <button class="ab-btn ab-btn-primary" id="ab-cap-submit" ${jd.ready ? '' : ''}>Capture &amp; analyze</button>
+      <button class="ab-btn ab-btn-primary" id="ab-cap-submit" disabled>Capture &amp; analyze</button>
+      <div id="ab-cap-results" style="display:none;"></div>
       <div class="ab-status"></div>
     </div>
   `;
   document.body.appendChild(panel);
   panel.querySelector('.ab-close').addEventListener('click', () => panel.remove());
 
-  sendBg({ type: 'API_FETCH', path: '/extension/me' }).then((me) => {
-    if (me.error || !me.profiles?.length) return;
-    panel.dataset.profileId = String(me.profiles[0].id);
-  });
-
   const submitBtn = panel.querySelector('#ab-cap-submit');
+  const resultsHost = panel.querySelector('#ab-cap-results');
+  const statusEl = panel.querySelector('.ab-status');
+  let resultsController = null;
+  const defaultSubmitLabel = 'Capture & analyze';
+
   const validate = () => {
     const errors = typeof abValidateCaptureFields === 'function'
       ? abValidateCaptureFields({
@@ -118,42 +120,98 @@ function openCapturePanel() {
         })
       : [];
     submitBtn.disabled = errors.length > 0;
+    if (errors.length && panel.dataset.profileId) {
+      statusEl.textContent = errors.join(' ');
+    } else if (panel.dataset.profileId) {
+      statusEl.textContent = '';
+    }
     return errors;
   };
 
-  panel.querySelectorAll('input, textarea').forEach((el) => el.addEventListener('input', validate));
-  validate();
-
-  submitBtn.addEventListener('click', async () => {
-    const status = panel.querySelector('.ab-status');
-    const errors = validate();
-    if (errors.length) {
-      status.textContent = errors.join(' ');
+  async function loadProfiles() {
+    statusEl.textContent = 'Loading profile…';
+    const me = await sendBg({ type: 'API_FETCH', path: '/extension/me' });
+    if (me.error) {
+      statusEl.textContent =
+        me.status === 401
+          ? 'Connect your Twerz account in the extension popup first.'
+          : me.error;
+      submitBtn.disabled = true;
       return;
     }
-    status.textContent = 'Creating job…';
+    if (!me.profiles?.length) {
+      statusEl.textContent = 'Upload a ready profile in Twerz first.';
+      submitBtn.disabled = true;
+      return;
+    }
+
+    const profileWrap = panel.querySelector('#ab-cap-profile-wrap');
+    const profileSelect = panel.querySelector('#ab-cap-profile');
+    profileSelect.innerHTML = '';
+    for (const profile of me.profiles) {
+      const opt = document.createElement('option');
+      opt.value = profile.id;
+      opt.textContent = profile.label;
+      profileSelect.appendChild(opt);
+    }
+    if (me.profiles.length > 1) {
+      profileWrap.style.display = '';
+    }
+    panel.dataset.profileId = String(me.profiles[0].id);
+    profileSelect.addEventListener('change', () => {
+      panel.dataset.profileId = profileSelect.value;
+      validate();
+    });
+    statusEl.textContent = '';
+    validate();
+  }
+
+  panel.querySelectorAll('input, textarea').forEach((el) => el.addEventListener('input', validate));
+  loadProfiles();
+
+  submitBtn.addEventListener('click', async () => {
+    const errors = validate();
+    if (errors.length) {
+      statusEl.textContent = errors.join(' ');
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.classList.add('ab-btn--loading');
+    submitBtn.textContent = 'Capturing…';
+    statusEl.textContent = 'Creating job…';
     try {
-      const resp = await sendBg({
-        type: 'API_FETCH',
-        path: '/extension/capture-job',
-        options: {
-          method: 'POST',
-          body: JSON.stringify({
-            profile_id: Number(panel.dataset.profileId),
-            company: panel.querySelector('#ab-cap-company').value.trim(),
-            role: panel.querySelector('#ab-cap-role').value.trim(),
-            description: panel.querySelector('#ab-cap-desc').value.trim(),
-            source_url: location.href,
-          }),
+      const result = await abRunCaptureFlow({
+        profileId: Number(panel.dataset.profileId),
+        company: panel.querySelector('#ab-cap-company').value.trim(),
+        role: panel.querySelector('#ab-cap-role').value.trim(),
+        description: panel.querySelector('#ab-cap-desc').value.trim(),
+        sourceUrl: location.href,
+        onStatus: (text) => {
+          if (text) statusEl.textContent = text;
         },
       });
-      if (resp.error) throw new Error(resp.error);
-      const cfg = await sendBg({ type: 'GET_CONFIG' });
-      status.textContent = `Job #${resp.job_id} created.`;
-      sendBg({ type: 'START_JOB_POLL', jobId: resp.job_id });
-      chrome.runtime.sendMessage({ type: 'OPEN_TAB', url: `${cfg.appBase}${resp.open_url}` });
+      if (!result.ok) {
+        statusEl.textContent = result.error?.error || 'Capture failed';
+        submitBtn.textContent = defaultSubmitLabel;
+        submitBtn.classList.remove('ab-btn--loading');
+        validate();
+        return;
+      }
+      panel.querySelector('#ab-cap-profile-wrap')?.style.setProperty('display', 'none');
+      panel.querySelectorAll('#ab-cap-company, #ab-cap-role, #ab-cap-desc').forEach((el) => {
+        el.closest('label')?.style.setProperty('display', 'none');
+      });
+      submitBtn.style.display = 'none';
+      resultsHost.style.display = 'block';
+      resultsHost.innerHTML = abRenderResultsHtml(result.status, { showDashboardLink: true });
+      resultsController?.destroy?.();
+      resultsController = abBindResultsPanel(resultsHost, { jobId: result.jobId, status: result.status });
+      statusEl.textContent = '';
     } catch (err) {
-      status.textContent = String(err.message || err);
+      statusEl.textContent = String(err.message || err);
+      submitBtn.textContent = defaultSubmitLabel;
+      submitBtn.classList.remove('ab-btn--loading');
+      validate();
     }
   });
 }

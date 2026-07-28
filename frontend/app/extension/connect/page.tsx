@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { authApi } from '@/lib/api/endpoints';
 
 declare global {
   interface Window {
@@ -19,51 +20,88 @@ declare global {
   }
 }
 
+async function freshAccessToken(): Promise<string | null> {
+  const existing = localStorage.getItem('token');
+  if (!existing) return null;
+  try {
+    const res = await authApi.refresh();
+    const token = res.data.access_token;
+    localStorage.setItem('token', token);
+    return token;
+  } catch {
+    return existing;
+  }
+}
+
 export default function ExtensionConnectPage() {
   const router = useRouter();
   const [status, setStatus] = useState('Checking your session…');
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const extensionId = params.get('extension_id');
-    const token = localStorage.getItem('token');
-    const apiBase =
-      process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || 'http://localhost:8000';
-    const appBase = window.location.origin;
+    let cancelled = false;
 
-    if (!token) {
-      setStatus('Sign in to connect the Chrome extension.');
-      const redirect = encodeURIComponent(
-        `/extension/connect${extensionId ? `?extension_id=${extensionId}` : ''}`,
+    async function run() {
+      const params = new URLSearchParams(window.location.search);
+      const extensionId = params.get('extension_id');
+      const apiBase =
+        process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || 'http://localhost:8000';
+      const appBase = window.location.origin;
+
+      if (!localStorage.getItem('token')) {
+        if (cancelled) return;
+        setStatus('Sign in to connect the Chrome extension.');
+        const redirect = encodeURIComponent(
+          `/extension/connect${extensionId ? `?extension_id=${extensionId}` : ''}`,
+        );
+        router.replace(`/login?redirect=${redirect}`);
+        return;
+      }
+
+      if (!extensionId || !window.chrome?.runtime?.sendMessage) {
+        if (cancelled) return;
+        setStatus('Open this page from the Twerz Chrome extension Connect button.');
+        return;
+      }
+
+      if (cancelled) return;
+      setStatus('Refreshing session and connecting extension…');
+
+      const token = await freshAccessToken();
+      if (!token) {
+        if (cancelled) return;
+        setStatus('Sign in to connect the Chrome extension.');
+        router.replace('/login?redirect=%2Fextension%2Fconnect');
+        return;
+      }
+
+      window.chrome.runtime.sendMessage(
+        extensionId,
+        { type: 'AUTH', token, apiBase, appBase },
+        (response) => {
+          if (cancelled) return;
+          if (window.chrome?.runtime?.lastError) {
+            setStatus(
+              'Could not reach the extension. Reload the unpacked extension and try again.',
+            );
+            return;
+          }
+          if (response?.ok) {
+            setConnected(true);
+            setStatus(
+              'Extension connected. You can close this tab and capture jobs from any supported board.',
+            );
+            return;
+          }
+          setStatus('Connection failed. Try again from the extension popup.');
+        },
       );
-      router.replace(`/login?redirect=${redirect}`);
-      return;
     }
 
-    if (!extensionId || !window.chrome?.runtime?.sendMessage) {
-      setStatus('Open this page from the Twerz Chrome extension Connect button.');
-      return;
-    }
-
-    window.chrome.runtime.sendMessage(
-      extensionId,
-      { type: 'AUTH', token, apiBase, appBase },
-      (response) => {
-        if (window.chrome?.runtime?.lastError) {
-          setStatus(
-            'Could not reach the extension. Reload the unpacked extension and try again.',
-          );
-          return;
-        }
-        if (response?.ok) {
-          setConnected(true);
-          setStatus('Extension connected. You can close this tab and capture jobs from any supported board.');
-          return;
-        }
-        setStatus('Connection failed. Try again from the extension popup.');
-      },
-    );
+    void run();
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   return (

@@ -10,7 +10,7 @@ from app.models.job import Job, JobStatus
 from app.models.profile import Profile, ProfileStatus
 from app.models.subscription import SubscriptionPlan, UserSubscription
 from app.services.extension.form_answers import build_form_answers
-from app.services.extension.helpers import extract_posting_key, urls_match
+from app.services.extension.helpers import extract_posting_key, normalize_role, urls_match
 from app.services.extension.scam_check import assess_listing_risk
 
 
@@ -184,6 +184,9 @@ async def test_extension_job_status_and_scam_warnings(client, async_engine, test
     body = status.json()
     assert body["phase"] == "generating"
     assert body["badge_text"] == "…"
+    assert body["schema_version"] == 1
+    assert "can_generate" in body
+    assert "effective_generation_cost" in body
 
     async with session_factory() as db:
         job = await db.get(Job, job_id)
@@ -239,3 +242,133 @@ def test_build_form_answers_skips_eeoc_fields():
     )
     assert result["answers"]["email"]["value"] == "alex@example.com"
     assert result["answers"]["veteran"]["skip"] is True
+
+
+@pytest.mark.asyncio
+async def test_extension_status_fit_analyzed_can_generate(client, async_engine, test_user):
+    session_factory = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+    profile_id = await _seed_pro_user(session_factory, test_user)
+
+    async with session_factory() as db:
+        job = Job(
+            user_id=test_user.id,
+            profile_id=profile_id,
+            job_description={"company": "Acme", "role": "Engineer", "description": "Python role."},
+            status=JobStatus.PENDING,
+            fit_score=82,
+            fit_label="STRONG",
+            fit_rationale="Strong Python overlap.",
+            gap_list=["GraphQL"],
+        )
+        db.add(job)
+        await db.commit()
+        await db.refresh(job)
+        job_id = job.id
+
+    res = await client.get(f"/extension/jobs/{job_id}/status")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["phase"] == "fit_analyzed"
+    assert body["can_generate"] is True
+    assert body["gap_list"] == ["GraphQL"]
+    assert body["company"] == "Acme"
+    assert body["effective_generation_cost"] == 10
+
+
+@pytest.mark.asyncio
+async def test_extension_status_stretch_requires_confirm(client, async_engine, test_user):
+    session_factory = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+    profile_id = await _seed_pro_user(session_factory, test_user)
+
+    async with session_factory() as db:
+        job = Job(
+            user_id=test_user.id,
+            profile_id=profile_id,
+            job_description={"company": "Acme", "role": "Staff IAM", "description": "Okta required."},
+            status=JobStatus.PENDING,
+            fit_score=55,
+            fit_label="STRETCH",
+        )
+        db.add(job)
+        await db.commit()
+        await db.refresh(job)
+        job_id = job.id
+
+    res = await client.get(f"/extension/jobs/{job_id}/status")
+    body = res.json()
+    assert body["can_generate"] is False
+    assert body["generation_block_reason"] == "low_fit_unconfirmed"
+    assert body["requires_override"] is True
+
+    confirm = await client.patch(f"/extension/jobs/{job_id}/confirm-low-fit")
+    assert confirm.status_code == 200
+    assert confirm.json()["low_fit_confirmed"] is True
+    assert confirm.json()["can_generate"] is True
+
+
+@pytest.mark.asyncio
+async def test_extension_recent_jobs(client, async_engine, test_user):
+    session_factory = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+    profile_id = await _seed_pro_user(session_factory, test_user)
+
+    async with session_factory() as db:
+        for i in range(3):
+            db.add(
+                Job(
+                    user_id=test_user.id,
+                    profile_id=profile_id,
+                    job_description={"company": f"Co{i}", "role": f"Role{i}", "description": "desc " * 5},
+                    status=JobStatus.PENDING,
+                    fit_score=70 + i,
+                    fit_label="STRONG",
+                )
+            )
+        await db.commit()
+
+    res = await client.get("/extension/jobs/recent?limit=2")
+    assert res.status_code == 200
+    items = res.json()["items"]
+    assert len(items) == 2
+
+
+@pytest.mark.asyncio
+async def test_extension_events(client):
+    res = await client.post("/extension/events", json={"event": "capture_started", "job_id": 1})
+    assert res.status_code == 204
+
+    bad = await client.post("/extension/events", json={"event": "not_real"})
+    assert bad.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_extension_match_includes_method(client, async_engine, test_user):
+    session_factory = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+    profile_id = await _seed_pro_user(session_factory, test_user)
+
+    async with session_factory() as db:
+        job = Job(
+            user_id=test_user.id,
+            profile_id=profile_id,
+            job_description={
+                "company": "Acme",
+                "role": "Engineer",
+                "description": "Build products.",
+                "source_url": "https://boards.greenhouse.io/acme/jobs/999",
+            },
+            status=JobStatus.PENDING,
+            fit_score=80,
+            fit_label="STRONG",
+        )
+        db.add(job)
+        await db.commit()
+
+    res = await client.get(
+        "/extension/jobs/match",
+        params={"url": "https://boards.greenhouse.io/acme/jobs/999/apply"},
+    )
+    assert res.status_code == 200
+    assert res.json()["match_method"] == "url"
+
+
+def test_normalize_role_helper():
+    assert "engineer" in normalize_role("Senior Software Engineer")

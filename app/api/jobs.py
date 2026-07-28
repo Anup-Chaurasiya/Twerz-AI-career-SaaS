@@ -140,11 +140,14 @@ async def generate_resume(
                 f"Job is already {job.status.value} — cannot re-generate"
             )
 
-    if job.fit_label in LOW_FIT_LABELS and not payload.confirm_low_fit:
+    if job.fit_label in LOW_FIT_LABELS and not payload.confirm_low_fit and not job.low_fit_confirmed:
         raise ValueError(
             f"Fit is {job.fit_label} — set confirm_low_fit=true to generate anyway, "
             "or skip to avoid spending a credit."
         )
+
+    if payload.confirm_low_fit and job.fit_label in LOW_FIT_LABELS:
+        job.low_fit_confirmed = True
 
     # Deduct credit synchronously — raises 429 if no credits available
     source = await credit_service.check_and_deduct(db, current_user.id, job_id)

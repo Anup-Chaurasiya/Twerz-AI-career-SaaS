@@ -83,5 +83,8 @@ class Job(TimestampMixin, Base):
     known_contacts: Mapped[list | None] = mapped_column(JSON, nullable=True)
     applied_via: Mapped[str | None] = mapped_column(String(32), nullable=True)  # cold | referral | recruiter_outreach
 
+    # Extension fit gate persistence
+    low_fit_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+
     user = relationship("User", back_populates="jobs")
     profile = relationship("Profile", back_populates="jobs")

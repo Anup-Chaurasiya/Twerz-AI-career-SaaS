@@ -158,6 +158,28 @@ body {
 
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
+.btn--loading {
+  opacity: 0.85;
+  cursor: wait;
+}
+
+.btn--loading::after {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-left: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: ab-spin 0.7s linear infinite;
+  vertical-align: -2px;
+}
+
+@keyframes ab-spin {
+  to { transform: rotate(360deg); }
+}
+
 .btn-primary {
   background: linear-gradient(135deg, var(--ab-accent), #ea580c);
   color: white;
@@ -179,7 +201,53 @@ body {
 
 .hint { font-size: 11px; color: var(--ab-muted); line-height: 1.5; margin-top: 10px; }
 
-#auth-panel, #capture-panel { display: none; }
+#auth-panel, #capture-panel, #results-panel { display: none; }
+
+.ab-fit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ab-fit-badge {
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.ab-fit-strong { background: rgba(52, 211, 153, 0.15); color: var(--ab-success); }
+.ab-fit-stretch { background: rgba(251, 191, 36, 0.15); color: var(--ab-warn); }
+.ab-fit-mismatch { background: rgba(248, 113, 113, 0.15); color: var(--ab-danger); }
+
+.ab-meta { font-size: 12px; margin: 0 0 6px; color: var(--ab-muted); }
+.ab-meta strong { color: var(--ab-text); }
+
+.ab-btn {
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ab-btn-primary {
+  background: linear-gradient(135deg, var(--ab-accent), #ea580c);
+  color: white;
+}
+
+.ab-btn-secondary {
+  background: var(--ab-surface-2);
+  color: var(--ab-text);
+  border: 1px solid var(--ab-border);
+}
+
+.ab-checkbox { display: flex; gap: 8px; align-items: flex-start; font-size: 11px; color: var(--ab-muted); }
 
 .advanced-toggle {
   background: none;

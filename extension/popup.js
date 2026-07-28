@@ -1,15 +1,71 @@
 const DEFAULT_API_BASE = 'http://localhost:8000';
 const DEFAULT_APP_BASE = 'http://localhost:3000';
 
+let resultsController = null;
+let activeJobId = null;
+
 document.getElementById('brandLogo').src = chrome.runtime.getURL('icons/icon32.png');
 
 function sendBg(message) {
-  return new Promise((resolve) => chrome.runtime.sendMessage(message, resolve));
+  return typeof abSendBg === 'function'
+    ? abSendBg(message)
+    : new Promise((resolve) => chrome.runtime.sendMessage(message, resolve));
+}
+
+function showView(view) {
+  document.getElementById('auth-panel').style.display = view === 'auth' ? 'block' : 'none';
+  document.getElementById('capture-panel').style.display = view === 'capture' ? 'block' : 'none';
+  document.getElementById('results-panel').style.display = view === 'results' ? 'block' : 'none';
 }
 
 function showPanel(connected) {
-  document.getElementById('auth-panel').style.display = connected ? 'none' : 'block';
-  document.getElementById('capture-panel').style.display = connected ? 'block' : 'none';
+  showView(connected ? 'capture' : 'auth');
+}
+
+function showResultsPanel(jobId, status, email) {
+  activeJobId = jobId;
+  if (email) {
+    document.getElementById('results-connected-as').textContent = email;
+  }
+  const container = document.getElementById('results-content');
+  container.innerHTML = abRenderResultsHtml(status);
+  resultsController?.destroy?.();
+  resultsController = abBindResultsPanel(container, {
+    jobId,
+    status,
+    onRefresh: (next) => {
+      if (next.ready_to_apply) {
+        document.getElementById('status').textContent = '';
+      }
+    },
+  });
+  showView('results');
+}
+
+function showCaptureError(message, step, jobId) {
+  const status = document.getElementById('status');
+  status.innerHTML = `${message} <button type="button" id="retryCapture" class="advanced-toggle" style="margin-left:4px;">Retry</button>`;
+  document.getElementById('retryCapture')?.addEventListener('click', () => {
+    if (step === 'analyze' && jobId) {
+      document.getElementById('capture').click();
+    } else {
+      document.getElementById('capture').click();
+    }
+  });
+}
+
+function formatApiError(resp) {
+  if (!resp?.error) return 'Request failed';
+  if (resp.status === 401) {
+    return 'Session expired. Click Connect Twerz account to sign in again.';
+  }
+  if (resp.status === 429) {
+    return `${resp.error} Open Twerz to buy credits.`;
+  }
+  if (resp.status === 402 && resp.paywall) {
+    return `${resp.error} Upgrade to Job Hunt Pro in Twerz.`;
+  }
+  return resp.error;
 }
 
 function setPageStatus(jd) {
@@ -108,6 +164,17 @@ async function saveBases() {
   return { apiBase, appBase };
 }
 
+async function hydrateLastJob(email) {
+  const jobId = await sendBg({ type: 'GET_LAST_ACTIVE_JOB' });
+  if (!jobId) return;
+  const cached = await sendBg({ type: 'GET_LAST_JOB_STATUS', jobId });
+  const fresh = await sendBg({ type: 'API_FETCH', path: `/extension/jobs/${jobId}/status` });
+  const status = fresh.error ? cached : fresh;
+  if (status && (status.phase === 'fit_analyzed' || status.phase === 'generating' || status.ready_to_apply)) {
+    showResultsPanel(jobId, status, email);
+  }
+}
+
 async function loadSession() {
   const cfg = await sendBg({ type: 'GET_CONFIG' });
   if (cfg.apiBase) document.getElementById('apiBase').value = cfg.apiBase;
@@ -118,9 +185,18 @@ async function loadSession() {
   }
   try {
     const me = await sendBg({ type: 'API_FETCH', path: '/extension/me' });
-    if (me.error) throw new Error(me.error);
+    if (me.error) {
+      if (me.status === 401) {
+        await sendBg({ type: 'DISCONNECT' });
+        showPanel(false);
+        document.getElementById('authStatus').textContent = formatApiError(me);
+        return;
+      }
+      throw new Error(formatApiError(me));
+    }
     showPanel(true);
     document.getElementById('connected-as').textContent = me.email;
+    document.getElementById('results-connected-as').textContent = me.email;
     const select = document.getElementById('profileId');
     select.innerHTML = '';
     for (const profile of me.profiles || []) {
@@ -134,6 +210,7 @@ async function loadSession() {
       document.getElementById('capture').disabled = true;
     } else {
       await scanActiveTab();
+      await hydrateLastJob(me.email);
     }
   } catch (err) {
     showPanel(false);
@@ -163,6 +240,11 @@ document.getElementById('openDashboard').addEventListener('click', async () => {
   chrome.tabs.create({ url: `${cfg.appBase}/dashboard/extension` });
 });
 
+document.getElementById('backToCapture').addEventListener('click', () => {
+  resultsController?.destroy?.();
+  showView('capture');
+});
+
 ['company', 'role', 'description'].forEach((id) => {
   document.getElementById(id).addEventListener('input', updateDescMeta);
 });
@@ -175,6 +257,7 @@ document.getElementById('capture').addEventListener('click', async () => {
   const company = document.getElementById('company').value.trim();
   const role = document.getElementById('role').value.trim();
   const description = document.getElementById('description').value.trim();
+  const email = document.getElementById('connected-as').textContent;
 
   const errors = abValidateCaptureFields({ profileId, company, role, description });
   if (errors.length) {
@@ -183,26 +266,33 @@ document.getElementById('capture').addEventListener('click', async () => {
   }
 
   btn.disabled = true;
-  status.textContent = 'Creating job…';
+  const defaultCaptureLabel = btn.textContent;
+  btn.classList.add('btn--loading');
+  btn.textContent = 'Capturing…';
+  status.textContent = '';
   try {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     const sourceUrl = tabs[0]?.url || null;
-    const resp = await sendBg({
-      type: 'API_FETCH',
-      path: '/extension/capture-job',
-      options: {
-        method: 'POST',
-        body: JSON.stringify({ profile_id: profileId, company, role, description, source_url: sourceUrl }),
+    const result = await abRunCaptureFlow({
+      profileId,
+      company,
+      role,
+      description,
+      sourceUrl,
+      onStatus: (text) => {
+        status.textContent = text;
       },
     });
-    if (resp.error) throw new Error(resp.error);
-    status.textContent = `Job #${resp.job_id} created — opening dashboard…`;
-    sendBg({ type: 'START_JOB_POLL', jobId: resp.job_id });
-    const cfg = await sendBg({ type: 'GET_CONFIG' });
-    chrome.tabs.create({ url: `${cfg.appBase}${resp.open_url}` });
+    if (!result.ok) {
+      showCaptureError(formatApiError(result.error), result.step, result.jobId);
+      return;
+    }
+    showResultsPanel(result.jobId, result.status, email);
   } catch (err) {
     status.textContent = String(err.message || err);
   } finally {
+    btn.classList.remove('btn--loading');
+    btn.textContent = defaultCaptureLabel;
     updateCaptureButton();
   }
 });
@@ -212,5 +302,8 @@ loadSession();
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === 'JD_UPDATED' && msg.jd) {
     applyJdToForm(msg.jd);
+  }
+  if (msg?.type === 'JOB_STATUS' && msg.jobId === activeJobId && resultsController) {
+    resultsController.updateFromStatus(abDefensiveStatus(msg.status));
   }
 });

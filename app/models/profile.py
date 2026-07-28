@@ -43,7 +43,10 @@ class Profile(TimestampMixin, Base):
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     guest_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
     upload_gcs_path: Mapped[str | None] = mapped_column(Text, nullable=True)
-    upload_source: Mapped[UploadSource | None] = mapped_column(Enum(UploadSource), nullable=True)
+    upload_source: Mapped[UploadSource | None] = mapped_column(
+        Enum(UploadSource, values_callable=lambda x: [e.value for e in x], name="uploadsource"),
+        nullable=True,
+    )
 
     user = relationship("User", back_populates="profiles")
     jobs = relationship("Job", back_populates="profile")

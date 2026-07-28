@@ -7,8 +7,11 @@ function abHost() {
   return (location.hostname || '').toLowerCase();
 }
 
-const JUNK_ROLE_RE = /^(search for jobs?|find jobs?|jobs?|sign in|log in|explore|home)$/i;
+const JUNK_ROLE_RE =
+  /^(search for jobs?|find jobs?|jobs?|sign in|log in|explore|home|recent notifications|notifications|saved|messages|menu|profile|settings|for you|recommended)$/i;
 const JUNK_COMPANY_RE = /(actively hiring|promoted|see all|total raised|\$\d)/i;
+const WELLFOUND_SECTION_HEADING_RE =
+  /about the job|responsibilities|requirements|skill\(s\) required|about the company/i;
 
 function abTextOf(el) {
   return (el?.innerText || el?.textContent || '').trim();
@@ -40,7 +43,61 @@ function abCleanCompany(value) {
 function abCleanRole(value) {
   const v = abCleanLine(value, 120);
   if (JUNK_ROLE_RE.test(v)) return '';
+  if (/\bnotifications?\b/i.test(v)) return '';
+  if (/^(in office|remote|hybrid|full.?time|part.?time|internship|no equity)$/i.test(v)) return '';
   return v;
+}
+
+function abIsWellfoundJunkHeading(text) {
+  const v = abCleanLine(text, 120);
+  if (!v || v.length < 2) return true;
+  if (JUNK_ROLE_RE.test(v)) return true;
+  if (/\bnotifications?\b/i.test(v)) return true;
+  if (WELLFOUND_SECTION_HEADING_RE.test(v)) return true;
+  if (/^(in office|remote|hybrid|full.?time|part.?time|internship|no equity)$/i.test(v)) return true;
+  return false;
+}
+
+function abWellfoundMainScope() {
+  return document.querySelector('main, [role="main"]') || document.body;
+}
+
+function abWellfoundExtractRoleFromScope(scope) {
+  let company = '';
+  for (const link of scope.querySelectorAll('a[href*="/company/"], a[href*="/startups/"]')) {
+    const text = abCleanCompany(abTextOf(link));
+    if (text && text.length >= 2 && !JUNK_COMPANY_RE.test(text)) {
+      company = text;
+      break;
+    }
+  }
+
+  const allHeadings = [...scope.querySelectorAll('h1, h2, h3, h4')];
+  const aboutIdx = allHeadings.findIndex((el) => WELLFOUND_SECTION_HEADING_RE.test(abTextOf(el)));
+
+  const candidates = [...scope.querySelectorAll('h1, h2, h3')]
+    .map((el) => ({
+      el,
+      text: abCleanRole(abTextOf(el)),
+      tag: el.tagName,
+      idx: allHeadings.indexOf(el),
+    }))
+    .filter(({ text, el, idx }) => {
+      if (!text || text.length < 2 || abIsWellfoundJunkHeading(text)) return false;
+      if (company && text.toLowerCase() === company.toLowerCase()) return false;
+      if (aboutIdx >= 0 && idx >= aboutIdx) return false;
+      if (el.closest('nav, aside, [role="navigation"], [role="complementary"], header')) return false;
+      return true;
+    });
+
+  const tagWeight = { H1: 3, H2: 2, H3: 1 };
+  candidates.sort((a, b) => {
+    const lenDiff = b.text.length - a.text.length;
+    if (lenDiff !== 0) return lenDiff;
+    return (tagWeight[b.tag] || 0) - (tagWeight[a.tag] || 0);
+  });
+
+  return { role: candidates[0]?.text || '', company };
 }
 
 function abBoardName() {
@@ -329,8 +386,10 @@ function abMergeWellfoundFields(...parts) {
   const merged = { role: '', company: '', description: '' };
   for (const part of parts) {
     if (!part) continue;
-    if (!merged.role && part.role) merged.role = part.role;
-    if (!merged.company && part.company) merged.company = part.company;
+    const role = abCleanRole(part.role);
+    const company = abCleanCompany(part.company);
+    if (role && role.length > merged.role.length) merged.role = role;
+    if (company && (!merged.company || company.length >= merged.company.length)) merged.company = company;
     if (part.description && part.description.length > merged.description.length) {
       merged.description = part.description;
     }
@@ -421,14 +480,19 @@ function abExtractWellfoundLegacyDom() {
   const detailRoot =
     document.querySelector('[data-test="JobDetail"], [data-test="JobPage"]') ||
     document.querySelector('[data-test="JobDescription"]')?.closest('div') ||
-    document;
+    abWellfoundMainScope();
 
-  const role = abTextOf(
-    detailRoot.querySelector('[data-test="JobTitle"], [data-test="job-title"], h1, h2'),
-  );
-  const company = abTextOf(
+  let role = abTextOf(detailRoot.querySelector('[data-test="JobTitle"], [data-test="job-title"]'));
+  let company = abTextOf(
     detailRoot.querySelector('[data-test="StartupLink"], [data-test="CompanyName"]'),
   );
+
+  if (!role || abIsWellfoundJunkHeading(role)) {
+    const extracted = abWellfoundExtractRoleFromScope(detailRoot);
+    role = extracted.role;
+    if (!company) company = extracted.company;
+  }
+
   const description = abTextOf(
     detailRoot.querySelector('[data-test="JobDescription"], [data-test="job-description"]'),
   );
@@ -458,25 +522,9 @@ function abExtractWellfoundSemanticDom() {
   const description = abTextOf(container);
   if (description.length < AB_MIN_DESC) return null;
 
-  let role = '';
-  let company = '';
-  const scope = container.closest('main, [role="main"], body') || document;
-
-  for (const heading of scope.querySelectorAll('h1, h2, h3')) {
-    const text = abCleanRole(abTextOf(heading));
-    if (text && text.length >= 2 && !/about the job|responsibilities|requirements|skill\(s\) required/i.test(text)) {
-      role = text;
-      break;
-    }
-  }
-
-  for (const link of document.querySelectorAll('a[href*="/company/"], a[href*="/startups/"]')) {
-    const text = abCleanCompany(abTextOf(link));
-    if (text && text.length >= 2) {
-      company = text;
-      break;
-    }
-  }
+  const scope = container.closest('main, [role="main"]') || abWellfoundMainScope();
+  const { role, company: companyFromScope } = abWellfoundExtractRoleFromScope(scope);
+  let company = companyFromScope;
 
   if (!company) {
     for (const el of scope.querySelectorAll(

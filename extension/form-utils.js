@@ -114,7 +114,7 @@ function abSetNativeValue(el, value) {
   const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
   if (setter) setter.call(el, value);
   else el.value = value;
-  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: value }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
