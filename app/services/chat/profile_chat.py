@@ -17,7 +17,7 @@ from app.services.chat.gemini_retry import run_agent_with_retry
 
 logger = getLogger(__name__)
 
-APP_NAME = "ats-beater-profile-chat"
+APP_NAME = "twerz-profile-chat"
 
 # ── Agent tools (module-level functions) ────────────────────────────────
 
@@ -52,7 +52,7 @@ PROFILE_CHAT_SYSTEM_PROMPT = """You are a profile editing assistant. The user wa
 Help them refine it naturally.
 
 ## How This Product Works (CRITICAL — users ask about downloads/PDFs constantly)
-This is a resume tailoring service called **ATS Beater**. The user is currently viewing their **Profile** page.
+This is a resume tailoring service called **Twerz**. The user is currently viewing their **Profile** page.
 Here is the full product flow — you MUST understand this to guide users correctly:
 
 **Profile (you are here):** The user uploads their resume PDF. We extract their info into a structured

@@ -1,17 +1,27 @@
-"""Browser extension helper: capture JD from LinkedIn/Naukri/Indeed pages."""
+"""Browser extension: JD capture, Apply Assist context, and form answers."""
 
-from fastapi import APIRouter, Depends
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.database.session import get_db
 from app.dependencies import get_current_user
+from app.exceptions import NotFoundError, UsageLimitExceeded
+from app.models.job import Job, JobStatus
+from app.models.profile import Profile, ProfileStatus
 from app.models.user import User
 from app.schemas.job import JobDescription
-from app.services.job.service import JobService
+from app.services.credit.entitlements import has_pro_access, require_pro_or_pass
 from app.services.credit.service import CreditService
-from app.services.credit.entitlements import require_pro_or_pass
-from app.exceptions import UsageLimitExceeded
+from app.services.extension.form_answers import build_form_answers
+from app.services.extension.helpers import find_job_by_page_url, job_source_url
+from app.services.extension.scam_check import assess_listing_risk
+from app.services.job.service import JobService
+from app.services.job.tailor_pipeline import LOW_FIT_LABELS
 
 router = APIRouter(prefix="/extension", tags=["extension"])
 job_service = JobService()
@@ -24,6 +34,219 @@ class ExtensionCapturePayload(BaseModel):
     role: str = Field(..., min_length=1)
     description: str = Field(..., min_length=20)
     source_url: str | None = None
+
+
+class FormQuestionPayload(BaseModel):
+    id: str | None = None
+    label: str = Field(..., min_length=1)
+    field_type: str | None = None
+
+
+class FormAnswersRequest(BaseModel):
+    questions: list[FormQuestionPayload] = Field(default_factory=list)
+    confirm_low_fit: bool = False
+    allow_eeoc: bool = False
+
+
+@router.get("/me")
+async def extension_me(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Profiles + entitlement summary for the extension popup."""
+    await require_pro_or_pass(
+        db,
+        current_user.id,
+        feature="extension",
+        message="Browser extension requires Job Hunt Pro or an active time pass.",
+    )
+    result = await db.execute(
+        select(Profile)
+        .where(
+            Profile.user_id == current_user.id,
+            Profile.is_active == True,  # noqa: E712
+            Profile.status == ProfileStatus.READY,
+        )
+        .order_by(Profile.updated_at.desc())
+    )
+    profiles = result.scalars().all()
+    balance = await credit_service.get_balance(db, current_user.id)
+    settings = get_settings()
+    api_base = settings.API_BASE_URL.strip() or None
+    return {
+        "user_id": current_user.id,
+        "email": current_user.email,
+        "has_pro_access": await has_pro_access(db, current_user.id),
+        "credits_available": await credit_service.has_credits_available(db, current_user.id),
+        "credit_balance": balance["balance"],
+        "daily_free_remaining": balance["daily_free_remaining"],
+        "frontend_url": settings.FRONTEND_URL.rstrip("/"),
+        "api_base_url": api_base,
+        "profiles": [
+            {
+                "id": p.id,
+                "label": (p.resume_info or {}).get("name") or p.source_filename or f"Profile #{p.id}",
+                "source_filename": p.source_filename,
+            }
+            for p in profiles
+        ],
+    }
+
+
+@router.get("/jobs/match")
+async def match_job_by_url(
+    url: str = Query(..., min_length=8),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Find a captured job that matches the active browser tab URL."""
+    await require_pro_or_pass(
+        db,
+        current_user.id,
+        feature="extension",
+        message="Browser extension requires Job Hunt Pro or an active time pass.",
+    )
+    job = await find_job_by_page_url(db, current_user.id, url)
+    if not job:
+        raise NotFoundError("No matching job found for this page. Capture the JD first in Twerz.")
+    jd = job.job_description or {}
+    return {
+        "job_id": job.id,
+        "company": jd.get("company"),
+        "role": jd.get("role"),
+        "status": job.status.value,
+        "fit_score": job.fit_score,
+        "fit_label": job.fit_label,
+        "application_status": job.application_status.value,
+        "source_url": job_source_url(job),
+        "ready_to_apply": job.status in (JobStatus.READY, JobStatus.RESUME_GENERATED)
+        and bool(job.custom_resume_data),
+    }
+
+
+def _job_extension_status(job: Job) -> dict:
+    ready = (
+        job.status in (JobStatus.READY, JobStatus.RESUME_GENERATED)
+        and bool(job.custom_resume_data)
+    )
+    phase = "ready_to_apply"
+    if job.status == JobStatus.PENDING:
+        phase = "captured"
+    elif job.status in (JobStatus.GENERATING_RESUME, JobStatus.GENERATING_PDF):
+        phase = "generating"
+    elif job.status == JobStatus.FAILED:
+        phase = "failed"
+    elif ready:
+        phase = "ready_to_apply"
+    elif job.fit_score is not None:
+        phase = "fit_analyzed"
+    return {
+        "job_id": job.id,
+        "status": job.status.value,
+        "phase": phase,
+        "fit_score": job.fit_score,
+        "fit_label": job.fit_label,
+        "ready_to_apply": ready,
+        "application_status": job.application_status.value,
+    }
+
+
+@router.get("/jobs/{job_id}/status")
+async def extension_job_status(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Lightweight status for extension badge polling after capture."""
+    await require_pro_or_pass(
+        db,
+        current_user.id,
+        feature="extension",
+        message="Browser extension requires Job Hunt Pro or an active time pass.",
+    )
+    job = await job_service.get_job(db, job_id, current_user.id)
+    payload = _job_extension_status(job)
+    payload["badge_text"] = "✓" if payload["ready_to_apply"] else ("!" if payload["phase"] == "failed" else "…")
+    return payload
+
+
+@router.get("/jobs/{job_id}/apply-context")
+async def get_apply_context(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Fit gate + tailored assets for Apply Assist sidebar."""
+    await require_pro_or_pass(
+        db,
+        current_user.id,
+        feature="extension",
+        message="Browser extension requires Job Hunt Pro or an active time pass.",
+    )
+    job = await job_service.get_job(db, job_id, current_user.id)
+    if not job.custom_resume_data:
+        raise NotFoundError("Tailored resume not ready. Generate a resume in the dashboard first.")
+    if job.status not in (JobStatus.READY, JobStatus.RESUME_GENERATED):
+        raise NotFoundError(f"Resume is not ready yet (status: {job.status.value}).")
+
+    settings = get_settings()
+    api_base = (settings.API_BASE_URL or "").rstrip("/")
+    pdf_path = f"/jobs/{job_id}/pdf"
+    jd = job.job_description or {}
+    listing_risk = assess_listing_risk(job)
+
+    return {
+        "job_id": job.id,
+        "company": jd.get("company"),
+        "role": jd.get("role"),
+        "status": job.status.value,
+        "fit_score": job.fit_score,
+        "fit_label": job.fit_label,
+        "fit_rationale": job.fit_rationale,
+        "is_mismatch": job.fit_label == "MISMATCH",
+        "is_stretch": job.fit_label == "STRETCH",
+        "requires_override": job.fit_label in LOW_FIT_LABELS,
+        "cover_letter": job.cover_letter,
+        "outreach_available": bool(job.evidence_map),
+        "pdf_download_path": pdf_path,
+        "pdf_download_url": f"{api_base}{pdf_path}" if api_base else pdf_path,
+        "application_status": job.application_status.value,
+        "applied_via": job.applied_via,
+        "source_url": job_source_url(job),
+        "dashboard_url": f"/dashboard/jobs/{job.id}",
+        "rate_nudge": "Best results: 3–5 thoughtful applications per day.",
+        "listing_risk": listing_risk,
+    }
+
+
+@router.post("/jobs/{job_id}/form-answers")
+async def get_form_answers(
+    job_id: int,
+    payload: FormAnswersRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Evidence-grounded answers for scraped application form fields."""
+    await require_pro_or_pass(
+        db,
+        current_user.id,
+        feature="extension",
+        message="Browser extension requires Job Hunt Pro or an active time pass.",
+    )
+    job = await job_service.get_job(db, job_id, current_user.id)
+    if not job.custom_resume_data:
+        raise NotFoundError("Tailored resume required before form answers can be generated.")
+    if job.fit_label in LOW_FIT_LABELS and not payload.confirm_low_fit:
+        from app.exceptions import BadRequestError
+
+        raise BadRequestError(
+            f"Fit is {job.fit_label}. Set confirm_low_fit=true to fill application forms anyway."
+        )
+    return build_form_answers(
+        job,
+        [q.model_dump() for q in payload.questions],
+        allow_eeoc=payload.allow_eeoc,
+    )
 
 
 @router.post("/capture-job", status_code=201)
@@ -46,25 +269,24 @@ async def capture_job(
             "No credits available. Purchase credits or wait for daily free credits to reset."
         )
 
-    desc = payload.description
-    if payload.source_url:
-        desc = f"{desc}\n\nSource: {payload.source_url}"
+    jd_dict = JobDescription(
+        company=payload.company,
+        role=payload.role,
+        description=payload.description.strip(),
+        source_url=payload.source_url.strip() if payload.source_url else None,
+    )
 
     job = await job_service.create_job(
         db,
         current_user.id,
         payload.profile_id,
-        JobDescription(
-            company=payload.company,
-            role=payload.role,
-            description=desc,
-        ),
+        jd_dict,
     )
     return {
         "job_id": job.id,
         "status": job.status.value,
         "open_url": f"/dashboard/jobs/{job.id}",
-        "message": "Job captured. Open in ATS Beater to analyze fit and generate.",
+        "message": "Job captured. Open in Twerz to analyze fit and generate.",
     }
 
 

@@ -21,6 +21,7 @@ const PUBLIC_PATH_PREFIXES = [
   '/terms',
   '/dpdp',
   '/roast',
+  '/extension',
 ];
 
 function isPublicPath(path: string): boolean {

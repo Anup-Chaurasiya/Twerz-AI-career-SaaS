@@ -31,7 +31,7 @@ function SubscriptionPlans() {
         key: orderRes.data.razorpay_key_id,
         amount: orderRes.data.amount_paise,
         currency: orderRes.data.currency,
-        name: 'ATS Beater',
+        name: 'Twerz',
         description: 'Job Hunt Pro (30 days)',
         order_id: orderRes.data.order_id,
         handler: async (response: any) => {
@@ -162,7 +162,7 @@ export default function CreditsPage() {
         key: orderRes.data.razorpay_key_id,
         amount: orderRes.data.amount_paise,
         currency: orderRes.data.currency,
-        name: 'ATS Beater',
+        name: 'Twerz',
         description: 'Purchase Credits/Pass',
         order_id: orderRes.data.order_id,
         handler: async (response: any) => {
@@ -207,7 +207,8 @@ export default function CreditsPage() {
       <div className="fade-slide-in" style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Credits & Billing</h1>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          Manage your balance and purchase credits. Each tailored resume costs {balance?.resume_generation_cost ?? 10} credits.
+          Manage your balance and purchase credits. Each tailored resume costs {balance?.resume_generation_cost ?? 10} credits
+          {balance?.has_unlimited ? '.' : ' — daily free credits are used first, then your purchased balance.'}
         </p>
       </div>
 
@@ -223,7 +224,7 @@ export default function CreditsPage() {
               <div style={{ fontSize: 24 }}>🎁</div>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Daily Free Credits: {balance?.daily_free_remaining} / {balance?.daily_free_total}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>Resets at midnight UTC</div>
+                <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>Resets at midnight UTC · applied before purchased credits</div>
               </div>
             </div>
           )}

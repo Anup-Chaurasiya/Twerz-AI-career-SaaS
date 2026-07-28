@@ -1,9 +1,11 @@
 import PricingProCard from '@/components/marketing/PricingProCard';
+import ApplyAssistPositioning from '@/components/marketing/ApplyAssistPositioning';
 import { PRICING_PLANS, PRICING_FOOTNOTE } from '@/lib/marketing/content';
 
 export default function PricingSection() {
   return (
     <>
+      <ApplyAssistPositioning />
       <div className="mkt-banner">
         <strong>100 credits on signup + 20 free credits daily</strong> — no credit card needed
       </div>

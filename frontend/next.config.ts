@@ -27,6 +27,7 @@ const nextConfig: NextConfig = {
       { source: '/account/:path*', destination: `${api}/account/:path*` },
       { source: '/account', destination: `${api}/account` },
       { source: '/extension/:path*', destination: `${api}/extension/:path*` },
+      { source: '/templates/:path*', destination: `${api}/templates/:path*` },
       { source: '/progress/:path*', destination: `${api}/progress/:path*` },
       { source: '/health', destination: `${api}/health` },
     ];

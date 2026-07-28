@@ -18,7 +18,7 @@ from app.services.chat.gemini_retry import run_agent_with_retry
 
 logger = getLogger(__name__)
 
-APP_NAME = "ats-beater-chat"
+APP_NAME = "twerz-chat"
 
 # ── Agent tools (module-level functions) ────────────────────────────────
 

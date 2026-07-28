@@ -598,8 +598,38 @@ body:has(.lp-root) .scanline-overlay {
   -webkit-overflow-scrolling: touch;
   scroll-behavior: auto;
 }
+.split-resize-handle {
+  flex-shrink: 0;
+  width: 4px;
+  margin: 0 -2px;
+  padding: 0 4px;
+  box-sizing: content-box;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  z-index: 3;
+  touch-action: none;
+}
+.split-resize-handle::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: var(--card-border);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.split-resize-handle:hover::before,
+.split-resize-handle--active::before {
+  background: rgba(255, 90, 31, 0.45);
+  box-shadow: 0 0 8px rgba(255, 90, 31, 0.25);
+}
+.split-resize-handle--active::before {
+  background: rgba(255, 90, 31, 0.65);
+}
 .split-chat {
-  width: 400px;
   flex-shrink: 0;
   border-left: 1px solid var(--card-border);
   display: flex;
@@ -1279,6 +1309,7 @@ body.dashboard-app .scanline-overlay {
 
   .split-layout { flex-direction: column; overflow-y: auto; height: auto; min-height: calc(100dvh - 56px); }
   .split-main { flex: none; min-height: 60dvh; padding: 16px; overflow: visible; }
+  .split-resize-handle { display: none; }
   .split-chat {
     position: relative; height: 70vh; height: 70dvh; width: 100%;
     border-left: 0; border-top: 1px solid var(--card-border); flex: none;

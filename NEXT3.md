@@ -1,4 +1,4 @@
-You are redesigning the entire AI pipeline of ATS Beater.
+You are redesigning the entire AI pipeline of Twerz.
 
 The objective is to produce resumes that outperform existing AI resume builders by optimizing for BOTH recruiter shortlisting and ATS parsing while remaining 100% truthful.
 

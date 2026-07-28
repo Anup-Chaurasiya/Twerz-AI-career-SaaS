@@ -1,39 +1,68 @@
-# ATS Beater browser extension (MVP)
+# Twerz Apply Assist (Chrome extension v0.4)
 
-Capture a job description from major job boards and create a job in ATS Beater.
+Capture job descriptions and complete applications with fit-scored tailored resumes.
+
+Icons are generated from `frontend/public/twerz-logo.png` into `extension/icons/`.
+
+```bash
+./extension/generate-icons.sh   # re-run if logo changes
+```
+
+After pulling changes or updating icons, **remove the old extension and load unpacked again** (Chrome caches icons aggressively — Reload alone is often not enough).
 
 ## Install
 
-1. Open Chrome → **Extensions** → **Load unpacked** → select this `extension/` folder.
-2. On the ATS Beater web app, copy your JWT from DevTools → Application → Local Storage → `token`.
-3. Paste the JWT into the extension popup, enter your **profile ID**, and open a job page.
-4. Click **Create job** — opens `/dashboard/jobs/{id}` to analyze fit and generate.
+1. Chrome → **Extensions** → **Load unpacked** → select this `extension/` folder.
+2. Extension popup → **Connect account** (opens web app OAuth — no JWT paste).
+3. Optional: right-click extension icon → **Options** for EEO field preferences.
 
-**Note:** Extension capture requires **Job Hunt Pro** or an active time pass (API returns 402 otherwise).
+**Requires Job Hunt Pro or an active time pass.**
+
+## Modes
+
+| Mode | Where | What it does |
+|------|-------|--------------|
+| **Capture** | LinkedIn, Naukri, Indeed, Wellfound, Greenhouse, Lever, Workday JD pages | Scrape JD → create job → badge polls until ready |
+| **Apply Assist** | Greenhouse, Lever, Workday apply forms | Sidebar: fit gate, scam warnings, PDF upload, cover letter, form fill, tracker sync |
+
+You always click **Submit** on the employer site.
 
 ## Supported boards
 
-| Site | Extractor |
-|------|-----------|
-| linkedin.com/jobs | Role, company, description selectors |
-| naukri.com | JD header + description selectors |
-| indeed.com | Job info header + `#jobDescriptionText` |
-| wellfound.com / angel.co | Title + description sections |
-| boards.greenhouse.io / `*.greenhouse.io` | `#content` / app-title |
-| jobs.lever.co | `.posting-headline` + `.content` |
+| Site | Capture | Apply Assist |
+|------|---------|--------------|
+| linkedin.com/jobs | Yes | — |
+| naukri.com | Yes | — |
+| indeed.com | Yes | — |
+| wellfound.com / angel.co | Yes | — |
+| *.greenhouse.io | Yes | Yes |
+| jobs.lever.co | Yes | Yes |
+| *.myworkdayjobs.com | Yes | Yes |
 
-If selectors miss (page redesign / A/B), the popup shows a **warning** — paste the JD manually. The content script does **not** use `document.body.innerText` as the primary source (avoids nav/ads).
+## Badge states
 
-## Manual pressure checklist
+| Badge | Meaning |
+|-------|---------|
+| … | Resume generating / analyzing |
+| ✓ | Ready to apply (tailored PDF exists) |
+| ! | Generation failed — open dashboard |
 
-- [ ] LinkedIn job page fills role/company/description without warning
-- [ ] Naukri job page fills description (or warns clearly)
-- [ ] Indeed job page fills `#jobDescriptionText`
-- [ ] Wellfound / AngelList job page fills role + description (or warns)
-- [ ] Greenhouse public board job fills `#content` (or warns)
-- [ ] Lever `jobs.lever.co` posting fills description (or warns)
-- [ ] Non-job page shows warning and empty description
-- [ ] Create job returns `job_id` and opens the dashboard
-- [ ] Without Pro / time pass, API returns clear paywall (402)
+## API endpoints
 
-API: `POST /extension/capture-job` (Bearer JWT required; Pro or time pass gated).
+- `GET /extension/me` — profiles + entitlement
+- `POST /extension/capture-job` — create job from JD
+- `GET /extension/jobs/{id}/status` — badge polling
+- `GET /extension/jobs/match?url=` — match tab URL to captured job
+- `GET /extension/jobs/{id}/apply-context` — fit gate + assets + scam heuristics
+- `POST /extension/jobs/{id}/form-answers` — evidence-grounded form answers
+- `PATCH /jobs/{id}/application` — mark applied in tracker
+
+Connect: `{FRONTEND_URL}/extension/connect?extension_id={chrome.runtime.id}`
+
+## Chrome Web Store positioning
+
+**Title:** Twerz Apply Assist — Honest Job Apply Helper
+
+**Short description:** Capture JDs, get fit-scored tailored resumes, and fill Greenhouse/Lever/Workday forms. You review and submit — not a spam auto-apply bot.
+
+**Not this:** unattended apply, LinkedIn Easy Apply bots, or mass-application while you sleep.

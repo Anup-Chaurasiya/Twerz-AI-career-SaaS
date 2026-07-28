@@ -49,7 +49,7 @@ def _initialize_sentry():
             # Sample 10% of transactions for performance monitoring (adjust as needed)
             traces_sample_rate=0.1,
             # Capture 100% of errors (not sampled)
-            # You can add release tracking here: release="atsbeater@1.0.0"
+            # You can add release tracking here: release="twerz@1.0.0"
             integrations=[
                 FastApiIntegration(transaction_style="endpoint"),
                 SqlalchemyIntegration(),
@@ -196,7 +196,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
 
     app = FastAPI(
-        title="ATS Beater API",
+        title="Twerz API",
         version="0.1.0",
         lifespan=lifespan,
     )
@@ -354,7 +354,7 @@ def create_app() -> FastAPI:
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{exc.status_code} — ATS Beater</title>
+<title>{exc.status_code} — Twerz</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -373,7 +373,7 @@ body{{background:#0a0f1e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height
 <div class="code">{exc.status_code}</div>
 <p class="message">{"This page doesn't exist. It might have been moved or you may have mistyped the URL." if exc.status_code == 404 else html_mod.escape(str(exc.detail))}</p>
 <a href="/" class="btn">Go Home</a>
-<p class="brand">ATS BEATER</p>
+<p class="brand">TWERZ</p>
 </div>
 </body>
 </html>""")
@@ -395,7 +395,7 @@ body{{background:#0a0f1e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height
         """
         return {
             "title": "India DPDP Act (2023) Privacy Notice & Data Principal Rights",
-            "data_fiduciary": "Cydratech (ATS Beater)",
+            "data_fiduciary": "Cydratech (Twerz)",
             "purpose": "Automated resume parsing, tailoring, ATS keyword optimization, and PDF generation.",
             "data_processed": ["Name", "Email", "Phone", "Employment history", "Education", "Skills", "PDF Resumes"],
             "rights": {

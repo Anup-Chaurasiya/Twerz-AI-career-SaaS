@@ -217,7 +217,7 @@ async def test_alert(
     _admin: User = Depends(get_super_admin),
 ):
     await alert(
-        "ATS Beater admin alert test — delivery confirmed",
+        "Twerz admin alert test — delivery confirmed",
         level="info",
         context={"source": "admin_test_button", "admin_email": _admin.email},
     )

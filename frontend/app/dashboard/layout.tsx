@@ -6,6 +6,7 @@ import { useAuthStore } from '@/lib/stores/authStore';
 import { useCreditStore } from '@/lib/stores/creditStore';
 import { notificationsApi } from '@/lib/api/endpoints';
 import { OnboardingWelcomeModal } from '@/components/OnboardingWelcomeModal';
+import BrandLogo from '@/components/BrandLogo';
 
 const navItems = [
   { href: '/dashboard', icon: (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>), label: 'Dashboard' },
@@ -15,6 +16,7 @@ const navItems = [
   { href: '/dashboard/analytics', icon: (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>), label: 'Analytics' },
   { href: '/dashboard/roasts', icon: (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>), label: 'Roasts' },
   { href: '/dashboard/credits', icon: (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>), label: 'Credits' },
+  { href: '/dashboard/extension', icon: (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>), label: 'Extension' },
   { href: '/dashboard/referrals', icon: (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>), label: 'Referrals' },
   { href: '/dashboard/account', icon: (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>), label: 'Account' },
 ];
@@ -140,12 +142,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`} style={{ position: 'relative', zIndex: 60 }}>
         <div className="sidebar-brand">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'Inter', fontWeight: 700, fontSize: 16 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, rgba(255,90,31,0.2), rgba(255,90,31,0.05))', border: '1px solid rgba(255,90,31,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff5a1f" strokeWidth="2.5"><path d="M20 10V8a2.4 2.4 0 0 0-.706-1.704l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.35"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M16 14a2 2 0 0 0-2 2"/><path d="M16 22a2 2 0 0 1 2-2"/><path d="M20 14a2 2 0 0 1 2 2"/><path d="M20 22a2 2 0 0 0 2-2"/></svg>
-            </div>
-            ATS<span style={{ color: 'var(--orange)' }}>Beater</span>
-          </div>
+          <BrandLogo onClick={() => setSidebarOpen(false)} />
         </div>
 
         <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>

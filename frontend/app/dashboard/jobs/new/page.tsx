@@ -69,9 +69,9 @@ export default function NewJobPage() {
       <div className="fade-slide-in" style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>New Job Application</h1>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          Tailor your resume for a specific role. Tip: load the Chrome extension from the repo{" "}
-          <code style={{ fontFamily: 'JetBrains Mono', fontSize: 11 }}>extension/</code> folder to
-          capture LinkedIn / Naukri / Indeed JDs.
+          Tailor your resume for a specific role. Tip: install the Apply Assist Chrome extension from{" "}
+          <code style={{ fontFamily: 'JetBrains Mono', fontSize: 11 }}>extension/</code> to
+          capture JDs and fill Greenhouse/Lever apply forms.
         </p>
       </div>
 

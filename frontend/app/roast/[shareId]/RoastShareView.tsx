@@ -34,7 +34,7 @@ export function RoastShareView({ shareId, roastData: data, createdAt }: Props) {
 
     ctx.fillStyle = '#FB4100';
     ctx.font = 'bold 28px monospace';
-    ctx.fillText('ATS BEATER', 80, 100);
+    ctx.fillText('TWERZ', 80, 100);
 
     ctx.fillStyle = '#8BA3C7';
     ctx.font = '20px monospace';
@@ -61,7 +61,7 @@ export function RoastShareView({ shareId, roastData: data, createdAt }: Props) {
     ctx.fillText(shareUrl.replace(/^https?:\/\//, '').slice(0, 60), 80, 980);
 
     const a = document.createElement('a');
-    a.download = `ats-beater-roast-${shareId}.png`;
+    a.download = `twerz-roast-${shareId}.png`;
     a.href = canvas.toDataURL('image/png');
     a.click();
   }, [data.headline, data.score, roastLine, shareId, shareUrl]);
@@ -81,7 +81,7 @@ export function RoastShareView({ shareId, roastData: data, createdAt }: Props) {
       <div style={{ maxWidth: 720, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <Link href="/" style={{ fontFamily: 'JetBrains Mono', fontSize: 11, letterSpacing: 3, color: 'var(--text-dim)', textDecoration: 'none', textTransform: 'uppercase' }}>
-            ATS Beater
+            Twerz
           </Link>
           <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, letterSpacing: 2, color: 'var(--orange)', textTransform: 'uppercase', marginTop: 8 }}>
             Resume Roast

@@ -36,6 +36,29 @@ export function toDatetimeLocalValue(iso: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** Label + hint for resume generation cost (daily free bucket is consumed first). */
+export function formatResumeGenerationCost(
+  cost: number,
+  dailyFreeRemaining: number,
+  hasUnlimited?: boolean,
+): { label: string; hint: string } {
+  if (hasUnlimited) {
+    return { label: 'Unlimited', hint: 'Active pass — no credit charge.' };
+  }
+  const fromFree = Math.min(Math.max(0, dailyFreeRemaining), cost);
+  const fromBalance = cost - fromFree;
+  const label = `${cost} credits`;
+  let hint: string;
+  if (fromFree === 0) {
+    hint = `${cost} credits from your purchased balance.`;
+  } else if (fromBalance === 0) {
+    hint = `${cost} credits total — covered by your ${fromFree} free credit${fromFree === 1 ? '' : 's'} today (balance unchanged).`;
+  } else {
+    hint = `${cost} credits total — ${fromFree} from free today, ${fromBalance} from your balance.`;
+  }
+  return { label, hint };
+}
+
 /** Format resume dates as "January 2025" (or with day for follow-ups). */
 export function formatMonthYear(
   value: string | null | undefined,

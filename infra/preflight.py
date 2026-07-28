@@ -230,7 +230,7 @@ async def check_jwt_secret():
 
 
 async def main():
-    print(f"\n{BOLD}ATS Beater — Pre-flight Check{RESET}\n")
+    print(f"\n{BOLD}Twerz — Pre-flight Check{RESET}\n")
 
     await check_database()
     await check_jwt_secret()

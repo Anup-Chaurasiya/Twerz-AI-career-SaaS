@@ -42,7 +42,7 @@ export const COMPARE_ROWS = [
   { label: 'Personal analytics + benchmarks', manual: false, template: false, twerz: true },
   { label: 'Referral bonus program', manual: false, template: false, twerz: true },
   { label: 'Resume roast + public ATS check', manual: false, template: false, twerz: true },
-  { label: 'Chrome extension (JD capture)', manual: false, template: false, twerz: true },
+  { label: 'Apply Assist Chrome extension', manual: false, template: false, twerz: true },
   { label: 'Free daily credits + time passes', manual: false, template: false, twerz: true },
   { label: 'Under 60 seconds', manual: false, template: true, twerz: true },
 ];

@@ -18,7 +18,7 @@ export async function generateMetadata({
   const { shareId } = await params;
   const data = await fetchSharedRoast(shareId);
   if (!data?.roast_data) {
-    return { title: 'Roast Not Found — ATS Beater' };
+    return { title: 'Roast Not Found — Twerz' };
   }
   const score = data.roast_data.score ?? '?';
   const headline = data.roast_data.headline ?? 'Resume Roast';
@@ -28,7 +28,7 @@ export async function generateMetadata({
       ? data.roast_data.verdict.slice(0, 160)
       : headline;
   return {
-    title: `${title} — ATS Beater`,
+    title: `${title} — Twerz`,
     description,
     openGraph: {
       title,

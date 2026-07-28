@@ -123,7 +123,7 @@ async def public_ats_check(
         "passed_count": passed_count,
         "total_checks": len(checklist),
         "score_estimate": int((passed_count / len(checklist)) * 100) if checklist else 0,
-        "cta": "Sign up for ATS Beater to tailor your resume for specific job descriptions and boost your interview rate by up to 3x!",
+        "cta": "Sign up for Twerz to tailor your resume for specific job descriptions and boost your interview rate by up to 3x!",
     }
 
 

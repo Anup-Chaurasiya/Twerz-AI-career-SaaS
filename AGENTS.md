@@ -2,7 +2,7 @@
 
 ## What This Is
 
-**ATS Beater** — AI-powered resume tailoring service by Cydratech. Upload PDF resume → AI structures it → paste a job description → AI tailors a custom resume → LaTeX compiles to PDF.
+**Twerz** — AI-powered resume tailoring service by Cydratech. Upload PDF resume → AI structures it → paste a job description → AI tailors a custom resume → LaTeX compiles to PDF.
 
 ## Tech Stack
 

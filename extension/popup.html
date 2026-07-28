@@ -1,28 +1,75 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>ATS Beater Capture</title>
-  <style>
-    body { font-family: system-ui, sans-serif; width: 320px; margin: 12px; }
-    label { display: block; font-size: 12px; margin-top: 8px; }
-    input, textarea, select { width: 100%; box-sizing: border-box; margin-top: 4px; }
-    textarea { height: 100px; }
-    button { margin-top: 12px; width: 100%; padding: 8px; }
-    .hint { font-size: 11px; color: #666; margin-top: 8px; }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Twerz Apply Assist</title>
+  <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
-  <h3>Capture job</h3>
-  <label>API token <input id="token" type="password" placeholder="Paste JWT from ATS Beater" /></label>
-  <label>Profile ID <input id="profileId" type="number" placeholder="e.g. 1" /></label>
-  <label>Company <input id="company" /></label>
-  <label>Role <input id="role" /></label>
-  <label>Description <textarea id="description"></textarea></label>
-  <button id="capture">Create job in ATS Beater</button>
-  <p class="hint" id="warn" style="display:none;color:#b45309;"></p>
-  <p class="hint" id="status">Supports LinkedIn, Naukri, and Indeed. Paste JWT from the web app.</p>
-  <label>API base <input id="apiBase" value="http://localhost:8000" /></label>
+  <div class="popup-shell">
+    <div class="ab-brand">
+      <img id="brandLogo" alt="Twerz" width="36" height="36" />
+      <div class="ab-brand-text">
+        <span class="ab-brand-name">Twerz</span>
+        <span class="ab-brand-sub">Apply Assist</span>
+      </div>
+    </div>
+
+    <div id="auth-panel">
+      <div class="alert alert-info">Connect once — capture JDs, get fit scores, fill apply forms. You always submit.</div>
+      <button type="button" class="btn btn-primary" id="connect">Connect Twerz account</button>
+      <button type="button" class="advanced-toggle" id="toggleAdvanced">Advanced: API URLs</button>
+      <div class="advanced-panel" id="advancedPanel">
+        <div class="field">
+          <label for="appBase">Web app URL</label>
+          <input id="appBase" value="http://localhost:3000" />
+        </div>
+        <div class="field">
+          <label for="apiBase">API URL</label>
+          <input id="apiBase" value="http://localhost:8000" />
+        </div>
+      </div>
+      <p class="hint" id="authStatus"></p>
+    </div>
+
+    <div id="capture-panel">
+      <div class="connected-bar">
+        <span class="connected-email" id="connected-as"></span>
+        <button type="button" class="advanced-toggle" id="disconnect" style="margin:0;text-decoration:none;color:#f87171;">Disconnect</button>
+      </div>
+
+      <div id="pageStatus" class="status-pill status-pill--idle">Checking page…</div>
+      <p class="page-context" id="pageContext"></p>
+      <div id="pageAlert" class="alert alert-warn" style="display:none;"></div>
+
+      <div class="field">
+        <label for="profileId">Profile</label>
+        <select id="profileId"></select>
+      </div>
+      <div class="field">
+        <label for="company">Company</label>
+        <input id="company" placeholder="e.g. Acme Corp" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="role">Role</label>
+        <input id="role" placeholder="e.g. Senior Backend Engineer" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="description">Job description</label>
+        <textarea id="description" placeholder="Paste or edit the full job description here…"></textarea>
+        <div class="field-meta" id="descMeta"><span>Min 20 characters</span><span id="descCount">0</span></div>
+      </div>
+
+      <button type="button" class="btn btn-primary" id="capture" disabled>Capture &amp; analyze fit</button>
+      <div class="btn-row">
+        <button type="button" class="btn btn-secondary" id="refresh">Re-scan page</button>
+        <button type="button" class="btn btn-secondary" id="openDashboard">Dashboard</button>
+      </div>
+      <p class="hint" id="status"></p>
+    </div>
+  </div>
+  <script src="jd-extract.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

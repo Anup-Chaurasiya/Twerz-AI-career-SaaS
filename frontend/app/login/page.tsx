@@ -158,7 +158,10 @@ export default function LoginPage() {
       }
 
       if (useAuthStore.getState().isLoggedIn) {
-        if (profileId) {
+        const redirectParam = new URLSearchParams(window.location.search).get('redirect');
+        if (redirectParam && redirectParam.startsWith('/')) {
+          router.push(redirectParam);
+        } else if (profileId) {
           router.push(`/dashboard/profiles/${profileId}?welcome=profile`);
         } else {
           router.push('/dashboard');

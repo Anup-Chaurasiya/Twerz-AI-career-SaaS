@@ -69,6 +69,7 @@ localKeys1.py
 credentials/
 *.json
 !pyproject.toml
+!extension/manifest.json
 !app/services/golden/fixtures/**/*.json
 
 # Scrapped data (LinkedIn leads, user lists, keys)

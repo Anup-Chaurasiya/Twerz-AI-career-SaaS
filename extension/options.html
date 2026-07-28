@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Twerz Extension Settings</title>
+  <style>
+    body { font-family: system-ui, sans-serif; width: 360px; margin: 16px; color: #0f172a; }
+    .brand-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .brand-header img { width: 32px; height: 32px; border-radius: 8px; }
+    .brand-name { font-size: 15px; font-weight: 700; line-height: 1.2; }
+    .brand-sub { font-size: 11px; color: #64748b; font-weight: 500; }
+    h2 { margin: 0 0 12px; font-size: 18px; }
+    label { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; line-height: 1.45; }
+    button { margin-top: 12px; padding: 8px 12px; border: none; border-radius: 8px; background: #6366f1; color: white; font-weight: 600; cursor: pointer; }
+    .hint { font-size: 12px; color: #64748b; margin-top: 12px; line-height: 1.5; }
+    #status { font-size: 12px; color: #059669; margin-top: 8px; min-height: 16px; }
+  </style>
+</head>
+<body>
+  <div class="brand-header">
+    <img data-brand-logo="32" alt="Twerz" />
+    <div>
+      <div class="brand-name">Twerz</div>
+      <div class="brand-sub">Apply Assist settings</div>
+    </div>
+  </div>
+  <label>
+    <input type="checkbox" id="allowEeoc" />
+    <span>Allow me to manually complete EEO/demographic fields (never auto-filled by default).</span>
+  </label>
+  <button id="save">Save</button>
+  <div id="status"></div>
+  <p class="hint">Apply Assist never clicks Submit for you. Review every field before applying.</p>
+  <script src="options.js"></script>
+</body>
+</html>

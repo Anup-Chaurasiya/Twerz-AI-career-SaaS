@@ -36,7 +36,7 @@ export default function ReferralsPage() {
 
   const shareOnTwitter = () => {
     const text = encodeURIComponent(
-      '🎯 Just tried ATS Beater - AI-powered resume tailoring that actually works! Get 20 bonus credits when you sign up with my link:'
+      '🎯 Just tried Twerz - AI-powered resume tailoring that actually works! Get 20 bonus credits when you sign up with my link:'
     );
     window.open(
       `https://twitter.com/intent/tweet?text=${text}&url=${encodeURIComponent(referralUrl)}`,
@@ -78,7 +78,7 @@ export default function ReferralsPage() {
         <div className="section-label">Growth</div>
         <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Refer Friends, Earn Credits</h1>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          Share ATS Beater with friends and both of you get 20 bonus credits.
+          Share Twerz with friends and both of you get 20 bonus credits.
         </p>
       </div>
 

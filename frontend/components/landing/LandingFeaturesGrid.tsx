@@ -88,7 +88,7 @@ function FeatureIcon({ title }: { title: string }) {
       </svg>
     );
   }
-  if (t.includes('extension') || t.includes('chrome') || t.includes('auto-apply')) {
+  if (t.includes('extension') || t.includes('chrome') || t.includes('apply assist')) {
     return (
       <svg {...iconProps}>
         <circle cx="12" cy="12" r="10" />
@@ -250,13 +250,13 @@ function FeatureVisual({ title, tag, accent }: { title: string; tag?: string; ac
     );
   }
 
-  if (t.includes('tracker') || t.includes('analytics') || t.includes('auto-apply')) {
+  if (t.includes('tracker') || t.includes('analytics') || t.includes('apply assist')) {
     return (
       <div className="feat-visual feat-visual--speed">
         <span className="feat-speed-label">
-          {t.includes('auto-apply') ? 'Tailor → Fit check → Apply' : 'Saved · Applied · Interview · Offer'}
+          {t.includes('apply assist') ? 'Capture → Tailor → Apply Assist (you submit)' : 'Saved · Applied · Interview · Offer'}
         </span>
-        <div className="feat-speed-bar"><div className="feat-speed-fill" style={{ width: t.includes('auto-apply') ? '72%' : '55%' }} /></div>
+        <div className="feat-speed-bar"><div className="feat-speed-fill" style={{ width: t.includes('apply assist') ? '72%' : '55%' }} /></div>
       </div>
     );
   }

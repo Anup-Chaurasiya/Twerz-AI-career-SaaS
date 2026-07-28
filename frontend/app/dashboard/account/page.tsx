@@ -16,7 +16,7 @@ export default function AccountSettingsPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'ats-beater-export.json';
+      a.download = 'twerz-export.json';
       a.click();
       URL.revokeObjectURL(url);
       setMessage('Export downloaded.');

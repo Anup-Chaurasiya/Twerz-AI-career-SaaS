@@ -1,4 +1,4 @@
-# ATS Beater - Command Reference
+# Twerz - Command Reference
 
 ## 🚀 Quick Start
 
@@ -168,17 +168,17 @@ DEV_AUTH_BYPASS=true  # Skip OAuth in development
 
 ```bash
 # Build for production (Cloud Run example)
-docker build -t ats-beater .
+docker build -t twerz .
 
 # Tag for Google Container Registry
-docker tag ats-beater gcr.io/your-project/ats-beater
+docker tag twerz gcr.io/your-project/twerz
 
 # Push to registry
-docker push gcr.io/your-project/ats-beater
+docker push gcr.io/your-project/twerz
 
 # Deploy to Cloud Run
-gcloud run deploy ats-beater \
-  --image gcr.io/your-project/ats-beater \
+gcloud run deploy twerz \
+  --image gcr.io/your-project/twerz \
   --platform managed \
   --region us-central1 \
   --set-env-vars "DATABASE_URL=your_production_db_url"

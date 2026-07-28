@@ -4,9 +4,9 @@ set -euo pipefail
 # ─── Configuration ──────────────────────────────────────────────────────────
 PROJECT_ID="${GCP_PROJECT_ID:?Set GCP_PROJECT_ID}"
 REGION="${GCP_REGION:-asia-southeast1}"
-SERVICE_NAME="${SERVICE_NAME:-ats-beater}"
-REPO_NAME="${REPO_NAME:-ats-beater}"             # Artifact Registry repository
-IMAGE_NAME="${IMAGE_NAME:-ats-beater}"
+SERVICE_NAME="${SERVICE_NAME:-twerz}"
+REPO_NAME="${REPO_NAME:-twerz}"             # Artifact Registry repository
+IMAGE_NAME="${IMAGE_NAME:-twerz}"
 TAG="${1:-latest}"
 ENV_FILE="${2:-.env.yaml}"
 

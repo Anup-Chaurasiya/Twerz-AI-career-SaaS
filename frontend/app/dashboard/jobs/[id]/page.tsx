@@ -1,10 +1,10 @@
 'use client';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { jobsApi } from '@/lib/api/endpoints';
 import { Job, ChatMessage } from '@/types';
-import { getStatusColor, getStatusLabel, toDateInputValue } from '@/lib/utils';
+import { getStatusColor, getStatusLabel, toDateInputValue, formatResumeGenerationCost } from '@/lib/utils';
 import DatePicker from '@/components/DatePicker';
 import { MarkdownInline } from '@/components/MarkdownInline';
 import { useProgressSSE, ProgressEvent } from '@/lib/hooks/useProgressSSE';
@@ -13,6 +13,7 @@ import JobDetailTabs from '@/components/JobDetailTabs';
 import TemplatePicker from '@/components/TemplatePicker';
 import ChatMessageBubble from '@/components/ChatMessageBubble';
 import ChatComposer, { ChatComposerHandle } from '@/components/ChatComposer';
+import { useResizablePanel } from '@/lib/hooks/useResizablePanel';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -58,6 +59,16 @@ export default function JobDetailPage() {
   const chatRef = useRef<HTMLDivElement>(null);
   const chatComposerRef = useRef<ChatComposerHandle>(null);
   const jsonValidateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { width: chatWidth, isDragging, containerRef, onResizeStart, onResizeReset } = useResizablePanel();
+  const isDesktop = useSyncExternalStore(
+    (cb) => {
+      const mq = window.matchMedia('(min-width: 769px)');
+      mq.addEventListener('change', cb);
+      return () => mq.removeEventListener('change', cb);
+    },
+    () => window.matchMedia('(min-width: 769px)').matches,
+    () => true,
+  );
 
   // Direct JSON editing state
   const [showJsonEditor, setShowJsonEditor] = useState(false);
@@ -82,8 +93,14 @@ export default function JobDetailPage() {
 
   const chatAllowed = job?.status === 'READY' || job?.status === 'RESUME_GENERATED';
   const fetchBalance = useCreditStore((s) => s.fetchBalance);
-  const hasPro = !!useCreditStore((s) => s.balance?.subscription?.active || s.balance?.has_unlimited);
-  const resumeCost = useCreditStore((s) => s.balance?.resume_generation_cost ?? 10);
+  const creditBalance = useCreditStore((s) => s.balance);
+  const hasPro = !!(creditBalance?.subscription?.active || creditBalance?.has_unlimited);
+  const resumeCost = creditBalance?.resume_generation_cost ?? 10;
+  const resumeCostCopy = formatResumeGenerationCost(
+    resumeCost,
+    creditBalance?.daily_free_remaining ?? 0,
+    creditBalance?.has_unlimited,
+  );
   const isLowFit = job?.fit_label === 'STRETCH' || job?.fit_label === 'MISMATCH';
   const awaitingGenerate =
     (job?.status === 'PENDING' || job?.status === 'FAILED') &&
@@ -540,7 +557,7 @@ export default function JobDetailPage() {
   if (!job) return null;
 
   return (
-    <div className="split-layout">
+    <div className="split-layout" ref={containerRef}>
       {/* Main Content (PDF / Preview) */}
       <div className="split-main">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
@@ -740,8 +757,11 @@ export default function JobDetailPage() {
               }}>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: 420 }}>
                   {isLowFit
-                    ? `This role is a stretch or mismatch. Generate a transferable resume anyway (${resumeCost} credits), or skip with no charge.`
-                    : `Fit looks strong. Generate a tailored resume for ${resumeCost} credits.`}
+                    ? `This role is a stretch or mismatch. Generate a transferable resume anyway (${resumeCostCopy.label}), or skip with no charge.`
+                    : `Fit looks strong. Generate a tailored resume for ${resumeCostCopy.label}.`}
+                  <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6 }}>
+                    {resumeCostCopy.hint}
+                  </div>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {isLowFit ? (
@@ -752,7 +772,7 @@ export default function JobDetailPage() {
                         disabled={generatingResume}
                         onClick={() => startGenerate(true)}
                       >
-                        Generate anyway ({resumeCost} credits)
+                        Generate anyway ({resumeCostCopy.label})
                       </button>
                       <Link
                         href="/dashboard/jobs"
@@ -769,7 +789,7 @@ export default function JobDetailPage() {
                       disabled={generatingResume}
                       onClick={() => startGenerate(false)}
                     >
-                      Generate resume ({resumeCost} credits)
+                      Generate resume ({resumeCostCopy.label})
                     </button>
                   )}
                 </div>
@@ -1395,8 +1415,19 @@ export default function JobDetailPage() {
         )}
       </div>
 
+      {isDesktop && (
+        <div
+          className={`split-resize-handle${isDragging ? ' split-resize-handle--active' : ''}`}
+          onPointerDown={onResizeStart}
+          onDoubleClick={onResizeReset}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize AI editor panel"
+        />
+      )}
+
       {/* AI Chat Sidebar */}
-      <div className="split-chat">
+      <div className="split-chat" style={isDesktop ? { width: chatWidth } : undefined}>
         <div className="chat-header">
           <div className="chat-header-brand">
             <div className="chat-header-dot" />

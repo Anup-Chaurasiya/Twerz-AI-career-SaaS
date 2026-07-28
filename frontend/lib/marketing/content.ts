@@ -56,9 +56,9 @@ export const HOMEPAGE_HIGHLIGHTS = [
     tag: 'Honesty',
   },
   {
-    title: 'Auto-apply to matching roles',
-    desc: 'Stop copy-pasting across job boards. Submit your tailored, evidence-grounded resume to roles that fit your Fit Score \u2014 one flow from dashboard to application.',
-    tag: 'Coming soon',
+    title: 'Apply Assist (Chrome extension)',
+    desc: 'Capture any JD, get a fit-scored tailored resume, then one-click fill on employer apply forms. You review and submit \u2014 honest tailoring, not volume spam.',
+    tag: 'Apply Smarter',
   },
   {
     title: 'Choose your resume template',
@@ -67,7 +67,35 @@ export const HOMEPAGE_HIGHLIGHTS = [
   },
 ] as const;
 
+/** Guided apply positioning vs volume auto-apply bots (JobCopilot-style). */
+export const APPLY_ASSIST_POSITIONING = {
+  headline: 'We won\u2019t apply to 300 jobs while you sleep. We\u2019ll make the 10 you care about impossible to ignore.',
+  subhead:
+    'Apply Assist captures the JD, runs an honest fit check, generates a tailored PDF + cover letter, then fills employer forms on Greenhouse and Lever. You review and submit \u2014 fewer applications, more callbacks.',
+  comparisons: [
+    {
+      name: 'Volume auto-apply bots',
+      pitch: '50+ unattended applications per day',
+      counter: 'Guided Apply Assist with fit gate \u2014 3\u20135 thoughtful applies/day',
+    },
+    {
+      name: 'Template rewriters',
+      pitch: 'Generic keyword stuffing',
+      counter: 'Evidence-grounded tailoring + outreach copy + tracker sync',
+    },
+    {
+      name: 'Job search agents',
+      pitch: 'Discovery-first, manual apply',
+      counter: 'Last-mile form fill on boards you already use (LinkedIn, Naukri, Greenhouse, Lever)',
+    },
+  ],
+} as const;
+
 export const FAQS = [
+  {
+    q: 'Does Twerz auto-apply to jobs for me?',
+    a: 'No — and that is intentional. Apply Assist (Chrome extension) captures job descriptions, runs an honest fit check, generates tailored PDFs and cover letters, then helps you fill employer application forms on Greenhouse and Lever. You always review and click Submit. We optimize for interview callbacks, not application volume.',
+  },
   {
     q: 'What is an ATS?',
     a: 'An Applicant Tracking System (ATS) is software used by employers to filter resumes before a human ever sees them. Up to 75% of resumes are rejected by ATS before reaching a recruiter.',
@@ -333,7 +361,7 @@ export const PLATFORM_CATEGORIES = [
       'Personal analytics + platform benchmarks',
       'Referral link + bonus credits',
       'Resume roast + viral public share',
-      'Chrome extension (JD capture)',
+      'Chrome extension (Apply Assist)',
       'Credit packs + daily free credits',
       'Time passes + promo codes',
       'Account data export + delete (DPDP)',
@@ -369,7 +397,7 @@ export const CREDITS_PER_TAILOR = 10;
 
 /** Shown under pricing grids — clarifies Pro-only vs credit-pack features. */
 export const PRICING_FOOTNOTE =
-  'Credit packs add credits only. Every tailor (10 credits) includes cover letter, outreach, chat edits & free PDF recompile. Interview packets & Chrome extension require Job Hunt Pro.';
+  'Credit packs add credits only. Every tailor (10 credits) includes cover letter, outreach, chat edits & free PDF recompile. Interview packets & Apply Assist Chrome extension require Job Hunt Pro.';
 
 /** Core features included whenever you have credits (same for all packs). */
 export const CREDIT_PACK_CORE_FEATURES = [
@@ -387,13 +415,13 @@ export const JOB_HUNT_PRO_PLAN = {
   features: [
     '800 credits refreshed every month',
     'Interview prep packets (Pro-only)',
-    'Chrome extension JD capture (Pro-only)',
+    'Apply Assist Chrome extension (capture + form fill, Pro-only)',
     'Application tracker + all credit-pack features',
     'Cover letter, outreach & free PDF recompiles with each tailor',
   ],
   featured: true,
   badge: 'Subscription',
-  bestFor: 'Multi-week hunts with tracker + extension',
+  bestFor: 'Multi-week hunts with Apply Assist + tracker',
   accent: '#6366f1',
 } as const;
 

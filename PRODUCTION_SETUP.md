@@ -81,14 +81,14 @@ These are already set up in your `.env` and work out of the box:
 #### **Option A: Google Cloud Memorystore (Recommended for production)**
 ```bash
 # 1. Create Memorystore Redis instance
-gcloud redis instances create atsbeater-redis \
+gcloud redis instances create twerz-redis \
     --size=1 \
     --region=us-central1 \
     --tier=basic \
     --redis-version=redis_7_0
 
 # 2. Get connection info
-gcloud redis instances describe atsbeater-redis --region=us-central1
+gcloud redis instances describe twerz-redis --region=us-central1
 
 # 3. Add to .env (use internal IP if in same VPC)
 REDIS_URL=redis://10.0.0.3:6379
@@ -246,11 +246,11 @@ Before going live, verify:
 
 ```bash
 # 1. Set all required env vars in Cloud Run
-gcloud run services update atsbeater-api \
+gcloud run services update twerz-api \
   --update-env-vars SENTRY_DSN=https://...,REDIS_URL=redis://...,ENVIRONMENT=production
 
 # 2. Deploy new version
-gcloud run deploy atsbeater-api \
+gcloud run deploy twerz-api \
   --source . \
   --region us-central1 \
   --allow-unauthenticated
@@ -260,7 +260,7 @@ curl https://your-api.run.app/health
 # Should return: {"status": "ok"}
 
 # 4. Check logs for successful initialization
-gcloud run logs read --service=atsbeater-api --limit=50 | grep -E "Sentry|Redis"
+gcloud run logs read --service=twerz-api --limit=50 | grep -E "Sentry|Redis"
 # Look for:
 # "Sentry initialized successfully (DSN configured)" ✅
 # "Redis rate limiter initialized successfully" ✅

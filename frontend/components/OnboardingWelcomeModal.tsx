@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { authApi } from '@/lib/api/endpoints';
 import { useAuthStore } from '@/lib/stores/authStore';
+import BrandLogo from '@/components/BrandLogo';
 
-const CACHE_KEY = 'atsbeater_onboarding_dismissed';
+const CACHE_KEY = 'twerz_onboarding_dismissed';
 
 export function OnboardingWelcomeModal() {
   const user = useAuthStore((s) => s.user);
@@ -57,8 +58,8 @@ export function OnboardingWelcomeModal() {
           border: '1px solid rgba(1,169,219,0.2)',
         }}
       >
-        <div style={{ fontFamily: 'JetBrains Mono', fontWeight: 800, fontSize: 18, marginBottom: 8 }}>
-          ATS<span style={{ color: 'var(--orange)' }}>Beater</span>
+        <div style={{ marginBottom: 8 }}>
+          <BrandLogo />
         </div>
         <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 16 }}>
           You start with 100 free credits. Honest fit scoring before you spend — tailor only what&apos;s real.

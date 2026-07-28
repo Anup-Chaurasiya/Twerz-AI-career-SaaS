@@ -7,6 +7,7 @@ class JobDescription(BaseModel):
     company: str = Field(..., title="Name of the company")
     role: str = Field(..., title="Role in the company")
     description: str = Field(..., title="Description of the job")
+    source_url: Optional[str] = Field(default=None, title="Original job posting URL")
     output_language: Optional[
         Literal["english", "norwegian", "french", "german", "russian", "spanish", "italian"]
     ] = Field(default="english", title="Language in which the resume should be generated")

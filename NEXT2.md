@@ -1,4 +1,4 @@
-# ATS Beater — Admin Visibility & Monitoring Roadmap
+# Twerz — Admin Visibility & Monitoring Roadmap
 ### Phase-wise build prompts (paste each into Claude Code)
 
 ---

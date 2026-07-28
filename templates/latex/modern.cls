@@ -1,5 +1,5 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Modern two-column resume class (ATS Beater house template)
+% Modern two-column resume class (Twerz house template)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \ProvidesClass{modern}[2024/01/01 v1.0 Modern two-column resume class]

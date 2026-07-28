@@ -47,7 +47,7 @@ async def alert(message: str, *, level: str = "warning", context: dict[str, Any]
             import httpx
 
             payload = {
-                "text": f"*:warning: ATS Beater Alert [{level.upper()}]*\n{message}",
+                "text": f"*:warning: Twerz Alert [{level.upper()}]*\n{message}",
                 "attachments": [
                     {
                         "color": "#f97316" if level in ("warning", "error") else "#ef4444",

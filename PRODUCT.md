@@ -1,4 +1,4 @@
-# ATS Beater (GobioGo) — Project Summary
+# Twerz (GobioGo) — Project Summary
 
 **Shareable product overview** for teammates, investors, partners, and new contributors.
 
@@ -6,11 +6,11 @@
 
 ## What it is
 
-**ATS Beater** is an AI-powered SaaS that turns a base resume + a job description into a **role-specific, ATS-friendly resume PDF** (plus cover letter, interview prep, and application tracking).
+**Twerz** is an AI-powered SaaS that turns a base resume + a job description into a **role-specific, ATS-friendly resume PDF** (plus cover letter, interview prep, and application tracking).
 
 | | |
 |--|--|
-| **Product name** | ATS Beater |
+| **Product name** | Twerz |
 | **Code / repo name** | GobioGo |
 | **One-line pitch** | Paste a JD → get an honestly tailored, scored resume you can actually submit — not a generic rewrite that invents skills. |
 
@@ -23,7 +23,7 @@ Most candidates either:
 1. Send the **same resume** to every job (weak ATS match), or
 2. Use AI tools that **hallucinate** tools, titles, and metrics (Okta, “Senior”, fake numbers) → might pass ATS, then fail interviews
 
-ATS Beater aims for **honest max-match**:
+Twerz aims for **honest max-match**:
 
 - Reframe and amplify what the candidate really has
 - Mirror JD keywords only when evidence exists
@@ -146,7 +146,7 @@ flowchart LR
 ### Browser extension
 
 - Chrome extension scaffold (`extension/` folder)
-- Capture JD from job pages → create job in ATS Beater
+- Capture JD from job pages → create job in Twerz
 - API: `POST /extension/capture-job`
 
 ### Credits & payments
@@ -230,7 +230,7 @@ Users pay when generation quality + Fit/ATS feedback make the next application f
 
 ## Mental model
 
-**ATS Beater = a job-hunt OS for resumes:**
+**Twerz = a job-hunt OS for resumes:**
 
 > Structure once → tailor per JD with honesty + scores → edit → PDF/DOCX → cover letter + interview prep → track until offer.
 
@@ -262,4 +262,4 @@ Set `DEV_AUTH_BYPASS=true` in `.env` to skip Google OAuth during development.
 |--|--|
 | **Purpose** | Shareable product / project summary |
 | **Audience** | Team, investors, partners, new engineers |
-| **Product** | ATS Beater (GobioGo) |
+| **Product** | Twerz (GobioGo) |
