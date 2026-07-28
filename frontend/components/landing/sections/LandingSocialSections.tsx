@@ -102,7 +102,7 @@ export function LandingCtaSection({ onGetStarted }: { onGetStarted: () => void }
     <section className="lp-section lp-section-cta cta-band">
       <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg,rgba(255,90,31,0.04),rgba(56,189,248,0.02),rgba(52,211,153,0.02))', borderTop: '1px solid rgba(255,90,31,0.12)', borderBottom: '1px solid #E2E8F0' }} />
       <div className="reveal" style={{ position: 'relative', zIndex: 1 }}>
-        <h2 style={{ fontFamily: "'Clash Display','Inter',sans-serif", fontSize: 'clamp(28px,4vw,40px)', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: 16 }}>Your next application starts here.</h2>
+        <h2 style={{ fontSize: 'clamp(28px,4vw,40px)', fontWeight: 700, letterSpacing: 'normal', lineHeight: 1.2, marginBottom: 16 }}>Your next application starts here.</h2>
         <p style={{ fontSize: 16, color: 'var(--text-secondary)', marginBottom: 32 }}>Join thousands of job seekers who&apos;ve landed interviews with Twerz.</p>
         <button type="button" onClick={onGetStarted} className="btn-primary" style={{ padding: '16px 48px', fontSize: 14, borderRadius: 12 }}>Start Free — No Card Required</button>
       </div>

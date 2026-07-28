@@ -75,9 +75,15 @@ html:has(body.scroll-lock) {
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'Clash Display', 'Inter', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: normal;
+}
+
+/* Large marketing hero only — not card/UI headings */
+.font-display {
+  font-family: 'Clash Display', 'Inter', sans-serif;
+  letter-spacing: 0.02em;
 }
 
 ::-webkit-scrollbar { width: 6px; }
@@ -259,7 +265,7 @@ a { color: inherit; text-decoration: none; }
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: #fff; padding: 11px 24px; border-radius: 10px;
   font-family: 'Inter', sans-serif; font-weight: 600; font-size: 13px;
-  letter-spacing: -0.01em; cursor: pointer; transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  letter-spacing: normal; cursor: pointer; transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   outline: none; display: inline-flex; align-items: center; gap: 8px;
   box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.25), 0 4px 18px rgba(255, 90, 31, 0.35);
 }
@@ -919,7 +925,6 @@ body:has(.lp-root) .scanline-overlay {
 }
 .editor-back-link:hover { color: var(--teal); }
 .editor-title {
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-size: clamp(20px, 2.5vw, 26px);
   font-weight: 700;
   color: var(--text-primary);
@@ -928,7 +933,7 @@ body:has(.lp-root) .scanline-overlay {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  letter-spacing: -0.02em;
+  letter-spacing: normal;
   line-height: 1.2;
 }
 .editor-company {
@@ -952,7 +957,7 @@ body:has(.lp-root) .scanline-overlay {
   font-family: 'JetBrains Mono', monospace;
   font-size: 36px;
   font-weight: 800;
-  letter-spacing: -0.03em;
+  letter-spacing: normal;
   line-height: 1;
 }
 .editor-score-label {
@@ -996,12 +1001,11 @@ body:has(.lp-root) .scanline-overlay {
   text-align: center;
 }
 .editor-empty-title {
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-size: 18px;
   font-weight: 700;
   margin-bottom: 8px;
   color: var(--text-primary);
-  letter-spacing: -0.02em;
+  letter-spacing: normal;
 }
 .editor-empty-desc {
   font-size: 13px;
@@ -1127,10 +1131,9 @@ body.dashboard-app .scanline-overlay {
   margin-bottom: 16px;
 }
 .login-tagline {
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-size: clamp(18px, 3vw, 22px);
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: normal;
   color: #0f172a;
   line-height: 1.25;
   margin-bottom: 8px;
@@ -1382,7 +1385,7 @@ body.dashboard-app .scanline-overlay {
   font-size: clamp(36px, 4.8vw, 72px);
   font-weight: 700;
   line-height: 1.12;
-  letter-spacing: -0.03em;
+  letter-spacing: 0.02em;
   margin-bottom: 22px;
 }
 .lp-hero-title-accent,
@@ -1769,11 +1772,10 @@ body.dashboard-app .scanline-overlay {
   flex-shrink: 0;
 }
 .lp-section-title {
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-size: clamp(28px, 4.5vw, 42px);
   font-weight: 700;
-  line-height: 1.12;
-  letter-spacing: -0.02em;
+  line-height: 1.2;
+  letter-spacing: normal;
   margin-bottom: 10px;
   color: var(--text-primary);
 }
@@ -1813,10 +1815,9 @@ body.dashboard-app .scanline-overlay {
   padding: 8px 12px;
 }
 .lp-stat-val {
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-size: clamp(28px, 3.5vw, 38px);
   font-weight: 700;
-  letter-spacing: -0.03em;
+  letter-spacing: normal;
   line-height: 1.1;
   margin-bottom: 6px;
 }
@@ -1914,12 +1915,13 @@ body.dashboard-app .scanline-overlay {
   border: 1px solid color-mix(in srgb, var(--accent, #ff5a1f) 25%, transparent);
 }
 .hiw-step-title {
+  font-family: 'Inter', sans-serif;
   font-size: 19px;
   font-weight: 700;
-  letter-spacing: -0.3px;
+  letter-spacing: normal;
   margin: 0 0 10px;
   color: var(--text-primary);
-  line-height: 1.25;
+  line-height: 1.35;
 }
 .hiw-step-desc {
   font-size: 14px;
@@ -2046,7 +2048,6 @@ body.dashboard-app .scanline-overlay {
   flex-shrink: 0;
 }
 .hiw-score-val {
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-size: 22px;
   font-weight: 700;
   color: #34d399;
@@ -2100,7 +2101,10 @@ body.dashboard-app .scanline-overlay {
   margin-bottom: 12px;
 }
 .feature-card-v2 .feature-title {
+  font-family: 'Inter', sans-serif;
   font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
   margin-bottom: 6px;
 }
 .feature-card-v2 .feature-desc {
@@ -2144,7 +2148,7 @@ body.dashboard-app .scanline-overlay {
 .feat-pdf-line--short { width: 60%; }
 .feat-pdf-label { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #059669; white-space: nowrap; }
 .feat-visual--roast { display: flex; align-items: center; gap: 14px; }
-.feat-roast-score { font-family: 'Clash Display', 'Inter', sans-serif; font-size: 28px; font-weight: 700; color: #fb7185; line-height: 1; }
+.feat-roast-score { font-size: 28px; font-weight: 700; color: #fb7185; line-height: 1; font-variant-numeric: tabular-nums; }
 .feat-roast-score small { font-size: 14px; color: var(--text-dim); }
 .feat-roast-items { display: flex; flex-direction: column; gap: 4px; font-size: 10px; }
 .feat-roast-fail { color: #fb7185; }
@@ -2468,12 +2472,13 @@ body.dashboard-app .scanline-overlay {
   flex-shrink: 0;
 }
 .feature-title {
+  font-family: 'Inter', sans-serif;
   font-size: 17px;
   font-weight: 700;
-  letter-spacing: -0.25px;
+  letter-spacing: normal;
   margin: 0 0 8px;
   color: var(--text-primary);
-  line-height: 1.3;
+  line-height: 1.35;
   position: relative;
   z-index: 1;
 }
@@ -2862,7 +2867,7 @@ body.dashboard-app .scanline-overlay {
   color: #fff;
   background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
   box-shadow: 0 4px 14px rgba(56, 189, 248, 0.35);
-  letter-spacing: -0.01em;
+  letter-spacing: normal;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -2965,11 +2970,10 @@ body.dashboard-app .scanline-overlay {
 }
 
 .guest-upload-title {
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-size: 18px;
   font-weight: 700;
   color: #0f172a;
-  letter-spacing: -0.02em;
+  letter-spacing: normal;
   margin: 0;
   width: 100%;
   text-align: center;
@@ -3047,12 +3051,11 @@ body.dashboard-app .scanline-overlay {
 }
 
 .guest-upload-state-title {
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-size: 16px;
   font-weight: 700;
   color: #0f172a;
   margin: 0;
-  letter-spacing: -0.02em;
+  letter-spacing: normal;
 }
 
 .guest-upload-snippet {
@@ -3216,11 +3219,10 @@ body.dashboard-app .scanline-overlay {
 
 .guest-success-title {
   margin: 0 0 2px;
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-size: 17px;
   font-weight: 700;
   color: #0f172a;
-  letter-spacing: -0.02em;
+  letter-spacing: normal;
   line-height: 1.25;
 }
 
@@ -3276,7 +3278,7 @@ body.dashboard-app .scanline-overlay {
   font-size: 15px;
   font-weight: 700;
   color: #0f172a;
-  letter-spacing: -0.01em;
+  letter-spacing: normal;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3310,11 +3312,10 @@ body.dashboard-app .scanline-overlay {
 
 .guest-success-stat strong {
   display: block;
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-size: 18px;
   font-weight: 700;
   color: #0f172a;
-  letter-spacing: -0.02em;
+  letter-spacing: normal;
   line-height: 1.2;
   margin-bottom: 1px;
 }
@@ -3515,11 +3516,10 @@ body.dashboard-app .scanline-overlay {
   gap: 1px;
 }
 .brand-logo-name {
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-weight: 700;
   font-size: 18px;
   color: #0f172a;
-  letter-spacing: -0.3px;
+  letter-spacing: normal;
   line-height: 1.1;
 }
 .brand-logo-by {
@@ -3600,11 +3600,12 @@ body.dashboard-app .scanline-overlay {
   border: 1px solid color-mix(in srgb, var(--accent, var(--twerz-orange)) 25%, transparent);
 }
 .honest-pillar-title {
-  font-family: 'Clash Display', 'Inter', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 17px;
   font-weight: 700;
   margin-bottom: 8px;
-  letter-spacing: -0.02em;
+  letter-spacing: normal;
+  line-height: 1.35;
 }
 .honest-pillar-desc {
   font-size: 13px;
@@ -3653,10 +3654,10 @@ body.dashboard-app .scanline-overlay {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-size: 26px;
   font-weight: 700;
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 .honest-score-val--before { color: #fb7185; }
 .honest-score-val--after { color: #10b981; }
@@ -3744,10 +3745,12 @@ body.dashboard-app .scanline-overlay {
   background: color-mix(in srgb, var(--accent, #ff5a1f) 12%, transparent);
 }
 .upload-highlight-title {
+  font-family: 'Inter', sans-serif;
   font-size: 13px;
   font-weight: 700;
   margin-bottom: 4px;
   color: var(--text-primary);
+  line-height: 1.4;
 }
 .upload-highlight-desc {
   font-size: 11.5px;
@@ -3800,10 +3803,10 @@ body.dashboard-app .scanline-overlay {
   background: color-mix(in srgb, var(--accent, #ff5a1f) 12%, transparent);
 }
 .platform-category-title {
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-size: 15px;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: normal;
+  line-height: 1.35;
 }
 .platform-feature-list {
   list-style: none;
@@ -4048,10 +4051,10 @@ body.dashboard-app .scanline-overlay {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-size: 22px;
   font-weight: 700;
   color: #10b981;
+  font-variant-numeric: tabular-nums;
   transition: color 0.3s ease;
 }
 .hero-fit-ats-lift {
@@ -4092,11 +4095,11 @@ body.dashboard-app .scanline-overlay {
   background: #e2e8f0;
 }
 .hero-stat-val {
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-size: clamp(22px, 2.5vw, 30px);
   font-weight: 700;
-  letter-spacing: -0.03em;
+  letter-spacing: normal;
   line-height: 1.15;
+  font-variant-numeric: tabular-nums;
 }
 .hero-stat-label {
   font-size: 11px;
@@ -4492,10 +4495,10 @@ body.dashboard-app .scanline-overlay {
   max-width: 720px;
 }
 .mkt-title {
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-size: clamp(32px, 4vw, 48px);
   font-weight: 700;
-  letter-spacing: -0.03em;
+  letter-spacing: normal;
+  line-height: 1.2;
   color: #0f172a;
   margin: 0 0 12px;
 }
@@ -4534,11 +4537,11 @@ body.dashboard-app .scanline-overlay {
   margin-bottom: 10px;
 }
 .mkt-card-title {
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-size: 20px;
   font-weight: 700;
   color: #0f172a;
   margin: 0 0 8px;
+  line-height: 1.35;
 }
 .mkt-card-desc {
   font-size: 14px;
@@ -4552,12 +4555,12 @@ body.dashboard-app .scanline-overlay {
   gap: 40px;
 }
 .mkt-features-group-title {
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-size: 22px;
   font-weight: 700;
   color: #0f172a;
   margin: 0 0 16px;
-  letter-spacing: -0.02em;
+  letter-spacing: normal;
+  line-height: 1.35;
 }
 .mkt-list {
   list-style: none;
@@ -4649,11 +4652,11 @@ body.dashboard-app .scanline-overlay {
   margin-bottom: 32px;
 }
 .mkt-prose h2 {
-  font-family: 'Clash Display', 'Inter', sans-serif;
   font-size: 20px;
   font-weight: 700;
   color: #0f172a;
   margin: 28px 0 12px;
+  line-height: 1.35;
 }
 .mkt-prose h2:first-child {
   margin-top: 0;
