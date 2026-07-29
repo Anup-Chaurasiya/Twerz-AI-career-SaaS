@@ -4,7 +4,10 @@ import { creditsApi, paymentsApi } from '@/lib/api/endpoints';
 import { CreditPack, TimePassTier, CreditTransaction } from '@/types';
 import { useCreditStore } from '@/lib/stores/creditStore';
 import { formatCurrency, formatDate, getStatusColor } from '@/lib/utils';
-import { openRazorpayCheckout } from '@/lib/razorpay';
+import { buildRazorpayOptions, openRazorpayCheckout } from '@/lib/razorpay';
+
+const isDevEnv = process.env.NODE_ENV === 'development';
+const devCheckoutMethod = isDevEnv ? ({ method: 'netbanking' as const }) : undefined;
 
 function SubscriptionPlans() {
   const [plans, setPlans] = useState<any[]>([]);
@@ -27,35 +30,31 @@ function SubscriptionPlans() {
     setProcessingId(planId);
     try {
       const orderRes = await paymentsApi.createOrder('subscription', planId);
-      const options = {
-        key: orderRes.data.razorpay_key_id,
-        amount: orderRes.data.amount_paise,
-        currency: orderRes.data.currency,
-        name: 'Twerz',
-        description: 'Job Hunt Pro (30 days)',
-        order_id: orderRes.data.order_id,
-        handler: async (response: any) => {
-          try {
-            await paymentsApi.verifyPayment(
-              response.razorpay_order_id,
-              response.razorpay_payment_id,
-              response.razorpay_signature
-            );
-            await fetchBalance();
-            const m = await creditsApi.getMySubscription();
-            setSub(m.data);
-            alert('Job Hunt Pro activated!');
-          } catch {
-            alert('Payment verification failed.');
-          }
-        },
-        theme: { color: '#01A9DB' },
-      };
-      const rzp = await openRazorpayCheckout(options);
-      rzp.on('payment.failed', () => alert('Payment failed or cancelled.'));
+      await openRazorpayCheckout(
+        buildRazorpayOptions(orderRes.data, 'Job Hunt Pro (30 days)', {
+          onSuccess: async (response) => {
+            try {
+              await paymentsApi.verifyPayment(
+                response.razorpay_order_id,
+                response.razorpay_payment_id,
+                response.razorpay_signature
+              );
+              await fetchBalance();
+              const m = await creditsApi.getMySubscription();
+              setSub(m.data);
+              alert('Job Hunt Pro activated!');
+            } catch {
+              alert('Payment verification failed.');
+            } finally {
+              setProcessingId(null);
+            }
+          },
+          onDismiss: () => setProcessingId(null),
+        }, devCheckoutMethod),
+        { onFailure: (msg) => { alert(msg); setProcessingId(null); } }
+      );
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Failed to start checkout.');
-    } finally {
       setProcessingId(null);
     }
   };
@@ -155,34 +154,35 @@ export default function CreditsPage() {
   }, []);
 
   const handleBuy = async (type: 'credit_pack' | 'time_pass', id: number) => {
-    setProcessingId(`${type}-${id}`);
+    const itemKey = `${type}-${id}`;
+    setProcessingId(itemKey);
     try {
       const orderRes = await paymentsApi.createOrder(type, id);
-      const options = {
-        key: orderRes.data.razorpay_key_id,
-        amount: orderRes.data.amount_paise,
-        currency: orderRes.data.currency,
-        name: 'Twerz',
-        description: 'Purchase Credits/Pass',
-        order_id: orderRes.data.order_id,
-        handler: async (response: any) => {
-          try {
-            await paymentsApi.verifyPayment(response.razorpay_order_id, response.razorpay_payment_id, response.razorpay_signature);
-            await fetchBalance();
-            const hRes = await creditsApi.getHistory(1, 10);
-            setHistory(hRes.data.items);
-            alert('Payment successful!');
-          } catch {
-            alert('Payment verification failed.');
-          }
-        },
-        theme: { color: '#01A9DB' }
-      };
-      const rzp = await openRazorpayCheckout(options);
-      rzp.on('payment.failed', () => alert('Payment failed or cancelled.'));
+      await openRazorpayCheckout(
+        buildRazorpayOptions(orderRes.data, 'Purchase Credits/Pass', {
+          onSuccess: async (response) => {
+            try {
+              await paymentsApi.verifyPayment(
+                response.razorpay_order_id,
+                response.razorpay_payment_id,
+                response.razorpay_signature
+              );
+              await fetchBalance();
+              const hRes = await creditsApi.getHistory(1, 10);
+              setHistory(hRes.data.items);
+              alert('Payment successful!');
+            } catch {
+              alert('Payment verification failed.');
+            } finally {
+              setProcessingId(null);
+            }
+          },
+          onDismiss: () => setProcessingId(null),
+        }, devCheckoutMethod),
+        { onFailure: (msg) => { alert(msg); setProcessingId(null); } }
+      );
     } catch {
       alert('Failed to initiate payment.');
-    } finally {
       setProcessingId(null);
     }
   };
@@ -210,6 +210,12 @@ export default function CreditsPage() {
           Manage your balance and purchase credits. Each tailored resume costs {balance?.resume_generation_cost ?? 10} credits
           {balance?.has_unlimited ? '.' : ' — daily free credits are used first, then your purchased balance.'}
         </p>
+        {isDevEnv && (
+          <div style={{ marginTop: 12, padding: '12px 16px', borderRadius: 8, fontSize: 12, lineHeight: 1.6, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', color: 'var(--text-secondary)' }}>
+            <strong style={{ color: 'var(--orange)' }}>Test mode:</strong> Checkout opens on <strong>Netbanking</strong> (international cards are blocked on your Razorpay account).
+            Pick any bank → click <strong>Success</strong>. Or use UPI <code style={{ fontFamily: 'JetBrains Mono' }}>success@razorpay</code>.
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24, marginBottom: 32 }}>
@@ -259,7 +265,7 @@ export default function CreditsPage() {
               <div style={{ fontSize: 14, color: 'var(--teal)', fontWeight: 600, marginBottom: 24 }}>
                 {p.credits} credits · ≈ {tailorsFromCredits(p.credits)} tailored resumes
               </div>
-              <button className="btn-primary" style={{ marginTop: 'auto', width: '100%', justifyContent: 'center', fontSize: 12, padding: '10px 0' }} onClick={() => handleBuy('credit_pack', p.id)} disabled={!!processingId}>
+              <button className="btn-primary" style={{ marginTop: 'auto', width: '100%', justifyContent: 'center', fontSize: 12, padding: '10px 0' }} onClick={() => handleBuy('credit_pack', p.id)} disabled={processingId === `credit_pack-${p.id}`}>
                 {processingId === `credit_pack-${p.id}` ? 'Processing...' : 'Buy Now'}
               </button>
             </div>
@@ -276,7 +282,7 @@ export default function CreditsPage() {
                 <div style={{ fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: 'var(--orange)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>{p.name}</div>
                 <div style={{ fontSize: 32, fontWeight: 800, marginBottom: 4 }}>{formatCurrency(p.price_paise)}</div>
                 <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 24 }}>Unlimited access for {p.duration_days} days</div>
-                <button className="btn-primary" style={{ marginTop: 'auto', width: '100%', justifyContent: 'center', fontSize: 12, padding: '10px 0' }} onClick={() => handleBuy('time_pass', p.id)} disabled={!!processingId}>
+                <button className="btn-primary" style={{ marginTop: 'auto', width: '100%', justifyContent: 'center', fontSize: 12, padding: '10px 0' }} onClick={() => handleBuy('time_pass', p.id)} disabled={processingId === `time_pass-${p.id}`}>
                   {processingId === `time_pass-${p.id}` ? 'Processing...' : 'Get Pass'}
                 </button>
               </div>

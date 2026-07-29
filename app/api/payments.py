@@ -8,7 +8,7 @@ from app.database.session import get_db
 from app.models.user import User
 from app.models.credit import CreditPack, TimePassTier, CreditTransaction, TransactionType
 from app.dependencies import get_current_user
-from app.exceptions import BadRequestError
+from app.exceptions import AuthenticationError, BadRequestError
 from app.services.credit.service import CreditService
 from app.services.payment.razorpay_client import RazorpayService
 from app.schemas.credit import CreateOrderRequest, VerifyPaymentRequest
@@ -60,16 +60,31 @@ async def create_order(
     else:
         raise ValueError("Invalid item_type")
 
+    if amount_paise < 100:
+        raise BadRequestError("Amount must be at least 100 paise (₹1).")
+
     rzp = RazorpayService()
     try:
         order = rzp.create_order(amount_paise, receipt, notes)
     except razorpay.errors.BadRequestError as e:
         logger.error("Razorpay create_order failed: %s", e)
+        if "authentication failed" in str(e).lower():
+            raise AuthenticationError(
+                "Razorpay authentication failed. Check RAZORPAY_KEY_ID and "
+                "RAZORPAY_KEY_SECRET in .env (Test Mode keys from "
+                "https://dashboard.razorpay.com/app/keys)."
+            ) from e
         raise BadRequestError(
             "Payment provider rejected the request. "
             "Check RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in .env "
             "(use Test Mode keys from https://dashboard.razorpay.com/app/keys)."
         ) from e
+    except (razorpay.errors.ServerError, razorpay.errors.GatewayError) as e:
+        logger.error("Razorpay create_order server error: %s", e)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Payment provider unavailable. Please try again."},
+        )
 
     return {
         "order_id": order["id"],
@@ -93,7 +108,7 @@ async def verify_payment(
         body.razorpay_order_id, body.razorpay_payment_id, body.razorpay_signature
     )
     if not is_valid:
-        raise ValueError("Payment verification failed — invalid signature")
+        raise BadRequestError("Payment verification failed — invalid signature")
 
     # Check idempotency: skip if already processed
     existing = await db.execute(
