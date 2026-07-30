@@ -13,8 +13,8 @@ from app.background import create_tracked_task
 from app.config import get_settings
 from app.database.session import async_session_factory, get_db
 from app.dependencies import get_current_user
-from app.exceptions import BadRequestError, NotFoundError, UsageLimitExceeded
-from app.models.job import Job, JobStatus
+from app.exceptions import BadRequestError, ConflictError, NotFoundError, UsageLimitExceeded
+from app.models.job import Job, JobStatus, FitAnalysisStatus
 from app.models.profile import Profile, ProfileStatus
 from app.models.user import User
 from app.schemas.job import JobDescription
@@ -88,7 +88,9 @@ async def _generation_eligibility(job: Job, user_id: str, db: AsyncSession) -> d
     has_credits = await credit_service.has_credits_available(db, user_id)
     status_ok = job.status.value in ("PENDING", "FAILED")
     fit_ok = job.fit_label not in LOW_FIT_LABELS or job.low_fit_confirmed
-    analyzed = job.fit_score is not None
+    analyzed = (
+        job.fit_analysis_status == FitAnalysisStatus.READY or job.fit_score is not None
+    ) and job.fit_score is not None
     can = status_ok and has_credits and fit_ok and analyzed
     reason = None
     if not analyzed:
@@ -191,11 +193,9 @@ async def _run_generate_resume(job_id: int, user_id: str, confirm_low_fit: bool)
         if job.status.value not in ("PENDING", "FAILED"):
             raise ValueError(f"Job is already {job.status.value} — cannot re-generate")
 
-        if job.fit_score is None or not job.fit_label:
-            job = await job_service.analyze_fit(db, job_id, user_id)
-            job = await job_service.get_job(db, job_id, user_id, for_update=True)
-            if job.status.value not in ("PENDING", "FAILED"):
-                raise ValueError(f"Job is already {job.status.value} — cannot re-generate")
+        if job.fit_analysis_status != FitAnalysisStatus.READY:
+            if job.fit_score is None or not job.fit_label:
+                raise ConflictError("analyze_fit_required")
 
         if job.fit_label in LOW_FIT_LABELS and not confirm_low_fit and not job.low_fit_confirmed:
             raise ValueError(
@@ -366,7 +366,7 @@ async def extension_job_status(
     return await _extension_status_for_job(job, current_user.id, db)
 
 
-@router.post("/jobs/{job_id}/analyze-fit", status_code=200)
+@router.post("/jobs/{job_id}/analyze-fit", status_code=202)
 async def extension_analyze_fit(
     job_id: int,
     db: AsyncSession = Depends(get_db),
@@ -379,7 +379,7 @@ async def extension_analyze_fit(
         feature="extension",
         message="Browser extension requires Job Hunt Pro or an active time pass.",
     )
-    await job_service.analyze_fit(db, job_id, current_user.id)
+    await job_service.enqueue_analyze_fit(db, job_id, current_user.id)
     job = await job_service.get_job(db, job_id, current_user.id)
     return await _extension_status_for_job(job, current_user.id, db)
 
@@ -542,11 +542,13 @@ async def capture_job(
         payload.profile_id,
         jd_dict,
     )
+    await job_service.enqueue_analyze_fit(db, job.id, current_user.id)
     return {
         "job_id": job.id,
         "status": job.status.value,
+        "fit_analysis_status": "ANALYZING",
         "open_url": f"/dashboard/jobs/{job.id}",
-        "message": "Job captured. Analyze fit in the extension or dashboard.",
+        "message": "Job captured. Fit analysis started.",
     }
 
 

@@ -2,7 +2,7 @@ import pytest
 from datetime import date
 from unittest.mock import AsyncMock, patch
 
-from app.models.job import Job, JobStatus
+from app.models.job import Job, JobStatus, FitAnalysisStatus
 from app.models.profile import Profile, ProfileStatus
 from app.models.credit import UserCredit
 
@@ -31,6 +31,7 @@ async def _seed_job(db_session, test_user, *, fit_label: str | None, fit_score: 
         fit_label=fit_label,
         fit_rationale="test",
         gap_list=["Okta"] if fit_label == "MISMATCH" else [],
+        fit_analysis_status=FitAnalysisStatus.READY if fit_score is not None else FitAnalysisStatus.NONE,
     )
     db_session.add(job)
     uc = UserCredit(

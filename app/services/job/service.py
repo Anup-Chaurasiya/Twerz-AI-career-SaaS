@@ -3,18 +3,23 @@ import time
 from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from app.models.job import Job, JobStatus
+from app.models.job import Job, JobStatus, FitAnalysisStatus
 from app.models.profile import Profile, ProfileStatus
 from app.schemas.custom_resume import CustomResumeInfo
 from app.schemas.job import JobDescription
-from app.services.job.tailor_pipeline import TailorPipeline, _append_version
+from app.services.job.tailor_pipeline import (
+    TailorPipeline,
+    _append_version,
+    compute_fit_verdict,
+    compress_profile_for_evidence,
+)
 from app.services.latex.builder import build_resume
 from app.services.latex.compiler import compile_latex
 from app.services.latex.templates import DEFAULT_TEMPLATE_ID, get_template_spec
 from app.services.latex.docx_preserver import preserve_docx_format
 from app.services.latex.pdf_preserver import preserve_pdf_format
 from app.services.latex.sanitizer import sanitize_special_chars
-from app.services.storage.gcs import GCSClient
+from app.services.storage import get_storage, is_object_key
 from app.config import get_settings
 from app.exceptions import JobNotFoundError, ProfileNotFoundError
 from logging import getLogger
@@ -28,23 +33,30 @@ PRESERVED_PDF_DIR.mkdir(parents=True, exist_ok=True)
 DOCX_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "docx"
 DOCX_DIR.mkdir(parents=True, exist_ok=True)
 
-GCS_UPLOAD_RETRIES = 3
-GCS_UPLOAD_BACKOFF = 2.0  # seconds, exponential
+OBJECT_UPLOAD_RETRIES = 3
+OBJECT_UPLOAD_BACKOFF = 2.0  # seconds, exponential
 
 
-async def _publish_job_progress(job_id: int, status: str, message: str) -> None:
+async def _publish_job_progress(
+    job_id: int,
+    status: str,
+    message: str,
+    **extra: object,
+) -> None:
     """Push SSE progress so the job detail page can leave the spinner without a refresh."""
     try:
         from app.api.progress import publish
 
-        await publish("job", job_id, {"status": status, "message": message})
+        event: dict = {"status": status, "message": message}
+        event.update(extra)
+        await publish("job", job_id, event)
     except Exception:
         logger.debug("progress publish failed for job %s", job_id, exc_info=True)
 
 
-def _spawn_gcs_upload(pdf_bytes: bytes, user_id: str, job_id: int) -> None:
-    """Fire-and-forget GCS upload without leaking unretrieved task exceptions."""
-    task = asyncio.create_task(_background_gcs_upload(pdf_bytes, user_id, job_id))
+def _spawn_object_upload(pdf_bytes: bytes, user_id: str, job_id: int) -> None:
+    """Fire-and-forget object storage upload without leaking unretrieved task exceptions."""
+    task = asyncio.create_task(_background_object_upload(pdf_bytes, user_id, job_id))
 
     def _done(t: asyncio.Task) -> None:
         try:
@@ -52,25 +64,25 @@ def _spawn_gcs_upload(pdf_bytes: bytes, user_id: str, job_id: int) -> None:
         except asyncio.CancelledError:
             return
         if exc:
-            logger.warning(f"Background GCS upload task failed for job {job_id}: {exc}")
+            logger.warning("Background object upload task failed for job %s: %s", job_id, exc)
 
     task.add_done_callback(_done)
 
 
-async def _background_gcs_upload(pdf_bytes: bytes, user_id: str, job_id: int) -> None:
-    """Upload PDF to GCS in background with retry. Updates job.pdf_gcs_path on success.
-    
+async def _background_object_upload(pdf_bytes: bytes, user_id: str, job_id: int) -> None:
+    """Upload PDF to object storage in background with retry. Updates pdf_gcs_path on success.
+
     If all retries fail, marks gcs_upload_failed=True in DB so the system knows
-    to fall back to local storage. This is critical for Cloud Run where local
-    files disappear on container restart.
+    to fall back to local storage. This is critical for ephemeral containers where local
+    files disappear on restart.
     """
     from app.database.session import async_session_factory
 
-    gcs_path = f"resumes/{user_id}/{job_id}.pdf"
+    object_key = f"resumes/{user_id}/{job_id}.pdf"
     try:
-        gcs = GCSClient()
+        storage = get_storage()
     except Exception as e:
-        logger.warning(f"GCS client unavailable for job {job_id}: {e} — keeping local PDF")
+        logger.warning("Storage unavailable for job %s: %s — keeping local PDF", job_id, e)
         async with async_session_factory() as db:
             result = await db.execute(select(Job).where(Job.id == job_id))
             job = result.scalar_one_or_none()
@@ -79,51 +91,54 @@ async def _background_gcs_upload(pdf_bytes: bytes, user_id: str, job_id: int) ->
                 await db.commit()
         return
 
-    for attempt in range(GCS_UPLOAD_RETRIES):
+    for attempt in range(OBJECT_UPLOAD_RETRIES):
         try:
-            # GCS client is sync — run in thread to avoid blocking the event loop
-            await asyncio.to_thread(gcs.upload_pdf, pdf_bytes, gcs_path)
+            await asyncio.to_thread(storage.upload, object_key, pdf_bytes)
 
-            # Update DB with GCS path and clear any previous failure flag
             async with async_session_factory() as db:
                 result = await db.execute(select(Job).where(Job.id == job_id))
                 job = result.scalar_one_or_none()
                 if job:
-                    job.pdf_gcs_path = gcs_path
+                    job.pdf_gcs_path = object_key
                     job.gcs_upload_failed = False
                     await db.commit()
 
-            # Clean up local temp file
             local_path = PDF_DIR / f"{user_id}_{job_id}.pdf"
             await asyncio.to_thread(local_path.unlink, True)
 
-            logger.info(f"Background GCS upload succeeded for job {job_id}")
+            logger.info("Background object upload succeeded for job %s", job_id)
             return
         except Exception as e:
-            logger.warning(f"GCS upload attempt {attempt + 1}/{GCS_UPLOAD_RETRIES} failed for job {job_id}: {e}")
-            if attempt < GCS_UPLOAD_RETRIES - 1:
-                await asyncio.sleep(GCS_UPLOAD_BACKOFF * (2 ** attempt))
+            logger.warning(
+                "Object upload attempt %s/%s failed for job %s: %s",
+                attempt + 1,
+                OBJECT_UPLOAD_RETRIES,
+                job_id,
+                e,
+            )
+            if attempt < OBJECT_UPLOAD_RETRIES - 1:
+                await asyncio.sleep(OBJECT_UPLOAD_BACKOFF * (2 ** attempt))
 
-    # All retries failed — mark failure in DB (Sentry optional)
-    logger.error(f"All GCS upload attempts failed for job {job_id}. PDF available locally only.")
+    logger.error(
+        "All object upload attempts failed for job %s. PDF available locally only.", job_id
+    )
     try:
         import sentry_sdk
 
         with sentry_sdk.push_scope() as scope:
-            scope.set_context("gcs_upload", {
+            scope.set_context("object_upload", {
                 "job_id": job_id,
                 "user_id": user_id,
-                "gcs_path": gcs_path,
-                "retries": GCS_UPLOAD_RETRIES,
+                "object_key": object_key,
+                "retries": OBJECT_UPLOAD_RETRIES,
             })
             sentry_sdk.capture_message(
-                f"GCS upload failed after {GCS_UPLOAD_RETRIES} attempts for job {job_id}",
-                level="error"
+                f"Object upload failed after {OBJECT_UPLOAD_RETRIES} attempts for job {job_id}",
+                level="error",
             )
     except Exception:
-        pass  # Don't fail if Sentry isn't installed/configured
-    
-    # Mark failure in DB so download endpoint knows to use signed URLs or local file
+        pass
+
     async with async_session_factory() as db:
         result = await db.execute(select(Job).where(Job.id == job_id))
         job = result.scalar_one_or_none()
@@ -233,8 +248,124 @@ class JobService:
         await db.refresh(job)
         return job
 
+    async def enqueue_analyze_fit(self, db: AsyncSession, job_id: int, user_id: str) -> Job:
+        """Start background fit analysis if not already running or complete."""
+        from app.background import create_tracked_task
+
+        job = await self._get_job(db, job_id, user_id)
+        if job.fit_analysis_status == FitAnalysisStatus.READY:
+            return job
+        if job.fit_analysis_status == FitAnalysisStatus.ANALYZING:
+            return job
+
+        job.fit_analysis_status = FitAnalysisStatus.ANALYZING
+        job.fit_analysis_error = None
+        await db.commit()
+        await db.refresh(job)
+
+        create_tracked_task(self.run_analyze_fit_background(job_id, user_id))
+        return job
+
+    async def run_analyze_fit_background(self, job_id: int, user_id: str) -> None:
+        """Staged analyze-fit: score first, gap roadmap lazy."""
+        from app.database.session import async_session_factory
+        from app.services.job.tailor_pipeline import clamp_score
+
+        try:
+            async with async_session_factory() as db:
+                job = await self._get_job(db, job_id, user_id)
+                profile = await db.get(Profile, job.profile_id)
+                if not profile:
+                    raise ProfileNotFoundError(f"Profile {job.profile_id} not found for job {job_id}")
+
+                await _publish_job_progress(job_id, "ANALYZING_FIT", "Parsing job requirements…")
+                jd_analysis = await self.pipeline.analyze_jd(
+                    job.job_description or {},
+                    user_id=user_id,
+                    reference_id=str(job_id),
+                    analyze_fit=True,
+                )
+                job.jd_analysis = jd_analysis.model_dump(mode="json")
+                await db.commit()
+
+                await _publish_job_progress(job_id, "ANALYZING_FIT", "Matching your experience…")
+                compressed = compress_profile_for_evidence(
+                    profile.resume_info or {},
+                    jd_analysis,
+                )
+                evidence_map = await self.pipeline.map_evidence(
+                    compressed,
+                    jd_analysis,
+                    user_id=user_id,
+                    reference_id=str(job_id),
+                    analyze_fit=True,
+                )
+                job.evidence_map = evidence_map.model_dump(mode="json")
+
+                fit = compute_fit_verdict(jd_analysis, evidence_map)
+                job.fit_score = clamp_score(fit.fit_score)
+                job.fit_label = fit.fit_label.value
+                job.fit_rationale = fit.rationale
+                job.gap_list = fit.gap_list
+                job.fit_analysis_status = FitAnalysisStatus.READY
+                job.fit_analysis_error = None
+                await db.commit()
+
+                await _publish_job_progress(
+                    job_id,
+                    "FIT_SCORE_READY",
+                    f"Fit score: {job.fit_score} ({job.fit_label})",
+                    fit_score=job.fit_score,
+                    fit_label=job.fit_label,
+                    fit_rationale=job.fit_rationale,
+                    gap_list=job.gap_list or [],
+                    fit_analysis_status=FitAnalysisStatus.READY.value,
+                )
+
+                gap_roadmap = await self.pipeline.build_gap_roadmap(
+                    jd_analysis,
+                    evidence_map,
+                    fit,
+                    user_id=user_id,
+                    reference_id=str(job_id),
+                    analyze_fit=True,
+                )
+                if gap_roadmap:
+                    job.gap_roadmap = gap_roadmap.model_dump(mode="json")
+                    await db.commit()
+                    await _publish_job_progress(
+                        job_id,
+                        "FIT_ANALYZED",
+                        "Gap roadmap ready",
+                        gap_roadmap=job.gap_roadmap,
+                        fit_analysis_status=FitAnalysisStatus.READY.value,
+                    )
+                else:
+                    await _publish_job_progress(
+                        job_id,
+                        "FIT_ANALYZED",
+                        "Fit analysis complete",
+                        fit_analysis_status=FitAnalysisStatus.READY.value,
+                    )
+        except Exception as exc:
+            logger.exception("Background analyze-fit failed for job %s", job_id)
+            try:
+                async with async_session_factory() as db:
+                    job = await self._get_job(db, job_id, user_id)
+                    job.fit_analysis_status = FitAnalysisStatus.FAILED
+                    job.fit_analysis_error = str(exc)[:500]
+                    await db.commit()
+                await _publish_job_progress(
+                    job_id,
+                    "FIT_ANALYSIS_FAILED",
+                    f"Fit analysis failed: {exc}",
+                    fit_analysis_status=FitAnalysisStatus.FAILED.value,
+                )
+            except Exception:
+                logger.exception("Failed to persist analyze-fit failure for job %s", job_id)
+
     async def analyze_fit(self, db: AsyncSession, job_id: int, user_id: str) -> Job:
-        """Run JD analysis + evidence map without spending a credit or writing a resume."""
+        """Legacy sync analyze-fit — prefer enqueue_analyze_fit for HTTP handlers."""
         job = await self._get_job(db, job_id, user_id)
         profile = await db.get(Profile, job.profile_id)
         if not profile:
@@ -252,6 +383,8 @@ class JobService:
         job.fit_rationale = result["fit_rationale"]
         job.gap_list = result["gap_list"]
         job.gap_roadmap = result.get("gap_roadmap")
+        job.fit_analysis_status = FitAnalysisStatus.READY
+        job.fit_analysis_error = None
         await db.commit()
         await db.refresh(job)
         return job
@@ -271,6 +404,9 @@ class JobService:
             await _publish_job_progress(job_id, "GENERATING_RESUME", "Analyzing JD and tailoring resume…")
             logger.info(f"[job:{job_id}] Phase 1 (multi-pass tailor) started")
 
+            async def _pipeline_progress(status: str, message: str) -> None:
+                await _publish_job_progress(job_id, status, message)
+
             t0 = time.monotonic()
             result = await self.pipeline.run(
                 profile_info=profile.resume_info or {},
@@ -279,6 +415,10 @@ class JobService:
                 reference_id=str(job_id),
                 original_page_count=profile.original_page_count,
                 template_id=job.template_id or DEFAULT_TEMPLATE_ID,
+                cached_jd_analysis=job.jd_analysis,
+                cached_evidence_map=job.evidence_map,
+                cached_gap_roadmap=job.gap_roadmap,
+                on_progress=_pipeline_progress,
             )
             ai_ms = int((time.monotonic() - t0) * 1000)
             logger.info(f"[job:{job_id}] Tailor pipeline: {ai_ms}ms {'(SLOW >60s)' if ai_ms > 60000 else ''}")
@@ -549,8 +689,8 @@ class JobService:
             total_ms = int((time.monotonic() - t_start) * 1000)
             logger.info(f"[job:{job_id}] Phase 2 COMPLETE total={total_ms}ms")
 
-            # Background GCS upload (with retry) — don't block the job status
-            _spawn_gcs_upload(pdf_bytes, user_id, job_id)
+            # Background object storage upload (with retry) — don't block the job status
+            _spawn_object_upload(pdf_bytes, user_id, job_id)
 
         except Exception as e:
             total_ms = int((time.monotonic() - t_start) * 1000)
@@ -653,13 +793,13 @@ class JobService:
         if not job.pdf_gcs_path and not job.resume_latex_code:
             raise ValueError("PDF not yet generated for this job")
 
-        # 1. Try GCS (path is relative like "resumes/user_id/job_id.pdf")
-        if job.pdf_gcs_path and not job.pdf_gcs_path.startswith("/"):
+        # 1. Try object storage (relative key like "resumes/user_id/job_id.pdf")
+        if is_object_key(job.pdf_gcs_path):
             try:
-                gcs = GCSClient()
-                return await asyncio.to_thread(gcs.download_pdf, job.pdf_gcs_path), "house"
+                storage = get_storage()
+                return await asyncio.to_thread(storage.download, job.pdf_gcs_path), "house"
             except Exception:
-                logger.warning(f"GCS download failed for job {job_id}, trying local/regenerate")
+                logger.warning("Object storage download failed for job %s, trying local/regenerate", job_id)
 
         # 2. Try local temp file — either from absolute path in DB or known temp location
         local_candidates = []
@@ -669,7 +809,7 @@ class JobService:
         for local_path in local_candidates:
             if await asyncio.to_thread(local_path.exists):
                 pdf_bytes = await asyncio.to_thread(local_path.read_bytes)
-                _spawn_gcs_upload(pdf_bytes, user_id, job_id)
+                _spawn_object_upload(pdf_bytes, user_id, job_id)
                 return pdf_bytes, "house"
 
         # 3. Regenerate from stored LaTeX
@@ -678,10 +818,10 @@ class JobService:
             pdf_bytes = await compile_latex(
                 job.resume_latex_code, template_id=job.template_id or DEFAULT_TEMPLATE_ID
             )
-            _spawn_gcs_upload(pdf_bytes, user_id, job_id)
+            _spawn_object_upload(pdf_bytes, user_id, job_id)
             return pdf_bytes, "house"
 
-        raise ValueError("PDF not available — no GCS path, local file, or LaTeX code found")
+        raise ValueError("PDF not available — no object key, local file, or LaTeX code found")
 
     async def _try_preserve_docx(
         self, db: AsyncSession, job: Job, profile: Profile | None

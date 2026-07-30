@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Awaitable, Callable
 from logging import getLogger
 from typing import Any
 
@@ -78,6 +79,7 @@ from app.services.job.validators import (
     page_target_block,
     recruiter_critique_from,
     recruiter_review_passed,
+    max_recruiter_passes,
     specificity_regression,
     validate_content_preservation,
     validate_formatting,
@@ -88,6 +90,13 @@ from app.services.job.validators import (
 logger = getLogger(__name__)
 
 REFINE_SCORE_THRESHOLD = 72  # default; fit-aware thresholds override in run()
+
+
+def max_refine_passes() -> int:
+    return get_settings().MAX_REFINE_PASSES
+
+
+# Backward-compatible alias for tests.
 MAX_REFINE_PASSES = 3
 # Structure is JD-independent so tailored resumes can improve ATS even on mismatch.
 ATS_STRUCTURE_WEIGHT = 0.55
@@ -122,6 +131,32 @@ def write_mode_block(fit_label: FitLabel | str) -> str:
 
 
 LOW_FIT_LABELS = frozenset({FitLabel.STRETCH.value, FitLabel.MISMATCH.value})
+
+ProgressCallback = Callable[[str, str], Awaitable[None]]
+
+_EVIDENCE_PROFILE_KEYS = (
+    "name",
+    "email",
+    "phone",
+    "linkedin",
+    "github",
+    "skills",
+    "past_experience",
+    "experience",
+    "projects",
+    "education",
+    "achievements",
+    "certifications",
+    "summary",
+)
+_MAX_EVIDENCE_BULLETS_PER_SECTION = 12
+
+_EVIDENCE_STOPWORDS = frozenset(
+    {
+        "the", "and", "for", "with", "that", "this", "from", "into", "across", "using",
+        "a", "an", "of", "to", "in", "on", "by", "as", "at", "is", "are", "was", "were",
+    }
+)
 
 
 def structural_ats_score(resume: dict) -> int:
@@ -480,6 +515,71 @@ def normalize_profile_for_tailor(profile_info: dict) -> dict:
     return out
 
 
+def _jd_keyword_set(jd_analysis: JDAnalysis | dict | None) -> set[str]:
+    if jd_analysis is None:
+        return set()
+    if isinstance(jd_analysis, dict):
+        try:
+            jd_analysis = JDAnalysis.model_validate(jd_analysis)
+        except Exception:
+            return set()
+    words: set[str] = set()
+    for field in (jd_analysis.must_haves or []) + (jd_analysis.nice_to_haves or []):
+        for token in re.findall(r"[a-z0-9+#.]+", str(field).lower()):
+            if len(token) > 2 and token not in _EVIDENCE_STOPWORDS:
+                words.add(token)
+    return words
+
+
+def _bullet_overlap_score(text: str, keywords: set[str]) -> int:
+    if not keywords:
+        return 0
+    tokens = set(re.findall(r"[a-z0-9+#.]+", str(text).lower()))
+    return len(tokens & keywords)
+
+
+def _cap_section_bullets(section: dict, keywords: set[str], max_bullets: int) -> dict:
+    bullets = section.get("description")
+    if not isinstance(bullets, list) or len(bullets) <= max_bullets:
+        return section
+    ranked = sorted(
+        bullets,
+        key=lambda b: _bullet_overlap_score(str(b), keywords),
+        reverse=True,
+    )
+    return {**section, "description": ranked[:max_bullets]}
+
+
+def compress_profile_for_evidence(
+    profile_info: dict,
+    jd_analysis: JDAnalysis | dict | None = None,
+) -> dict:
+    """Trim profile payload for evidence-map LLM — faster calls, fewer hallucinations."""
+    normalized = normalize_profile_for_tailor(profile_info)
+    keywords = _jd_keyword_set(jd_analysis)
+    out: dict[str, Any] = {}
+    for key in _EVIDENCE_PROFILE_KEYS:
+        if key not in normalized:
+            continue
+        out[key] = normalized[key]
+
+    experiences: list[dict] = []
+    for exp in out.get("past_experience") or out.get("experience") or []:
+        if isinstance(exp, dict):
+            experiences.append(_cap_section_bullets(exp, keywords, _MAX_EVIDENCE_BULLETS_PER_SECTION))
+    if experiences:
+        out["past_experience"] = experiences
+
+    projects: list[dict] = []
+    for proj in out.get("projects") or []:
+        if isinstance(proj, dict):
+            projects.append(_cap_section_bullets(proj, keywords, _MAX_EVIDENCE_BULLETS_PER_SECTION))
+    if projects:
+        out["projects"] = projects
+
+    return out
+
+
 def _allowed_keywords(evidence: EvidenceMap | dict | None) -> list[str]:
     if evidence is None:
         return []
@@ -636,6 +736,22 @@ class TailorPipeline:
         self.flash_model = settings.LLM_FLASH_MODEL
         self.pro_model = settings.LLM_PRO_MODEL
 
+    def _analyze_fit_inference_kwargs(
+        self,
+        *,
+        user_id: str | None,
+        reference_id: str | None,
+        purpose: str,
+    ) -> dict[str, Any]:
+        settings = get_settings()
+        return {
+            "user_id": user_id,
+            "purpose": purpose,
+            "reference_id": reference_id,
+            "primary_timeout": settings.ANALYZE_FIT_LLM_TIMEOUT,
+            "allow_pro_fallback": False,
+        }
+
     async def run(
         self,
         *,
@@ -645,8 +761,17 @@ class TailorPipeline:
         reference_id: str | None = None,
         original_page_count: int | None = None,
         template_id: str = "classic",
+        cached_jd_analysis: dict | JDAnalysis | None = None,
+        cached_evidence_map: dict | EvidenceMap | None = None,
+        cached_gap_roadmap: dict | GapRoadmap | None = None,
+        on_progress: ProgressCallback | None = None,
     ) -> dict[str, Any]:
         """Full Phase-1 pipeline. Returns dict of fields to persist on Job."""
+
+        async def _progress(status: str, message: str) -> None:
+            if on_progress:
+                await on_progress(status, message)
+
         normalized_profile = normalize_profile_for_tailor(profile_info)
         target_page_count = estimate_target_page_count(
             normalized_profile,
@@ -655,15 +780,38 @@ class TailorPipeline:
         )
         page_block = page_target_block(target_page_count)
 
-        jd_analysis = await self.analyze_jd(job_description, user_id=user_id, reference_id=reference_id)
-        evidence_map = await self.map_evidence(
-            normalized_profile, jd_analysis, user_id=user_id, reference_id=reference_id
-        )
+        if cached_jd_analysis is not None:
+            jd_analysis = (
+                cached_jd_analysis
+                if isinstance(cached_jd_analysis, JDAnalysis)
+                else JDAnalysis.model_validate(cached_jd_analysis)
+            )
+        else:
+            await _progress("GENERATING_RESUME", "Parsing job requirements…")
+            jd_analysis = await self.analyze_jd(
+                job_description, user_id=user_id, reference_id=reference_id
+            )
+
+        if cached_evidence_map is not None:
+            evidence_map = (
+                cached_evidence_map
+                if isinstance(cached_evidence_map, EvidenceMap)
+                else EvidenceMap.model_validate(cached_evidence_map)
+            )
+        else:
+            await _progress("GENERATING_RESUME", "Matching your experience…")
+            evidence_map = await self.map_evidence(
+                compress_profile_for_evidence(normalized_profile, jd_analysis),
+                jd_analysis,
+                user_id=user_id,
+                reference_id=reference_id,
+            )
         fit, raw_fit = compute_fit_verdict_and_raw(jd_analysis, evidence_map)
         keyword_checklist = build_keyword_checklist(jd_analysis, evidence_map)
         ats_threshold, supported_target, combined_target = fit_aware_thresholds(fit.fit_label)
 
         # Stage 5: Resume Planner — structured strategy BEFORE any prose is written.
+        await _progress("GENERATING_RESUME", "Planning resume structure…")
         resume_plan = await self.plan_resume(
             normalized_profile, jd_analysis, evidence_map, fit, user_id=user_id, reference_id=reference_id
         )
@@ -678,6 +826,7 @@ class TailorPipeline:
             purpose="ats_score_before",
         )
 
+        await _progress("GENERATING_RESUME", "Writing tailored resume…")
         resume = await self.write_resume(
             normalized_profile,
             job_description,
@@ -741,8 +890,13 @@ class TailorPipeline:
         )
         recruiter_passed, recruiter_min_score = recruiter_review_passed(recruiter_result)
         recruiter_passes = 0
-        while not recruiter_passed and recruiter_passes < MAX_RECRUITER_PASSES:
+        max_recruiter = max_recruiter_passes()
+        while not recruiter_passed and recruiter_passes < max_recruiter:
             recruiter_passes += 1
+            await _progress(
+                "GENERATING_RESUME",
+                f"Recruiter review pass {recruiter_passes}…",
+            )
             critique = recruiter_critique_from(recruiter_result)
             dummy_ats = ATSScoreResult(
                 score=0,
@@ -801,7 +955,8 @@ class TailorPipeline:
         )
 
         refine_passes = 0
-        while refine_passes < MAX_REFINE_PASSES:
+        max_refine = max_refine_passes()
+        while refine_passes < max_refine:
             coverage = compute_keyword_coverage(resume, evidence_map)
             content_v = validate_content_preservation(
                 normalized_profile, resume, split_fn=split_profile_bullets
@@ -819,6 +974,7 @@ class TailorPipeline:
                 break
 
             refine_passes += 1
+            await _progress("GENERATING_RESUME", "Optimizing ATS keywords…")
             critique = validation_critique_from(
                 coverage=coverage,
                 content=content_v,
@@ -875,7 +1031,7 @@ class TailorPipeline:
                 purpose=f"ats_score_after_refine_{refine_passes}",
             )
 
-        if refine_passes >= MAX_REFINE_PASSES:
+        if refine_passes >= max_refine:
             coverage = compute_keyword_coverage(resume, evidence_map)
             content_v = validate_content_preservation(
                 normalized_profile, resume, split_fn=split_profile_bullets
@@ -903,9 +1059,16 @@ class TailorPipeline:
         resume = _inject_pii(resume, profile_info)
         versions = _append_version([], resume, "initial", template_id=template_id)
         bullet_diff = build_bullet_diff(profile_info, resume, evidence_map)
-        gap_roadmap = await self.build_gap_roadmap(
-            jd_analysis, evidence_map, fit, user_id=user_id, reference_id=reference_id
-        )
+        if cached_gap_roadmap is not None:
+            gap_roadmap = (
+                cached_gap_roadmap
+                if isinstance(cached_gap_roadmap, GapRoadmap)
+                else GapRoadmap.model_validate(cached_gap_roadmap)
+            )
+        else:
+            gap_roadmap = await self.build_gap_roadmap(
+                jd_analysis, evidence_map, fit, user_id=user_id, reference_id=reference_id
+            )
         final_coverage = compute_keyword_coverage(resume, evidence_map)
 
         return {
@@ -962,13 +1125,16 @@ class TailorPipeline:
         reference_id: str | None = None,
     ) -> dict[str, Any]:
         """Free pre-generate fit analysis (JD + evidence + fit verdict + roadmap)."""
-        jd_analysis = await self.analyze_jd(job_description, user_id=user_id, reference_id=reference_id)
+        jd_analysis = await self.analyze_jd(
+            job_description, user_id=user_id, reference_id=reference_id, analyze_fit=True
+        )
+        compressed = compress_profile_for_evidence(profile_info, jd_analysis)
         evidence_map = await self.map_evidence(
-            profile_info, jd_analysis, user_id=user_id, reference_id=reference_id
+            compressed, jd_analysis, user_id=user_id, reference_id=reference_id, analyze_fit=True
         )
         fit = compute_fit_verdict(jd_analysis, evidence_map)
         gap_roadmap = await self.build_gap_roadmap(
-            jd_analysis, evidence_map, fit, user_id=user_id, reference_id=reference_id
+            jd_analysis, evidence_map, fit, user_id=user_id, reference_id=reference_id, analyze_fit=True
         )
         return {
             "jd_analysis": jd_analysis.model_dump(mode="json"),
@@ -981,17 +1147,27 @@ class TailorPipeline:
         }
 
     async def analyze_jd(
-        self, job_description: dict, *, user_id: str | None, reference_id: str | None
+        self,
+        job_description: dict,
+        *,
+        user_id: str | None,
+        reference_id: str | None,
+        analyze_fit: bool = False,
     ) -> JDAnalysis:
         llm = LLMInference(model_name=self.flash_model)
-        raw = await llm.run_inference(
-            system_prompt=JD_ANALYSIS_SYSTEM_PROMPT,
-            inputs=[JD_ANALYSIS_USER_PROMPT.format(job_description=_dumps(job_description))],
-            structured_output_schema=JDAnalysis,
-            user_id=user_id,
-            purpose="jd_analysis",
-            reference_id=reference_id,
-        )
+        kwargs: dict[str, Any] = {
+            "system_prompt": JD_ANALYSIS_SYSTEM_PROMPT,
+            "inputs": [JD_ANALYSIS_USER_PROMPT.format(job_description=_dumps(job_description))],
+            "structured_output_schema": JDAnalysis,
+            "user_id": user_id,
+            "purpose": "jd_analysis",
+            "reference_id": reference_id,
+        }
+        if analyze_fit:
+            kwargs.update(self._analyze_fit_inference_kwargs(
+                user_id=user_id, reference_id=reference_id, purpose="jd_analysis"
+            ))
+        raw = await llm.run_inference(**kwargs)
         return JDAnalysis.model_validate(raw)
 
     async def map_evidence(
@@ -1001,21 +1177,27 @@ class TailorPipeline:
         *,
         user_id: str | None,
         reference_id: str | None,
+        analyze_fit: bool = False,
     ) -> EvidenceMap:
         llm = LLMInference(model_name=self.flash_model)
-        raw = await llm.run_inference(
-            system_prompt=EVIDENCE_MAP_SYSTEM_PROMPT,
-            inputs=[
+        kwargs: dict[str, Any] = {
+            "system_prompt": EVIDENCE_MAP_SYSTEM_PROMPT,
+            "inputs": [
                 EVIDENCE_MAP_USER_PROMPT.format(
                     jd_analysis=_dumps(jd_analysis),
                     user_info=_dumps(profile_info),
                 )
             ],
-            structured_output_schema=EvidenceMap,
-            user_id=user_id,
-            purpose="evidence_map",
-            reference_id=reference_id,
-        )
+            "structured_output_schema": EvidenceMap,
+            "user_id": user_id,
+            "purpose": "evidence_map",
+            "reference_id": reference_id,
+        }
+        if analyze_fit:
+            kwargs.update(self._analyze_fit_inference_kwargs(
+                user_id=user_id, reference_id=reference_id, purpose="evidence_map"
+            ))
+        raw = await llm.run_inference(**kwargs)
         evidence = EvidenceMap.model_validate(raw)
         evidence, unverified = verify_evidence_quotes(evidence, profile_info)
         if unverified:
@@ -1133,14 +1315,15 @@ class TailorPipeline:
         *,
         user_id: str | None,
         reference_id: str | None,
+        analyze_fit: bool = False,
     ) -> GapRoadmap | None:
         """Flash gap-closing roadmap for Stretch/Mismatch; skip on STRONG."""
         if fit.fit_label == FitLabel.STRONG:
             return None
         llm = LLMInference(model_name=self.flash_model)
-        raw = await llm.run_inference(
-            system_prompt=GAP_ROADMAP_SYSTEM_PROMPT,
-            inputs=[
+        kwargs: dict[str, Any] = {
+            "system_prompt": GAP_ROADMAP_SYSTEM_PROMPT,
+            "inputs": [
                 GAP_ROADMAP_USER_PROMPT.format(
                     jd_analysis=_dumps(jd_analysis),
                     evidence_map=_dumps(evidence_map),
@@ -1148,11 +1331,16 @@ class TailorPipeline:
                     gap_list=_dumps(fit.gap_list),
                 )
             ],
-            structured_output_schema=GapRoadmap,
-            user_id=user_id,
-            purpose="gap_roadmap",
-            reference_id=reference_id,
-        )
+            "structured_output_schema": GapRoadmap,
+            "user_id": user_id,
+            "purpose": "gap_roadmap",
+            "reference_id": reference_id,
+        }
+        if analyze_fit:
+            kwargs.update(self._analyze_fit_inference_kwargs(
+                user_id=user_id, reference_id=reference_id, purpose="gap_roadmap"
+            ))
+        raw = await llm.run_inference(**kwargs)
         roadmap = GapRoadmap.model_validate(raw)
         # Keep 3–5 steps
         if len(roadmap.steps) > 5:

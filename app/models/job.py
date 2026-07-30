@@ -23,6 +23,13 @@ class ApplicationStatus(str, enum.Enum):
     WITHDRAWN = "WITHDRAWN"
 
 
+class FitAnalysisStatus(str, enum.Enum):
+    NONE = "NONE"
+    ANALYZING = "ANALYZING"
+    READY = "READY"
+    FAILED = "FAILED"
+
+
 class Job(TimestampMixin, Base):
     __tablename__ = "jobs"
 
@@ -47,6 +54,13 @@ class Job(TimestampMixin, Base):
     fit_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
     gap_list: Mapped[list | None] = mapped_column(JSON, nullable=True)
     gap_roadmap: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    fit_analysis_status: Mapped[FitAnalysisStatus] = mapped_column(
+        Enum(FitAnalysisStatus),
+        default=FitAnalysisStatus.NONE,
+        server_default="NONE",
+        nullable=False,
+    )
+    fit_analysis_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     resume_plan: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     recruiter_review: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     ats_score_before: Mapped[int | None] = mapped_column(Integer, nullable=True)

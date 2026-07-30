@@ -27,7 +27,7 @@ from app.services.ai.prompts import ROAST_SYSTEM_PROMPT
 from app.services.auth.jwt_handler import create_guest_token
 from app.services.ocr.extractor import PDFExtractor, detect_resume_format
 from app.services.profile.service import ProfileService
-from app.services.storage.gcs import GCSClient
+from app.services.storage import get_storage
 from app.utils.client_ip import client_ip
 from sqlalchemy import select, func
 
@@ -70,10 +70,12 @@ async def _spawn_profile_processing(
 
     async def _store_pdf():
         try:
-            gcs = GCSClient()
-            await asyncio.to_thread(gcs.upload_pdf, pdf_bytes, gcs_path)
+            storage = get_storage()
+            await asyncio.to_thread(storage.upload, gcs_path, pdf_bytes)
         except FileNotFoundError:
-            logger.debug("Skipping GCS upload for guest profile %s (credentials not configured)", profile_id)
+            logger.debug(
+                "Skipping object upload for guest profile %s (storage not configured)", profile_id
+            )
         except Exception:
             logger.warning("Failed to store guest PDF for profile %s", profile_id, exc_info=True)
 

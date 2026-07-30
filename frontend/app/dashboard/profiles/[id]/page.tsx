@@ -28,16 +28,32 @@ export default function ProfileDetailPage() {
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
+    let attempts = 0;
+    const maxAttempts = 100; // ~5 min at 3s intervals
+
     const fetchProfile = async () => {
       try {
         const res = await profilesApi.get(Number(id));
         setProfile(res.data);
         if (res.data.status === 'PROCESSING' || res.data.status === 'PENDING') {
+          attempts += 1;
+          if (attempts >= maxAttempts) {
+            setError(
+              'Resume processing is taking longer than expected. Please try uploading again or contact support.'
+            );
+            setLoading(false);
+            return;
+          }
           setLoading(false);
           interval = setTimeout(fetchProfile, 3000);
         } else {
           setLoading(false);
           setEditData(res.data.resume_info || {});
+          if (res.data.status === 'FAILED') {
+            setError(
+              'We could not process your resume. Please check the file and try uploading again.'
+            );
+          }
         }
       } catch (err: any) {
         const detail = err.response?.data?.detail || 'Failed to load profile';

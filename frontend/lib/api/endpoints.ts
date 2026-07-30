@@ -1,4 +1,4 @@
-import client from './client';
+import client, { LLM_SYNC_TIMEOUT } from './client';
 import {
   User, LoginResponse, Profile, ProfileUploadResponse, PaginatedResponse,
   Job, JobCreatePayload, Roast, RoastUploadResponse, CreditPack, TimePassTier,
@@ -45,7 +45,8 @@ export const profilesApi = {
   getStatus: (id: number) => client.get<{ id: number; status: string }>(`/profiles/${id}/status`),
   update: (id: number, resumeInfo: ResumeInfo) =>
     client.put<Profile>(`/profiles/${id}`, { resume_info: resumeInfo }),
-  enhance: (id: number) => client.post<Profile>(`/profiles/${id}/enhance`),
+  enhance: (id: number) =>
+    client.post<Profile>(`/profiles/${id}/enhance`, undefined, { timeout: LLM_SYNC_TIMEOUT }),
   delete: (id: number) => client.delete(`/profiles/${id}`),
 };
 
@@ -57,20 +58,24 @@ export const jobsApi = {
   get: (id: number) => client.get<Job>(`/jobs/${id}`),
   getStatus: (id: number) => client.get<{ id: number; status: string }>(`/jobs/${id}/status`),
   generateResume: (id: number, opts?: { confirm_low_fit?: boolean }) =>
-    client.post<{ job_id: number; status: string }>(`/jobs/${id}/generate-resume`, {
-      confirm_low_fit: opts?.confirm_low_fit ?? false,
-    }),
+    client.post<{ job_id: number; status: string }>(
+      `/jobs/${id}/generate-resume`,
+      { confirm_low_fit: opts?.confirm_low_fit ?? false },
+      { timeout: LLM_SYNC_TIMEOUT }
+    ),
   generatePdf: (id: number) =>
     client.post<{ job_id: number; status: string }>(`/jobs/${id}/generate-pdf`),
   analyzeFit: (id: number) =>
     client.post<{
       job_id: number;
-      fit_score: number;
-      fit_label: string;
-      fit_rationale: string;
+      fit_analysis_status: string;
+      message?: string;
+      fit_score?: number;
+      fit_label?: string;
+      fit_rationale?: string;
       fit_score_breakdown?: Job['fit_score_breakdown'];
       evidence_counts?: Job['evidence_counts'];
-      gap_list: string[];
+      gap_list?: string[];
       gap_roadmap?: Job['gap_roadmap'];
       jd_analysis?: Job['jd_analysis'];
       evidence_map?: Job['evidence_map'];
@@ -78,7 +83,8 @@ export const jobsApi = {
   fixGaps: (id: number, keywords: string[]) =>
     client.post<{ success: boolean; custom_resume_data: ResumeInfo; status: string }>(
       `/jobs/${id}/fix-gaps`,
-      { keywords }
+      { keywords },
+      { timeout: LLM_SYNC_TIMEOUT }
     ),
   restoreVersion: (id: number, version: number) =>
     client.post<{ success: boolean; custom_resume_data: ResumeInfo; status: string; template_id?: string }>(
@@ -86,9 +92,15 @@ export const jobsApi = {
       { version }
     ),
   generateCoverLetter: (id: number) =>
-    client.post<{ cover_letter: string }>(`/jobs/${id}/cover-letter`),
+    client.post<{ cover_letter: string }>(`/jobs/${id}/cover-letter`, undefined, {
+      timeout: LLM_SYNC_TIMEOUT,
+    }),
   generateInterviewPacket: (id: number) =>
-    client.post<{ interview_packet: Job['interview_packet'] }>(`/jobs/${id}/interview-packet`),
+    client.post<{ interview_packet: Job['interview_packet'] }>(
+      `/jobs/${id}/interview-packet`,
+      undefined,
+      { timeout: LLM_SYNC_TIMEOUT }
+    ),
   updateApplication: (
     id: number,
     payload: {
@@ -119,14 +131,19 @@ export const jobsApi = {
     contact_name?: string;
     contact_role?: string;
     relationship_context?: string;
-  }) => client.post<{ outreach_message: string; outreach_type: string }>(`/jobs/${id}/outreach-message`, {
-    outreach_type: payload.message_type,
-    contact_info: {
-      name: payload.contact_name,
-      role: payload.contact_role,
-      relationship: payload.relationship_context,
-    },
-  }),
+  }) =>
+    client.post<{ outreach_message: string; outreach_type: string }>(
+      `/jobs/${id}/outreach-message`,
+      {
+        outreach_type: payload.message_type,
+        contact_info: {
+          name: payload.contact_name,
+          role: payload.contact_role,
+          relationship: payload.relationship_context,
+        },
+      },
+      { timeout: LLM_SYNC_TIMEOUT }
+    ),
   updateContacts: (id: number, contacts: Array<{ name: string; role?: string; relationship?: string; email?: string; linkedin?: string }>) =>
     client.put<{ known_contacts: unknown; job_id: number }>(`/jobs/${id}/contacts`, contacts),
   updateTemplate: (id: number, templateId: string) =>

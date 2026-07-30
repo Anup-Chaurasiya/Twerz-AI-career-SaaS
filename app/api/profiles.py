@@ -8,7 +8,7 @@ from app.background import create_tracked_task
 from app.models.user import User
 from app.dependencies import get_current_user
 from app.services.profile.service import ProfileService
-from app.services.storage.gcs import GCSClient
+from app.services.storage import get_storage
 from app.services.ocr.extractor import detect_resume_format
 from app.schemas.profile import UpsertPayload
 
@@ -47,16 +47,16 @@ async def upload_profile(
 
     create_tracked_task(_process())
 
-    # Store uploaded PDF in GCS (fire-and-forget)
+    # Store uploaded PDF in object storage (fire-and-forget)
     async def _store_pdf():
         try:
-            gcs = GCSClient()
-            gcs_path = f"uploads/profiles/{current_user.id}/{profile_id}.{file_ext}"
-            await asyncio.to_thread(gcs.upload_pdf, pdf_bytes, gcs_path)
+            storage = get_storage()
+            object_key = f"uploads/profiles/{current_user.id}/{profile_id}.{file_ext}"
+            await asyncio.to_thread(storage.upload, object_key, pdf_bytes)
         except FileNotFoundError:
-            logger.debug("Skipping GCS upload for profile %s (credentials not configured)", profile_id)
+            logger.debug("Skipping object upload for profile %s (storage not configured)", profile_id)
         except Exception:
-            logger.warning(f"Failed to store uploaded PDF for profile {profile_id}", exc_info=True)
+            logger.warning("Failed to store uploaded PDF for profile %s", profile_id, exc_info=True)
 
     create_tracked_task(_store_pdf())
 

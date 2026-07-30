@@ -1,17 +1,22 @@
-from google.cloud import storage
-from app.config import get_settings
 from logging import getLogger
 from pathlib import Path
+
+from google.cloud import storage
+
+from app.config import get_settings
+from app.services.storage.base import StorageProvider, resolve_content_type
 
 logger = getLogger(__name__)
 
 
-class GCSClient:
+class GCSStorage(StorageProvider):
+    """Google Cloud Storage backend."""
+
     def __init__(self):
         settings = get_settings()
         self.bucket_name = settings.GCS_BUCKET
         self._credentials_path = settings.GCS_CREDENTIALS_PATH
-        self._client = None
+        self._client: storage.Client | None = None
 
     @property
     def client(self) -> storage.Client:
@@ -25,49 +30,55 @@ class GCSClient:
                     raise FileNotFoundError(
                         f"GCS credentials not found at {creds_path} (optional in local dev)"
                     )
-                # Production: use Application Default Credentials (Cloud Run, GCE, etc.)
                 self._client = storage.Client()
         return self._client
 
-    def upload_pdf(self, pdf_bytes: bytes, gcs_path: str) -> str:
-        """Upload PDF bytes to GCS. Returns the GCS path."""
+    def upload(self, key: str, data: bytes, *, content_type: str | None = None) -> str:
         bucket = self.client.bucket(self.bucket_name)
-        blob = bucket.blob(gcs_path)
-        blob.upload_from_string(pdf_bytes, content_type="application/pdf")
-        logger.info(f"Uploaded PDF to gs://{self.bucket_name}/{gcs_path}")
-        return gcs_path
+        blob = bucket.blob(key)
+        blob.upload_from_string(data, content_type=resolve_content_type(content_type))
+        logger.info("Uploaded to gs://%s/%s", self.bucket_name, key)
+        return key
 
-    def download_pdf(self, gcs_path: str) -> bytes:
-        """Download PDF bytes from GCS."""
+    def download(self, key: str) -> bytes:
         bucket = self.client.bucket(self.bucket_name)
-        blob = bucket.blob(gcs_path)
+        blob = bucket.blob(key)
         return blob.download_as_bytes()
 
-    def generate_signed_url(self, gcs_path: str, expiration_seconds: int = 3600) -> str:
-        """Generate a signed URL for downloading a PDF from GCS.
-        
-        Args:
-            gcs_path: Relative path in the bucket (e.g., "resumes/user_id/job_id.pdf")
-            expiration_seconds: Time until URL expires (default: 1 hour)
-        
-        Returns:
-            Signed URL string that allows temporary public access
-        """
+    def delete(self, key: str) -> None:
         bucket = self.client.bucket(self.bucket_name)
-        blob = bucket.blob(gcs_path)
-        
-        # Generate signed URL valid for the specified duration
+        blob = bucket.blob(key)
+        blob.delete()
+        logger.info("Deleted gs://%s/%s", self.bucket_name, key)
+
+    def exists(self, key: str) -> bool:
+        bucket = self.client.bucket(self.bucket_name)
+        return bucket.blob(key).exists()
+
+    def generate_signed_url(self, key: str, expires_in: int = 3600) -> str:
+        bucket = self.client.bucket(self.bucket_name)
+        blob = bucket.blob(key)
         url = blob.generate_signed_url(
             version="v4",
-            expiration=expiration_seconds,
+            expiration=expires_in,
             method="GET",
         )
-        logger.info(f"Generated signed URL for gs://{self.bucket_name}/{gcs_path} (expires in {expiration_seconds}s)")
+        logger.info(
+            "Generated signed URL for gs://%s/%s (expires in %ss)",
+            self.bucket_name,
+            key,
+            expires_in,
+        )
         return url
 
+
+# Backward compatibility for existing imports and tests
+class GCSClient(GCSStorage):
+    def upload_pdf(self, pdf_bytes: bytes, gcs_path: str) -> str:
+        return self.upload(gcs_path, pdf_bytes)
+
+    def download_pdf(self, gcs_path: str) -> bytes:
+        return self.download(gcs_path)
+
     def delete_pdf(self, gcs_path: str) -> None:
-        """Delete a PDF from GCS."""
-        bucket = self.client.bucket(self.bucket_name)
-        blob = bucket.blob(gcs_path)
-        blob.delete()
-        logger.info(f"Deleted gs://{self.bucket_name}/{gcs_path}")
+        self.delete(gcs_path)

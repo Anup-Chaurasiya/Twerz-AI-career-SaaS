@@ -316,9 +316,12 @@ class LLMInference:
         thinking_level: str = "LOW",  # kept for call-site compat; unused by LiteLLM
         fallback_model: str | None = None,
         primary_timeout: int | None = PRIMARY_TIMEOUT_SECONDS,
+        allow_pro_fallback: bool = True,
     ) -> str | dict | list:
         del thinking_level  # Gemini-specific; not applied via LiteLLM
-        if fallback_model is None:
+        if not allow_pro_fallback:
+            fallback_model = ""
+        elif fallback_model is None:
             fallback_model = get_settings().LLM_PRO_MODEL
         if not is_llm_configured():
             raise AIInferenceError(

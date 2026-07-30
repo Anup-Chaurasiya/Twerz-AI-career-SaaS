@@ -1,0 +1,98 @@
+from datetime import datetime, timedelta, timezone
+import uuid
+from logging import getLogger
+
+import oci
+
+from app.config import get_settings
+from app.services.storage.base import StorageProvider, resolve_content_type
+
+logger = getLogger(__name__)
+
+
+class OCIStorage(StorageProvider):
+    """Oracle Cloud Infrastructure Object Storage (Instance Principals in production)."""
+
+    def __init__(self):
+        settings = get_settings()
+        self.bucket_name = settings.OCI_BUCKET
+        self._namespace = settings.OCI_NAMESPACE or None
+        self._config_path = settings.OCI_CONFIG_PATH.strip()
+
+        if self._config_path:
+            config = oci.config.from_file(self._config_path)
+            self._client = oci.object_storage.ObjectStorageClient(config)
+        else:
+            signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
+            self._client = oci.object_storage.ObjectStorageClient(config={}, signer=signer)
+
+    @property
+    def namespace(self) -> str:
+        if not self._namespace:
+            self._namespace = self._client.get_namespace().data
+        return self._namespace
+
+    def upload(self, key: str, data: bytes, *, content_type: str | None = None) -> str:
+        self._client.put_object(
+            namespace_name=self.namespace,
+            bucket_name=self.bucket_name,
+            object_name=key,
+            put_object_body=data,
+            content_type=resolve_content_type(content_type),
+        )
+        logger.info("Uploaded to oci://%s/%s/%s", self.namespace, self.bucket_name, key)
+        return key
+
+    def download(self, key: str) -> bytes:
+        response = self._client.get_object(
+            namespace_name=self.namespace,
+            bucket_name=self.bucket_name,
+            object_name=key,
+        )
+        return response.data.content
+
+    def delete(self, key: str) -> None:
+        self._client.delete_object(
+            namespace_name=self.namespace,
+            bucket_name=self.bucket_name,
+            object_name=key,
+        )
+        logger.info("Deleted oci://%s/%s/%s", self.namespace, self.bucket_name, key)
+
+    def exists(self, key: str) -> bool:
+        try:
+            self._client.head_object(
+                namespace_name=self.namespace,
+                bucket_name=self.bucket_name,
+                object_name=key,
+            )
+            return True
+        except oci.exceptions.ServiceError as exc:
+            if exc.status == 404:
+                return False
+            raise
+
+    def generate_signed_url(self, key: str, expires_in: int = 3600) -> str:
+        """Create an OCI Pre-Authenticated Request for temporary object read access."""
+        par_details = oci.object_storage.models.CreatePreauthenticatedRequestDetails(
+            name=f"dl-{uuid.uuid4().hex[:12]}",
+            access_type=oci.object_storage.models.CreatePreauthenticatedRequestDetails.ACCESS_TYPE_OBJECT_READ,
+            object_name=key,
+            time_expires=datetime.now(timezone.utc) + timedelta(seconds=expires_in),
+        )
+        response = self._client.create_preauthenticated_request(
+            namespace_name=self.namespace,
+            bucket_name=self.bucket_name,
+            create_preauthenticated_request_details=par_details,
+        )
+        access_uri = response.data.access_uri
+        endpoint = self._client.base_client.endpoint.rstrip("/")
+        url = f"{endpoint}{access_uri}"
+        logger.info(
+            "Generated OCI PAR for oci://%s/%s/%s (expires in %ss)",
+            self.namespace,
+            self.bucket_name,
+            key,
+            expires_in,
+        )
+        return url

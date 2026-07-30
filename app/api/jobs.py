@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.session import get_db
 from app.background import create_tracked_task
-from app.models.job import JobStatus
+from app.exceptions import ConflictError
+from app.models.job import JobStatus, FitAnalysisStatus
 from app.models.user import User
 from app.dependencies import get_current_user
 from app.services.job.service import JobService, PDF_DIR
@@ -110,7 +111,8 @@ async def create_job(
         from app.exceptions import UsageLimitExceeded
         raise UsageLimitExceeded("No credits available. Purchase credits or wait for daily free credits to reset.")
     job = await service.create_job(db, current_user.id, payload.profile_id, payload.job_description)
-    return {"job_id": job.id, "status": job.status.value}
+    await service.enqueue_analyze_fit(db, job.id, current_user.id)
+    return {"job_id": job.id, "status": job.status.value, "fit_analysis_status": "ANALYZING"}
 
 
 @router.post("/{job_id}/generate-resume", status_code=202)
@@ -130,15 +132,10 @@ async def generate_resume(
             f"Job is already {job.status.value} — cannot re-generate"
         )
 
-    # Free analyze-fit if not yet run, then gate low-fit before charging
-    if job.fit_score is None or not job.fit_label:
-        job = await service.analyze_fit(db, job_id, current_user.id)
-        # Re-lock after analyze commit
-        job = await service.get_job(db, job_id, current_user.id, for_update=True)
-        if job.status.value not in ("PENDING", "FAILED"):
-            raise ValueError(
-                f"Job is already {job.status.value} — cannot re-generate"
-            )
+    # Require completed background analyze-fit before charging
+    if job.fit_analysis_status != FitAnalysisStatus.READY:
+        if job.fit_score is None or not job.fit_label:
+            raise ConflictError("analyze_fit_required")
 
     if job.fit_label in LOW_FIT_LABELS and not payload.confirm_low_fit and not job.low_fit_confirmed:
         raise ValueError(
@@ -254,6 +251,8 @@ async def get_job(
         "fit_score": job.fit_score,
         "fit_label": job.fit_label,
         "fit_rationale": job.fit_rationale,
+        "fit_analysis_status": job.fit_analysis_status.value,
+        "fit_analysis_error": job.fit_analysis_error,
         "fit_score_breakdown": fit_score_breakdown_from_stored(job.jd_analysis, job.evidence_map),
         "evidence_counts": evidence_counts_from_map(job.evidence_map),
         "gap_list": job.gap_list or [],
@@ -289,25 +288,32 @@ async def get_job(
     }
 
 
-@router.post("/{job_id}/analyze-fit", status_code=200)
+@router.post("/{job_id}/analyze-fit", status_code=202)
 async def analyze_fit(
     job_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Free pre-generate fit analysis (does not deduct credits)."""
-    job = await service.analyze_fit(db, job_id, current_user.id)
+    """Free pre-generate fit analysis (does not deduct credits). Runs in background."""
+    job = await service.enqueue_analyze_fit(db, job_id, current_user.id)
+    if job.fit_analysis_status == FitAnalysisStatus.READY:
+        return {
+            "job_id": job.id,
+            "fit_analysis_status": job.fit_analysis_status.value,
+            "fit_score": job.fit_score,
+            "fit_label": job.fit_label,
+            "fit_rationale": job.fit_rationale,
+            "fit_score_breakdown": fit_score_breakdown_from_stored(job.jd_analysis, job.evidence_map),
+            "evidence_counts": evidence_counts_from_map(job.evidence_map),
+            "gap_list": job.gap_list or [],
+            "gap_roadmap": job.gap_roadmap,
+            "jd_analysis": job.jd_analysis,
+            "evidence_map": job.evidence_map,
+        }
     return {
         "job_id": job.id,
-        "fit_score": job.fit_score,
-        "fit_label": job.fit_label,
-        "fit_rationale": job.fit_rationale,
-        "fit_score_breakdown": fit_score_breakdown_from_stored(job.jd_analysis, job.evidence_map),
-        "evidence_counts": evidence_counts_from_map(job.evidence_map),
-        "gap_list": job.gap_list or [],
-        "gap_roadmap": job.gap_roadmap,
-        "jd_analysis": job.jd_analysis,
-        "evidence_map": job.evidence_map,
+        "fit_analysis_status": job.fit_analysis_status.value,
+        "message": "Fit analysis started",
     }
 
 
@@ -572,6 +578,7 @@ async def get_job_status(
         "status": job.status.value,
         "fit_score": job.fit_score,
         "fit_label": job.fit_label,
+        "fit_analysis_status": job.fit_analysis_status.value,
         "ats_score_after": job.ats_score_after,
     }
 

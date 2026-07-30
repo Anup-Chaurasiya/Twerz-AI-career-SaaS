@@ -1,6 +1,6 @@
 """Unit tests for GCSClient — all GCS calls are mocked."""
 import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 
 @pytest.fixture
@@ -9,6 +9,7 @@ def mock_settings():
         settings = MagicMock()
         settings.GCS_BUCKET = "test-bucket"
         settings.GCS_CREDENTIALS_PATH = "credentials/fake.json"
+        settings.ENVIRONMENT = "production"
         mock.return_value = settings
         yield settings
 
@@ -41,7 +42,7 @@ class TestGCSClientUpload:
         mock_bucket.blob.return_value = mock_blob
 
         pdf_bytes = b"%PDF-1.4 fake pdf content"
-        result = client.upload_pdf(pdf_bytes, "resumes/user1/job1.pdf")
+        result = client.upload("resumes/user1/job1.pdf", pdf_bytes)
 
         mock_gcs.bucket.assert_called_once_with("test-bucket")
         mock_bucket.blob.assert_called_once_with("resumes/user1/job1.pdf")
@@ -90,6 +91,34 @@ class TestGCSClientDelete:
         client.delete_pdf("resumes/user1/job1.pdf")
 
         mock_blob.delete.assert_called_once()
+
+
+class TestGCSStorageExists:
+    def test_exists_checks_blob(self, gcs_client):
+        client, mock_gcs = gcs_client
+        mock_blob = MagicMock()
+        mock_blob.exists.return_value = True
+        mock_gcs.bucket.return_value.blob.return_value = mock_blob
+
+        assert client.exists("resumes/user1/job1.pdf") is True
+        mock_blob.exists.assert_called_once()
+
+
+class TestGCSStorageSignedUrl:
+    def test_generate_signed_url(self, gcs_client):
+        client, mock_gcs = gcs_client
+        mock_blob = MagicMock()
+        mock_blob.generate_signed_url.return_value = "https://signed.example.com/obj"
+        mock_gcs.bucket.return_value.blob.return_value = mock_blob
+
+        url = client.generate_signed_url("resumes/user1/job1.pdf", expires_in=1800)
+
+        assert url == "https://signed.example.com/obj"
+        mock_blob.generate_signed_url.assert_called_once_with(
+            version="v4",
+            expiration=1800,
+            method="GET",
+        )
 
 
 class TestGCSClientInit:

@@ -150,24 +150,27 @@ OK
         report("LaTeX compiler (pdflatex)", False, str(e)[:80], elapsed)
 
 
-async def check_gcs():
-    """Check GCS bucket access with upload/download/delete roundtrip."""
-    from app.services.storage.gcs import GCSClient
+async def check_storage():
+    """Check configured object storage with upload/download/delete roundtrip."""
+    from app.config import get_settings
+    from app.services.storage import get_storage
 
+    settings = get_settings()
     t0 = time.monotonic()
     test_path = f"preflight/{uuid.uuid4().hex}.txt"
     test_data = b"preflight-check"
     try:
-        gcs = GCSClient()
-        await asyncio.to_thread(gcs.upload_pdf, test_data, test_path)
-        downloaded = await asyncio.to_thread(gcs.download_pdf, test_path)
-        await asyncio.to_thread(gcs.delete_pdf, test_path)
+        storage = get_storage()
+        await asyncio.to_thread(storage.upload, test_path, test_data, content_type="text/plain")
+        downloaded = await asyncio.to_thread(storage.download, test_path)
+        await asyncio.to_thread(storage.delete, test_path)
         elapsed = (time.monotonic() - t0) * 1000
         passed = downloaded == test_data
-        report(f"GCS bucket ({gcs.bucket_name})", passed, "upload/download/delete OK", elapsed)
+        label = f"{settings.STORAGE_BACKEND} ({storage.backend_name})"
+        report(f"Object storage [{label}]", passed, "upload/download/delete OK", elapsed)
     except Exception as e:
         elapsed = (time.monotonic() - t0) * 1000
-        report("GCS bucket", False, str(e)[:80], elapsed)
+        report(f"Object storage ({settings.STORAGE_BACKEND})", False, str(e)[:80], elapsed)
 
 
 async def check_golden_matrix():
@@ -237,7 +240,7 @@ async def main():
     # Run LLM checks in parallel
     await asyncio.gather(check_llm_flash(), check_llm_pro())
     await check_latex()
-    await check_gcs()
+    await check_storage()
 
     # Optional: run golden JD matrix regression (requires live LLM, blocks deploy on failure)
     if os.environ.get("RUN_GOLDEN_MATRIX") == "1":

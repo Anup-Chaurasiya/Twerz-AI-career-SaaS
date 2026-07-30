@@ -6,11 +6,18 @@ export interface ProgressEvent {
   progress?: number; // 0-100 if available
 }
 
+const TERMINAL_SSE_STATUSES = new Set([
+  'READY',
+  'FAILED',
+  'FIT_ANALYZED',
+  'FIT_ANALYSIS_FAILED',
+]);
+
 export interface UseProgressSSEOptions {
   entityType: 'profile' | 'job' | 'roast';
   entityId: string | number | null;
   onUpdate: (event: ProgressEvent) => void;
-  onComplete: (finalStatus: 'READY' | 'FAILED') => void;
+  onComplete: (finalStatus: string) => void;
   enabled?: boolean;
 }
 
@@ -42,7 +49,7 @@ export function useProgressSSE({
     if (!enabled || !entityId) return;
     completedRef.current = false;
 
-    const finish = (status: 'READY' | 'FAILED') => {
+    const finish = (status: string) => {
       if (completedRef.current) return;
       completedRef.current = true;
       if (eventSourceRef.current) {
@@ -79,7 +86,7 @@ export function useProgressSSE({
               progress: data.progress,
             });
             
-            if (data.status === 'READY' || data.status === 'FAILED') {
+            if (data.status && TERMINAL_SSE_STATUSES.has(data.status)) {
               finish(data.status);
             }
           } catch (err) {
@@ -121,7 +128,7 @@ export function useProgressSSE({
             const data = await response.json();
             onUpdateRef.current({ status: data.status, message: `Status: ${data.status}` });
             
-            if (data.status === 'READY' || data.status === 'FAILED') {
+            if (data.status && TERMINAL_SSE_STATUSES.has(data.status)) {
               finish(data.status);
             }
           }

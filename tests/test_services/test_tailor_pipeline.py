@@ -36,6 +36,7 @@ from app.schemas.tailor import (
 from app.services.job.tailor_pipeline import (
     REFINE_SCORE_THRESHOLD,
     MAX_REFINE_PASSES,
+    max_refine_passes,
     TailorPipeline,
     _coerce_ats_score,
     blend_ats_score,
@@ -459,7 +460,7 @@ async def test_pipeline_refine_cap_hits_max_passes(caplog):
     finally:
         tp.compute_fit_verdict_and_raw = original
 
-    assert pipeline.refine_resume.await_count == MAX_REFINE_PASSES
+    assert pipeline.refine_resume.await_count == max_refine_passes()
     assert result["ats_score_after"] == 30
     assert any("refine_cap_hit" in r.message for r in caplog.records)
 
@@ -731,10 +732,10 @@ async def test_recruiter_review_cap_hit_logs_warning(caplog):
     finally:
         tp.compute_fit_verdict_and_raw = original
 
-    from app.services.job.validators import MAX_RECRUITER_PASSES
+    from app.services.job.validators import max_recruiter_passes
 
     assert result["recruiter_review"]["passed"] is False
-    assert result["recruiter_review"]["passes_used"] == MAX_RECRUITER_PASSES
+    assert result["recruiter_review"]["passes_used"] == max_recruiter_passes()
     assert any("recruiter_review_cap_hit" in r.message for r in caplog.records)
 
 

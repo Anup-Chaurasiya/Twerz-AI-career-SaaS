@@ -49,9 +49,15 @@ class Settings(BaseSettings):
     # Calibration (Phase 2 — Outcome Feedback Loop)
     CALIBRATION_MIN_SAMPLE: int = 10  # exclude bands with fewer jobs than this
 
-    # Storage
+    # Storage — backend: local | gcs | oci
+    STORAGE_BACKEND: str = "local"
+    LOCAL_STORAGE_PATH: str = "data/storage"
     GCS_BUCKET: str = "your-gcs-bucket"
     GCS_CREDENTIALS_PATH: str = "credentials/gcs-service-account.json"
+    OCI_NAMESPACE: str = ""
+    OCI_BUCKET: str = ""
+    OCI_REGION: str = ""
+    OCI_CONFIG_PATH: str = ""  # empty = Instance Principals (production on OCI)
 
     # LaTeX
     LATEX_BIN_PATH: str = "/Library/TeX/texbin"
@@ -73,6 +79,11 @@ class Settings(BaseSettings):
     LINKEDIN_OPTIMIZE_DAILY_LIMIT: int = 5  # free LinkedIn optimize calls per user per day
     OUTREACH_DAILY_LIMIT: int = 10  # outreach messages per user per day
 
+    # Tailor pipeline loop caps (v1 deploy defaults — tune via env)
+    MAX_RECRUITER_PASSES: int = 1
+    MAX_REFINE_PASSES: int = 2
+    # Analyze-fit LLM per-call timeout (seconds); flash-only, no pro fallback
+    ANALYZE_FIT_LLM_TIMEOUT: int = 30
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

@@ -1,6 +1,8 @@
-"""Integration smoke tests for GCS storage — requires real GCS credentials and bucket.
+"""Integration smoke tests for object storage — requires real backend credentials.
 
 Run with: INTEGRATION=1 uv run pytest tests/integration/test_smoke_gcs.py -v
+For GCS: STORAGE_BACKEND=gcs
+For OCI: STORAGE_BACKEND=oci
 """
 import os
 import uuid
@@ -13,9 +15,10 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture
-def gcs_client():
-    from app.services.storage.gcs import GCSClient
-    return GCSClient()
+def storage_client():
+    from app.services.storage import get_storage
+
+    return get_storage()
 
 
 @pytest.fixture
@@ -25,33 +28,27 @@ def test_pdf_bytes():
 
 
 @pytest.fixture
-def test_gcs_path():
+def test_object_key():
     return f"test-uploads/{uuid.uuid4().hex}.pdf"
 
 
-class TestGCSSmoke:
-    def test_upload_and_download_roundtrip(self, gcs_client, test_pdf_bytes, test_gcs_path):
-        """Upload PDF bytes, download them back, verify they match."""
-        # Upload
-        returned_path = gcs_client.upload_pdf(test_pdf_bytes, test_gcs_path)
-        assert returned_path == test_gcs_path
+class TestStorageSmoke:
+    def test_upload_and_download_roundtrip(self, storage_client, test_pdf_bytes, test_object_key):
+        returned_path = storage_client.upload(test_object_key, test_pdf_bytes)
+        assert returned_path == test_object_key
 
-        # Download
-        downloaded = gcs_client.download_pdf(test_gcs_path)
+        downloaded = storage_client.download(test_object_key)
         assert downloaded == test_pdf_bytes
 
-        # Cleanup
-        gcs_client.delete_pdf(test_gcs_path)
+        storage_client.delete(test_object_key)
 
-    def test_delete_removes_object(self, gcs_client, test_pdf_bytes, test_gcs_path):
-        """Upload then delete, verify download fails."""
-        gcs_client.upload_pdf(test_pdf_bytes, test_gcs_path)
-        gcs_client.delete_pdf(test_gcs_path)
+    def test_delete_removes_object(self, storage_client, test_pdf_bytes, test_object_key):
+        storage_client.upload(test_object_key, test_pdf_bytes)
+        storage_client.delete(test_object_key)
 
         with pytest.raises(Exception):
-            gcs_client.download_pdf(test_gcs_path)
+            storage_client.download(test_object_key)
 
-    def test_download_nonexistent_raises(self, gcs_client):
-        """Downloading a non-existent path should raise."""
+    def test_download_nonexistent_raises(self, storage_client):
         with pytest.raises(Exception):
-            gcs_client.download_pdf(f"nonexistent/{uuid.uuid4().hex}.pdf")
+            storage_client.download(f"nonexistent/{uuid.uuid4().hex}.pdf")

@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.config import get_settings
 from app.schemas.tailor import EvidenceMap, EvidenceSupport, FitLabel, RecruiterReviewResult
 
 # ~35-45 dense content lines per page when estimating from profile alone
@@ -15,7 +16,14 @@ _QUANT_RE = re.compile(r"\d+%?|\b\d{1,3}(?:,\d{3})+\b|\b\d+\.\d+\b")
 
 # Stage 7 (Recruiter Review) gate: every sub-score must be >= this to pass without a rewrite.
 RECRUITER_SCORE_THRESHOLD = 8
-MAX_RECRUITER_PASSES = 2
+
+
+def max_recruiter_passes() -> int:
+    return get_settings().MAX_RECRUITER_PASSES
+
+
+# Backward-compatible alias for imports in tests and pipeline code.
+MAX_RECRUITER_PASSES = 2  # overridden at runtime via max_recruiter_passes()
 
 # Repeating the same leading bullet verb more than this many times *consecutively*
 # reads as robotic/AI-generated (NEXT3.md bullet rules).

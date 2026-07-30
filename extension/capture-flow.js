@@ -61,8 +61,23 @@ async function abRunCaptureFlow({
     return { ok: false, step: 'analyze', jobId, error: analyzeResp };
   }
 
+  let status = abDefensiveStatus(analyzeResp);
+  if (status.fit_score == null && status.phase !== 'fit_analyzed') {
+    abSendBg({ type: 'START_JOB_POLL', jobId });
+    setStatus('Analyzing fit…');
+    for (let i = 0; i < 60; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const pollResp = await abSendBg({
+        type: 'API_FETCH',
+        path: `/extension/jobs/${jobId}/status`,
+      });
+      if (pollResp.error) break;
+      status = abDefensiveStatus(pollResp);
+      if (status.fit_score != null || status.phase === 'fit_analyzed') break;
+    }
+  }
+
   abTrackEvent('analyze_done', jobId);
-  const status = abDefensiveStatus(analyzeResp);
   abSendBg({ type: 'UPDATE_BADGE', jobId, status });
   emit('results', { jobId, status });
   setStatus('');

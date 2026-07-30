@@ -1,9 +1,14 @@
 import axios, { AxiosError, AxiosRequestConfig } from 'axios';
 import { APIError } from '@/types';
 
+/** Default for quick CRUD; LLM-heavy routes override per request. */
+export const DEFAULT_API_TIMEOUT = 15_000;
+/** Sync LLM pipelines (analyze-fit, enhance, etc.) — multiple model calls in one request. */
+export const LLM_SYNC_TIMEOUT = 180_000;
+
 const client = axios.create({
   baseURL: '',
-  timeout: 15_000,
+  timeout: DEFAULT_API_TIMEOUT,
   headers: { 'Content-Type': 'application/json' },
 });
 

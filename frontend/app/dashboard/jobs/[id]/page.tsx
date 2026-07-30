@@ -19,6 +19,8 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
 type Notice = { type: 'success' | 'warning' | 'error'; message: string } | null;
 
+const GENERATION_STATUSES = ['GENERATING_RESUME', 'GENERATING_PDF', 'RESUME_GENERATED'] as const;
+
 const parseSSEEvents = (buffer: string) => {
   const events: any[] = [];
   const frames = buffer.split('\n\n');
@@ -123,6 +125,24 @@ export default function JobDetailPage() {
     }
   };
 
+  const startAnalyzeFit = useCallback(async () => {
+    setAnalyzingFit(true);
+    setProgressMessages(['Starting fit analysis…']);
+    setError('');
+    try {
+      await jobsApi.analyzeFit(jobId);
+    } catch (err: any) {
+      analyzeStartedRef.current = false;
+      setAnalyzingFit(false);
+      setError(err.response?.data?.detail || 'Failed to start fit analysis');
+    }
+  }, [jobId]);
+
+  const handleRetryGenerate = async () => {
+    setError('');
+    await startGenerate(false);
+  };
+
   const fetchChatHistory = useCallback(async () => {
     try {
       const res = await jobsApi.getChatHistory(jobId);
@@ -149,56 +169,43 @@ export default function JobDetailPage() {
       try {
         const res = await jobsApi.get(jobId);
         setJob(res.data);
-        
-        // Store original resume data for reset functionality
+
         if (res.data.custom_resume_data && !originalJsonValue) {
           setOriginalJsonValue(JSON.stringify(res.data.custom_resume_data, null, 2));
         }
-        
-        // Only generation/PDF states are "processing" — PENDING waits for user after analyze
-        const processingStates = ['GENERATING_RESUME', 'GENERATING_PDF'];
-        setIsProcessing(processingStates.includes(res.data.status));
-        
-        // PENDING without fit → free analyze-fit once
+
+        setIsProcessing(GENERATION_STATUSES.includes(res.data.status as typeof GENERATION_STATUSES[number]));
+
+        const fitStatus = res.data.fit_analysis_status ?? (res.data.fit_score != null ? 'READY' : 'NONE');
+
+        if (fitStatus === 'ANALYZING') {
+          setAnalyzingFit(true);
+          setLoading(false);
+          return;
+        }
+
         if (
+          fitStatus === 'NONE' &&
           res.data.status === 'PENDING' &&
           res.data.fit_score == null &&
           !analyzeStartedRef.current
         ) {
           analyzeStartedRef.current = true;
-          setAnalyzingFit(true);
-          try {
-            const fitRes = await jobsApi.analyzeFit(jobId);
-            setJob((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    fit_score: fitRes.data.fit_score,
-                    fit_label: fitRes.data.fit_label,
-                    fit_rationale: fitRes.data.fit_rationale,
-                    gap_list: fitRes.data.gap_list,
-                    gap_roadmap: fitRes.data.gap_roadmap,
-                    jd_analysis: fitRes.data.jd_analysis,
-                    evidence_map: fitRes.data.evidence_map,
-                    fit_score_breakdown: fitRes.data.fit_score_breakdown,
-                    evidence_counts: fitRes.data.evidence_counts,
-                  }
-                : prev
-            );
-          } catch (err: any) {
-            analyzeStartedRef.current = false;
-            setError(err.response?.data?.detail || 'Failed to analyze fit');
-          } finally {
-            setAnalyzingFit(false);
-            setLoading(false);
-          }
+          await startAnalyzeFit();
+          setLoading(false);
           return;
         }
+
+        if (fitStatus === 'FAILED') {
+          setError(res.data.fit_analysis_error || 'Fit analysis failed. Try again.');
+        }
+
+        setAnalyzingFit(false);
 
         if (res.data.status === 'READY') {
           setLoading(false);
           fetchChatHistory();
-        } else if (!processingStates.includes(res.data.status)) {
+        } else if (!GENERATION_STATUSES.includes(res.data.status as typeof GENERATION_STATUSES[number])) {
           setLoading(false);
         }
       } catch (err: any) {
@@ -207,73 +214,96 @@ export default function JobDetailPage() {
       }
     };
     fetchJob();
-  }, [jobId, originalJsonValue, fetchChatHistory]);
+  }, [jobId, originalJsonValue, fetchChatHistory, startAnalyzeFit]);
 
-  // Use SSE for progress updates when job is processing
   useProgressSSE({
     entityType: 'job',
-    entityId: isProcessing ? jobId : null,
-    enabled: isProcessing,
-    onUpdate: (event: ProgressEvent) => {
-      setProgressMessages(prev => [...prev, event.message]);
-      if (event.status) {
-        setJob(prevJob => prevJob ? { ...prevJob, status: event.status as Job['status'] } : null);
+    entityId: analyzingFit || isProcessing ? jobId : null,
+    enabled: analyzingFit || isProcessing,
+    onUpdate: (event: ProgressEvent & Record<string, unknown>) => {
+      if (event.message) {
+        setProgressMessages((prev) =>
+          prev[prev.length - 1] === event.message ? prev : [...prev, event.message]
+        );
+      }
+
+      if (event.status === 'FIT_SCORE_READY') {
+        setJob((prev) =>
+          prev
+            ? {
+                ...prev,
+                fit_score: event.fit_score as number,
+                fit_label: event.fit_label as string,
+                fit_rationale: event.fit_rationale as string,
+                gap_list: (event.gap_list as string[]) || prev.gap_list,
+                fit_analysis_status: 'READY',
+              }
+            : prev
+        );
+        setAnalyzingFit(false);
+        setLoading(false);
+        return;
+      }
+
+      if (event.status === 'FIT_ANALYZED' && event.gap_roadmap) {
+        setJob((prev) =>
+          prev ? { ...prev, gap_roadmap: event.gap_roadmap as Job['gap_roadmap'] } : prev
+        );
+        return;
+      }
+
+      if (
+        event.status &&
+        GENERATION_STATUSES.includes(event.status as typeof GENERATION_STATUSES[number])
+      ) {
+        setJob((prevJob) =>
+          prevJob ? { ...prevJob, status: event.status as Job['status'] } : null
+        );
       }
     },
     onComplete: async (finalStatus) => {
+      if (finalStatus === 'FIT_ANALYZED') {
+        setAnalyzingFit(false);
+        setLoading(false);
+        try {
+          const res = await jobsApi.get(jobId);
+          setJob(res.data);
+        } catch (err) {
+          console.error('Failed to refresh job after fit analysis:', err);
+        }
+        return;
+      }
+
+      if (finalStatus === 'FIT_ANALYSIS_FAILED') {
+        setAnalyzingFit(false);
+        setLoading(false);
+        analyzeStartedRef.current = false;
+        try {
+          const res = await jobsApi.get(jobId);
+          setJob(res.data);
+          setError(res.data.fit_analysis_error || 'Fit analysis failed');
+        } catch (err) {
+          setError('Fit analysis failed');
+        }
+        return;
+      }
+
       setIsProcessing(false);
       setLoading(false);
-      
-      // Refresh job data
+      setGeneratingResume(false);
+
       try {
         const res = await jobsApi.get(jobId);
         setJob(res.data);
-      if (finalStatus === 'READY') {
-        setNeedsRecompile(false);
-        fetchChatHistory();
-      }
+        if (finalStatus === 'READY') {
+          setNeedsRecompile(false);
+          fetchChatHistory();
+        }
       } catch (err) {
         console.error('Failed to refresh job after completion:', err);
       }
-    }
+    },
   });
-
-  // Always poll while processing — SSE publish was historically missing, so
-  // status could stay spinning until a manual refresh.
-  useEffect(() => {
-    if (!isProcessing || !jobId) return;
-
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const res = await jobsApi.get(jobId);
-        if (cancelled) return;
-        setJob(res.data);
-        setOriginalJsonValue((prev) => {
-          if (prev || !res.data.custom_resume_data) return prev;
-          return JSON.stringify(res.data.custom_resume_data, null, 2);
-        });
-        const status = res.data.status;
-        if (status === 'READY' || status === 'FAILED') {
-          setIsProcessing(false);
-          setLoading(false);
-          if (status === 'READY') {
-            setNeedsRecompile(false);
-            fetchChatHistory();
-          }
-        }
-      } catch (err) {
-        console.error('Job status poll failed:', err);
-      }
-    };
-
-    poll();
-    const interval = setInterval(poll, 2000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [isProcessing, jobId, fetchChatHistory]);
 
   useEffect(() => {
     const el = chatRef.current;
@@ -512,7 +542,7 @@ export default function JobDetailPage() {
   };
 
   if (loading || isProcessing || analyzingFit) {
-    const analyzing = analyzingFit || (job?.status === 'PENDING' && job.fit_score == null);
+    const analyzing = analyzingFit;
     return (
       <div className="page-scroll" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
         <div className="spinner spinner-lg" style={{ marginBottom: 16 }} />
@@ -797,7 +827,19 @@ export default function JobDetailPage() {
             )}
 
             {error && job ? (
-              <div style={{ marginTop: 12, fontSize: 13, color: 'var(--red)' }}>{error}</div>
+              <div style={{ marginTop: 12, fontSize: 13, color: 'var(--red)', display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+                <span>{error}</span>
+                {job.fit_analysis_status === 'FAILED' ? (
+                  <button type="button" className="btn-secondary" style={{ fontSize: 12 }} onClick={startAnalyzeFit}>
+                    Retry fit analysis
+                  </button>
+                ) : null}
+                {job.status === 'FAILED' && job.fit_score != null ? (
+                  <button type="button" className="btn-secondary" style={{ fontSize: 12 }} onClick={handleRetryGenerate} disabled={generatingResume}>
+                    Retry generate
+                  </button>
+                ) : null}
+              </div>
             ) : null}
 
             {(job.gap_list?.length || job.evidence_map?.items?.length || job.evidence_map?.transferable_themes?.length) ? (

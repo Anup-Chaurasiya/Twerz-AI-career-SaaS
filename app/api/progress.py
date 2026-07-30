@@ -45,7 +45,12 @@ async def stream_progress(entity_type: str, entity_id: int):
                     import json
 
                     yield f"data: {json.dumps(event)}\n\n"
-                    if event.get("status") in ("READY", "FAILED"):
+                    if event.get("status") in (
+                        "READY",
+                        "FAILED",
+                        "FIT_ANALYZED",
+                        "FIT_ANALYSIS_FAILED",
+                    ):
                         break
                 except asyncio.TimeoutError:
                     yield f"data: {{}}\n\n"  # keepalive

@@ -149,6 +149,8 @@ export interface Job {
   fit_score?: number | null;
   fit_label?: 'STRONG' | 'STRETCH' | 'MISMATCH' | string | null;
   fit_rationale?: string | null;
+  fit_analysis_status?: 'NONE' | 'ANALYZING' | 'READY' | 'FAILED';
+  fit_analysis_error?: string | null;
   fit_score_breakdown?: {
     coverage_pct: number;
     coverage_score: number;
