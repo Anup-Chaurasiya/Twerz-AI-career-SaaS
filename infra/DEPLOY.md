@@ -41,9 +41,15 @@ docker compose -f infra/docker-compose.prod.yml exec api uv run python infra/pre
 
 ### Option A — Nginx + Certbot (recommended)
 
+**Before running:** open OCI **Networking → VCN → Security List → Ingress Rules** and add **TCP 443** from `0.0.0.0/0` (port 80 should already be open).
+
+One command on the VM (DNS must already point `api.twerz.com` → VM IP):
+
 ```bash
-sudo ./infra/setup-nginx-ssl.sh api.yourdomain.com
-sudo certbot --nginx -d api.yourdomain.com
+cd ~/GobioGo && git pull
+sudo ./infra/setup-nginx-ssl.sh api.twerz.com you@twerz.com
+curl https://api.twerz.com/health   # expect {"status":"ok"}
+./infra/deploy-oracle.sh            # reload if .env changed
 ```
 
 Config template: [infra/nginx/twerz-api.conf](nginx/twerz-api.conf)
@@ -70,44 +76,60 @@ Restart API: `./infra/deploy-oracle.sh`
 
 ---
 
-## Phase 7 — Vercel frontend
+## Phase 7 — Vercel frontend (twerz.com)
 
 1. [vercel.com](https://vercel.com) → Import repo → **Root Directory: `frontend`**
-2. Environment variables — see [frontend/.env.production.example](../frontend/.env.production.example)
-3. Add custom domain → copy DNS records to Porkbun
-4. Redeploy
+2. **Production** environment variables:
+
+| Variable | Value |
+|----------|-------|
+| `NEXT_PUBLIC_API_URL` | `https://api.twerz.com` |
+| `NEXT_PUBLIC_RAZORPAY_KEY_ID` | your Razorpay key (same as backend `RAZORPAY_KEY_ID`) |
+
+3. Deploy → **Settings → Domains** → add `twerz.com` and `www.twerz.com`
+4. Porkbun DNS (from Vercel domain panel):
+
+| Host | Type | Value |
+|------|------|-------|
+| `@` | A or ALIAS | Vercel-provided |
+| `www` | CNAME | Vercel-provided |
+| `api` | A | VM public IP (already set) |
+
+5. Redeploy after env vars are saved
 
 ---
 
-## Phase 8 — Google OAuth + Razorpay
+## Phase 8 — Google OAuth + Razorpay (twerz.com)
 
 ### Google Cloud Console → Credentials
 
+Keep localhost entries for dev. Add production:
+
 | Setting | Value |
 |---------|-------|
-| Authorized JavaScript origins | `https://yourdomain.com` |
-| Authorized redirect URIs | `https://yourdomain.com/auth/google/callback` |
+| Authorized JavaScript origins | `https://twerz.com` |
+| Authorized redirect URIs | `https://twerz.com/auth/google/callback` |
 
-Backend `.env`: `FRONTEND_URL=https://yourdomain.com`
+VM `.env`: `FRONTEND_URL=https://twerz.com` (already in `.env.production.example`)
 
 ### Razorpay Dashboard → Webhooks
 
 | Setting | Value |
 |---------|-------|
-| Webhook URL | `https://api.yourdomain.com/payments/webhook` |
+| Webhook URL | `https://api.twerz.com/payments/webhook` |
 | Event | `payment.captured` |
 
-Set `RAZORPAY_WEBHOOK_SECRET` in `.env` to match dashboard.
+Copy webhook secret → VM `.env`: `RAZORPAY_WEBHOOK_SECRET=...` then `./infra/deploy-oracle.sh`
 
 ---
 
 ## Phase 9 — Sentry + uptime monitoring
 
-1. Create project at [sentry.io](https://sentry.io) (Python/FastAPI)
-2. Add to `.env`: `SENTRY_DSN=https://...@sentry.io/...`
-3. Rebuild: `./infra/deploy-oracle.sh`
-4. Optional frontend: `cd frontend && npx @sentry/wizard@latest -i nextjs`
-5. [UptimeRobot](https://uptimerobot.com) — monitor `https://api.yourdomain.com/health` every 5 min
+1. Project DSN already in VM `.env` as `SENTRY_DSN=...`
+2. **Verify once:** `curl https://api.twerz.com/sentry-debug` (returns 500 — intentional)
+3. Confirm event in [sentry.io](https://sentry.io) dashboard
+4. **Then disable debug:** set `SENTRY_DEBUG=false` in VM `.env` and redeploy
+5. [UptimeRobot](https://uptimerobot.com) — monitor `https://api.twerz.com/health` every 5 min
 
 ---
 
@@ -129,7 +151,7 @@ Push to `main` triggers [.github/workflows/deploy-oracle.yml](../.github/workflo
 ## Phase 11 — Production smoke test
 
 ```bash
-./infra/smoke-test.sh https://api.yourdomain.com
+./infra/smoke-test.sh https://api.twerz.com
 ```
 
 Manual checklist:

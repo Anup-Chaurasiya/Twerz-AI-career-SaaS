@@ -4,6 +4,20 @@ export interface ProgressEvent {
   status: string;
   message: string;
   progress?: number; // 0-100 if available
+  // Job fit analysis SSE payloads (optional)
+  fit_score?: number;
+  fit_label?: string;
+  fit_rationale?: string;
+  gap_list?: string[];
+  gap_roadmap?: {
+    summary?: string;
+    steps?: Array<{
+      title: string;
+      detail: string;
+      category?: 'skill' | 'cert' | 'project' | 'experience' | 'other' | string;
+    }>;
+  } | null;
+  fit_analysis_status?: string;
 }
 
 const TERMINAL_SSE_STATUSES = new Set([
@@ -81,9 +95,9 @@ export function useProgressSSE({
             const data = JSON.parse(e.data) as Partial<ProgressEvent>;
             if (!data.status && !data.message) return;
             onUpdateRef.current({
+              ...data,
               status: data.status || '',
               message: data.message || `Status: ${data.status}`,
-              progress: data.progress,
             });
             
             if (data.status && TERMINAL_SSE_STATUSES.has(data.status)) {

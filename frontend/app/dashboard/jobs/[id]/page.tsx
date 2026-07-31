@@ -220,7 +220,7 @@ export default function JobDetailPage() {
     entityType: 'job',
     entityId: analyzingFit || isProcessing ? jobId : null,
     enabled: analyzingFit || isProcessing,
-    onUpdate: (event: ProgressEvent & Record<string, unknown>) => {
+    onUpdate: (event: ProgressEvent) => {
       if (event.message) {
         setProgressMessages((prev) =>
           prev[prev.length - 1] === event.message ? prev : [...prev, event.message]
@@ -232,10 +232,10 @@ export default function JobDetailPage() {
           prev
             ? {
                 ...prev,
-                fit_score: event.fit_score as number,
-                fit_label: event.fit_label as string,
-                fit_rationale: event.fit_rationale as string,
-                gap_list: (event.gap_list as string[]) || prev.gap_list,
+                fit_score: event.fit_score ?? prev.fit_score,
+                fit_label: event.fit_label ?? prev.fit_label,
+                fit_rationale: event.fit_rationale ?? prev.fit_rationale,
+                gap_list: event.gap_list ?? prev.gap_list,
                 fit_analysis_status: 'READY',
               }
             : prev
@@ -247,7 +247,7 @@ export default function JobDetailPage() {
 
       if (event.status === 'FIT_ANALYZED' && event.gap_roadmap) {
         setJob((prev) =>
-          prev ? { ...prev, gap_roadmap: event.gap_roadmap as Job['gap_roadmap'] } : prev
+          prev ? { ...prev, gap_roadmap: event.gap_roadmap } : prev
         );
         return;
       }
