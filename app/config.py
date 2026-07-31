@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     TRUST_PROXY_HEADERS: bool = False  # set True in production behind Cloud Run / LB
     DEV_AUTH_BYPASS: bool = False
     SENTRY_DSN: str = ""
+    SENTRY_DEBUG: bool = False  # expose GET /sentry-debug (never enable in production)
     ALERT_WEBHOOK_URL: str = ""
     REDIS_URL: str = ""  # redis://localhost:6379 or redis://user:password@host:port/db
     RATE_LIMIT_PUBLIC_RPM: int = 30  # 30 req/min per IP on public endpoints
@@ -85,7 +86,7 @@ class Settings(BaseSettings):
     # Analyze-fit LLM per-call timeout (seconds); flash-only, no pro fallback
     ANALYZE_FIT_LLM_TIMEOUT: int = 30
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 @lru_cache

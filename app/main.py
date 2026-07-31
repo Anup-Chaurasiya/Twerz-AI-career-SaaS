@@ -25,40 +25,39 @@ from app.exceptions import (
 logger = logging.getLogger(__name__)
 
 
-def _initialize_sentry():
-    """Initialize Sentry error tracking if SENTRY_DSN is configured.
-    
-    Captures exceptions, errors, and performance traces. Runs before app startup.
-    No-op if SENTRY_DSN is empty or not set.
+def _initialize_sentry() -> None:
+    """Initialize Sentry before FastAPI app creation (required for auto-instrumentation).
+
+    Captures errors, performance traces, logs, and metrics when SENTRY_DSN is set.
+    No-op if SENTRY_DSN is empty.
     """
     settings = get_settings()
     if not settings.SENTRY_DSN:
         logger.info("Sentry not configured (SENTRY_DSN empty) — skipping initialization")
         return
-    
+
     try:
         import sentry_sdk
-        from sentry_sdk.integrations.fastapi import FastApiIntegration
-        from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
         from sentry_sdk.integrations.asyncio import AsyncioIntegration
-        
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.logging import LoggingIntegration
+        from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+
         sentry_sdk.init(
             dsn=settings.SENTRY_DSN,
-            # Environment helps separate dev/staging/production traces
-            environment=settings.ENVIRONMENT if hasattr(settings, 'ENVIRONMENT') else "production",
-            # Sample 10% of transactions for performance monitoring (adjust as needed)
+            environment=settings.ENVIRONMENT.lower(),
+            send_default_pii=True,
+            enable_logs=True,
             traces_sample_rate=0.1,
-            # Capture 100% of errors (not sampled)
-            # You can add release tracking here: release="twerz@1.0.0"
             integrations=[
                 FastApiIntegration(transaction_style="endpoint"),
                 SqlalchemyIntegration(),
                 AsyncioIntegration(),
+                LoggingIntegration(level=logging.INFO, event_level=logging.ERROR),
             ],
-            # Add custom tags for better filtering
-            before_send=lambda event, hint: _before_send_sentry(event, hint),
+            before_send=_before_send_sentry,
         )
-        logger.info("Sentry initialized successfully (DSN configured)")
+        logger.info("Sentry initialized (environment=%s)", settings.ENVIRONMENT.lower())
     except ImportError:
         logger.warning("Sentry SDK not installed. Install with: uv add sentry-sdk")
     except Exception as e:
@@ -165,7 +164,6 @@ async def _cleanup_expired_guest_profiles():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown logic."""
-    _initialize_sentry()
     _configure_access_log_filters()
 
     try:
@@ -262,6 +260,7 @@ def create_app() -> FastAPI:
         "/progress",
         "/privacy",
         "/health",
+        "/sentry-debug",
         "/graphql",
         "/landing",
         "/extension",
@@ -383,6 +382,19 @@ body{{background:#0a0f1e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height
     async def health():
         return {"status": "ok"}
 
+    # Sentry verification — always in DEV; opt-in elsewhere via SENTRY_DEBUG=true
+    env = settings.ENVIRONMENT.upper()
+    if env == "DEV" or settings.SENTRY_DEBUG:
+        if env == "PRODUCTION" and settings.SENTRY_DEBUG:
+            logger.warning(
+                "SENTRY_DEBUG is enabled in production — disable after Sentry verification"
+            )
+
+        @app.get("/sentry-debug")
+        async def trigger_sentry_error():
+            division_by_zero = 1 / 0  # noqa: F841 — intentional for Sentry verification
+            return {"ok": division_by_zero}
+
     # Privacy & India DPDP Act compliance (Phase 7)
     @app.get("/privacy/dpdp")
     async def dpdp_privacy_notice():
@@ -455,6 +467,7 @@ body{{background:#0a0f1e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height
     return app
 
 
+_initialize_sentry()
 app = create_app()
 _configure_access_log_filters()
 
