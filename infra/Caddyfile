@@ -1,0 +1,17 @@
+# Alternative to Nginx — automatic HTTPS via Let's Encrypt.
+# Install Caddy: https://caddyserver.com/docs/install#debian-ubuntu-raspbian
+# Run: sudo caddy run --config /home/ubuntu/GobioGo/infra/Caddyfile
+# Or:  sudo cp infra/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
+
+{
+    email you@example.com
+}
+
+api.yourdomain.com {
+    reverse_proxy 127.0.0.1:8080 {
+        flush_interval -1
+    }
+    request_body {
+        max_size 10MB
+    }
+}

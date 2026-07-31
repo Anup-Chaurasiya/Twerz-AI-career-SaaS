@@ -39,6 +39,8 @@ dependencies = [
     # Utils
     "python-dotenv>=1.0.0",
     "aiofiles>=23.2.0",
+    # Observability
+    "sentry-sdk[fastapi]>=2.0.0",
 ]
 
 [project.optional-dependencies]

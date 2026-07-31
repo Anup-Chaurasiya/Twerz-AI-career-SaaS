@@ -26,6 +26,7 @@ COPY alembic.ini .
 COPY resume.cls .
 COPY templates/latex/ templates/latex/
 COPY infra/entrypoint.sh /entrypoint.sh
+COPY infra/preflight.py infra/preflight.py
 
 # Install project package into venv
 RUN uv sync --frozen --no-dev
