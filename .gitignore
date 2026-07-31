@@ -71,6 +71,10 @@ credentials/
 !pyproject.toml
 !extension/manifest.json
 !app/services/golden/fixtures/**/*.json
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/tsconfig.json
+!frontend/vercel.json
 
 # Scrapped data (LinkedIn leads, user lists, keys)
 scrapped-data/
