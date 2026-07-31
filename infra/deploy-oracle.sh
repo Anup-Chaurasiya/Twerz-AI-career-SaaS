@@ -14,7 +14,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-COMPOSE="docker compose -f ${ROOT}/infra/docker-compose.prod.yml"
+COMPOSE="docker compose --env-file ${ROOT}/.env -f ${ROOT}/infra/docker-compose.prod.yml"
 MIGRATE=false
 PREFLIGHT=false
 

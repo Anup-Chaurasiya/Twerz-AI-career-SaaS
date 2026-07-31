@@ -5,7 +5,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/backups/twerz}"
-COMPOSE="docker compose -f ${ROOT}/infra/docker-compose.prod.yml"
+COMPOSE="docker compose --env-file ${ROOT}/.env -f ${ROOT}/infra/docker-compose.prod.yml"
 STAMP="$(date +%F_%H%M%S)"
 
 mkdir -p "$BACKUP_DIR"
