@@ -24,16 +24,34 @@ def _resolve_key_file(config: dict, config_path: str) -> dict:
 
 
 def _load_oci_config(config_path: str) -> dict:
-    """Load OCI config with key_file resolved before SDK validation."""
-    import configparser
+    """Load OCI config, resolving relative key_file before SDK validation."""
+    abs_path = os.path.abspath(config_path)
+    config_dir = os.path.dirname(abs_path)
+    with open(abs_path, encoding="utf-8") as fh:
+        lines = fh.readlines()
+    patched: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("key_file="):
+            _, raw = stripped.split("=", 1)
+            key = raw.strip()
+            if key and not os.path.isabs(key):
+                key = os.path.normpath(os.path.join(config_dir, key))
+            patched.append(f"key_file={key}\n")
+        else:
+            patched.append(line)
+    import tempfile
 
-    parser = configparser.ConfigParser()
-    parser.read(config_path)
-    profile = "DEFAULT"
-    config = {opt: parser.get(profile, opt) for opt in parser.options(profile)}
-    config = _resolve_key_file(config, config_path)
-    oci.config.validate_config(config)
-    return config
+    fd, tmp_path = tempfile.mkstemp(suffix=".oci.conf")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as tmp:
+            tmp.writelines(patched)
+        return oci.config.from_file(tmp_path)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
 
 
 class OCIStorage(StorageProvider):
