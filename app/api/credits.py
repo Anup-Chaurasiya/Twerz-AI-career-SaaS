@@ -13,6 +13,7 @@ from app.utils.ttl_cache import TTLCache
 router = APIRouter(prefix="/credits", tags=["credits"])
 credit_service = CreditService()
 _packs_cache = TTLCache(ttl_seconds=300)
+_subscriptions_cache = TTLCache(ttl_seconds=300)
 
 
 @router.get("/packs")
@@ -112,26 +113,29 @@ async def list_subscription_plans(db: AsyncSession = Depends(get_db)):
     """Public: list active Job Hunt Pro-style subscription plans."""
     from app.models.subscription import SubscriptionPlan
 
-    result = await db.execute(
-        select(SubscriptionPlan)
-        .where(SubscriptionPlan.is_active == True)
-        .order_by(SubscriptionPlan.sort_order, SubscriptionPlan.price_paise)
-    )
-    plans = result.scalars().all()
-    return {
-        "plans": [
-            {
-                "id": p.id,
-                "name": p.name,
-                "monthly_credits": p.monthly_credits,
-                "price_paise": p.price_paise,
-                "includes_tracker": p.includes_tracker,
-                "includes_interview_packets": p.includes_interview_packets,
-                "includes_extension": p.includes_extension,
-            }
-            for p in plans
-        ]
-    }
+    async def _fetch():
+        result = await db.execute(
+            select(SubscriptionPlan)
+            .where(SubscriptionPlan.is_active == True)
+            .order_by(SubscriptionPlan.sort_order, SubscriptionPlan.price_paise)
+        )
+        plans = result.scalars().all()
+        return {
+            "plans": [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "monthly_credits": p.monthly_credits,
+                    "price_paise": p.price_paise,
+                    "includes_tracker": p.includes_tracker,
+                    "includes_interview_packets": p.includes_interview_packets,
+                    "includes_extension": p.includes_extension,
+                }
+                for p in plans
+            ]
+        }
+
+    return await _subscriptions_cache.get_or_set(_fetch)
 
 
 @router.get("/subscriptions/me")

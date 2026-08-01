@@ -23,6 +23,19 @@ def _resolve_key_file(config: dict, config_path: str) -> dict:
     return config
 
 
+def _load_oci_config(config_path: str) -> dict:
+    """Load OCI config with key_file resolved before SDK validation."""
+    import configparser
+
+    parser = configparser.ConfigParser()
+    parser.read(config_path)
+    profile = "DEFAULT"
+    config = {opt: parser.get(profile, opt) for opt in parser.options(profile)}
+    config = _resolve_key_file(config, config_path)
+    oci.config.validate_config(config)
+    return config
+
+
 class OCIStorage(StorageProvider):
     """Oracle Cloud Infrastructure Object Storage (Instance Principals in production)."""
 
@@ -33,8 +46,7 @@ class OCIStorage(StorageProvider):
         self._config_path = settings.OCI_CONFIG_PATH.strip()
 
         if self._config_path:
-            config = oci.config.from_file(self._config_path)
-            config = _resolve_key_file(config, self._config_path)
+            config = _load_oci_config(self._config_path)
             logger.info(
                 "OCI auth: API key from %s (key_file=%s)",
                 self._config_path,
