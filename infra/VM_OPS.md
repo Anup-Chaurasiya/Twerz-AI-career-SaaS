@@ -132,10 +132,14 @@ COMPOSE="docker compose --env-file .env -f infra/docker-compose.prod.yml"
 ### Deploy / restart API
 
 ```bash
-git pull
+git fetch origin main
+git clean -fd --exclude=.env   # drop rsync/manual leftovers; keeps secrets
+git reset --hard origin/main
 ./infra/deploy-oracle.sh              # build + restart (normal deploy)
 ./infra/deploy-oracle.sh --preflight  # deploy + run infra/preflight.py checks
 ```
+
+GitHub Actions deploy uses the same reset (see `.github/workflows/deploy.yml`). If `git pull` fails with “would be overwritten by merge”, run the fetch/clean/reset lines above.
 
 First deploy only (runs Alembic migrations):
 
