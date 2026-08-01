@@ -150,7 +150,7 @@ docker run -p 8080:8080 --env-file .env gobiogo
 
 Cloud Run: configure `GCP_PROJECT_ID` and run `bash infra/deploy-cloudrun.sh`.
 
-Oracle Cloud (VM + Docker Compose): see [infra/DEPLOY.md](infra/DEPLOY.md) and run `./infra/deploy-oracle.sh --migrate --preflight` on the VM.
+Oracle Cloud (VM + Docker Compose): see [infra/DEPLOY.md](infra/DEPLOY.md) (setup) and [infra/VM_OPS.md](infra/VM_OPS.md) (SSH & ops). First deploy: `./infra/deploy-oracle.sh --migrate --preflight` on the VM.
 
 Pre-flight check before production:
 

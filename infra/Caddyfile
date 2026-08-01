@@ -1,10 +1,14 @@
-# Alternative to Nginx — automatic HTTPS via Let's Encrypt.
-# Install Caddy: https://caddyserver.com/docs/install#debian-ubuntu-raspbian
-# Run: sudo caddy run --config /home/ubuntu/GobioGo/infra/Caddyfile
-# Or:  sudo cp infra/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
+# Automatic HTTPS via Let's Encrypt (Caddy).
+# Preferred on Oracle Linux when certbot/snapd are unavailable.
+#
+# One-command setup (stops Nginx, installs Caddy, obtains cert):
+#   sudo ./infra/setup-caddy-ssl.sh api.twerz.com support@twerz.com
+#
+# Manual:
+#   sudo cp infra/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
 
 {
-    email you@example.com
+    email support@twerz.com
 }
 
 api.twerz.com {

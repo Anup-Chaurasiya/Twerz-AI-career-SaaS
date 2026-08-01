@@ -26,7 +26,9 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
     JWT_SECRET: str = "change-this-secret"
     JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRY_HOURS: int = 24
+    JWT_ACCESS_EXPIRY_MINUTES: int = 15
+    JWT_REFRESH_EXPIRY_DAYS: int = 30
+    JWT_EXPIRY_HOURS: int = 24  # legacy; access tokens use JWT_ACCESS_EXPIRY_MINUTES
 
     # Razorpay
     RAZORPAY_KEY_ID: str = ""

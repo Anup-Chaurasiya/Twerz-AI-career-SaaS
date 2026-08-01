@@ -17,7 +17,9 @@ export const authApi = {
       withCredentials: true,
     }),
   getMe: () => client.get<User>('/auth/me'),
-  refresh: () => client.post<{ access_token: string }>('/auth/refresh'),
+  refresh: () =>
+    client.post<{ access_token: string }>('/auth/refresh', undefined, { withCredentials: true }),
+  logout: () => client.post<{ success: boolean }>('/auth/logout', undefined, { withCredentials: true }),
   completeOnboarding: () =>
     client.post<{ success: boolean; onboarding_completed: boolean }>('/auth/onboarding-complete'),
   claimGuestProfile: (guestToken: string) =>

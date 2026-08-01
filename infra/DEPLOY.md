@@ -2,20 +2,54 @@
 
 Step-by-step guide for the **A1 Flex VM** (2 OCPU / 6 GB). Assumes VM, Docker, Git, and OCI config are already set up.
 
+**Day-to-day SSH, logs, backups, and troubleshooting:** [VM_OPS.md](./VM_OPS.md)
+
 ## Quick deploy (VM)
 
 ```bash
 cd ~/GobioGo
 git pull
 cp infra/.env.production.example .env   # skip if .env exists
-# edit .env with real secrets
+# edit .env: set DATABASE_URL to Supabase URI (see Phase 4 below)
 
-chmod +x infra/deploy-oracle.sh infra/backup-db.sh infra/setup-nginx-ssl.sh
+chmod +x infra/deploy-oracle.sh infra/backup-db.sh infra/setup-nginx-ssl.sh infra/setup-caddy-ssl.sh
 ./infra/deploy-oracle.sh --migrate --preflight   # first time only
 ./infra/deploy-oracle.sh                         # subsequent deploys
 ```
 
 After first `--migrate` success, set `RUN_MIGRATIONS=false` in `.env`.
+
+---
+
+## Phase 4 — Supabase database
+
+Production uses **Supabase Postgres** — no `db` container on the VM.
+
+1. [supabase.com](https://supabase.com) → your project → **Project Settings → Database**
+2. Copy **Connection string → URI** (use **Direct connection**, port **5432** — not transaction pooler 6543 for migrations)
+3. Convert for this app:
+   - Replace `postgresql://` with `postgresql+asyncpg://`
+   - Append `?ssl=require` if not present
+4. Set in VM `.env` (project **krqemahdmwcvfvthceqb**):
+   ```env
+   DATABASE_URL=postgresql+asyncpg://postgres:YOUR-PASSWORD@db.krqemahdmwcvfvthceqb.supabase.co:5432/postgres?ssl=require
+   RUN_MIGRATIONS=true
+   ```
+   Percent-encode special characters in the password (e.g. `@` → `%40`, `#` → `%23`).
+5. Deploy and migrate:
+   ```bash
+   ./infra/deploy-oracle.sh --migrate --preflight
+   ```
+6. After success: `RUN_MIGRATIONS=false` in `.env`, redeploy `./infra/deploy-oracle.sh`
+
+**Remove old local Postgres container** (if you previously ran the VM db service):
+
+```bash
+docker stop $(docker ps -q --filter name=db) 2>/dev/null || true
+docker compose -f infra/docker-compose.prod.yml up -d --remove-orphans
+```
+
+Backups: Supabase dashboard (daily) + optional `./infra/backup-db.sh` on the VM.
 
 ---
 
@@ -39,7 +73,21 @@ docker compose -f infra/docker-compose.prod.yml exec api uv run python infra/pre
 | `@` / `www` | per Vercel | frontend |
 | `api` | A | VM public IP |
 
-### Option A — Nginx + Certbot (recommended)
+### Option A — Caddy (recommended on Oracle Linux)
+
+Oracle Linux lacks `certbot`/`snapd` in default repos. Use Caddy for automatic HTTPS:
+
+```bash
+cd ~/GobioGo && git pull
+chmod +x infra/setup-caddy-ssl.sh
+sudo ./infra/setup-caddy-ssl.sh api.twerz.com support@twerz.com
+curl https://api.twerz.com/health   # expect {"status":"ok"}
+curl -s https://www.twerz.com/auth/google/login | head -c 200   # expect JSON, not 502
+```
+
+Stops Nginx, installs Caddy, obtains Let's Encrypt cert, proxies `api.twerz.com` → `127.0.0.1:8080`.
+
+### Option B — Nginx + Certbot (Ubuntu/Debian only)
 
 **Before running:** open OCI **Networking → VCN → Security List → Ingress Rules** and add **TCP 443** from `0.0.0.0/0` (port 80 should already be open).
 
@@ -47,21 +95,21 @@ One command on the VM (DNS must already point `api.twerz.com` → VM IP):
 
 ```bash
 cd ~/GobioGo && git pull
-sudo ./infra/setup-nginx-ssl.sh api.twerz.com you@twerz.com
+sudo ./infra/setup-nginx-ssl.sh api.twerz.com support@twerz.com
 curl https://api.twerz.com/health   # expect {"status":"ok"}
 ./infra/deploy-oracle.sh            # reload if .env changed
 ```
 
 Config template: [infra/nginx/twerz-api.conf](nginx/twerz-api.conf)
 
-### Option B — Caddy
+### Option C — Caddy manual (if script fails)
 
 Edit [infra/Caddyfile](Caddyfile) with your domain and email, then:
 
 ```bash
-sudo apt install -y caddy
 sudo cp infra/Caddyfile /etc/caddy/Caddyfile
-sudo systemctl reload caddy
+sudo systemctl enable caddy
+sudo systemctl restart caddy
 ```
 
 Update `.env`:
@@ -108,9 +156,9 @@ Keep localhost entries for dev. Add production:
 | Setting | Value |
 |---------|-------|
 | Authorized JavaScript origins | `https://twerz.com` |
-| Authorized redirect URIs | `https://twerz.com/auth/google/callback` |
+| Authorized redirect URIs | `https://www.twerz.com/auth/google/callback` |
 
-VM `.env`: `FRONTEND_URL=https://twerz.com` (already in `.env.production.example`)
+VM `.env`: `FRONTEND_URL=https://www.twerz.com`
 
 ### Razorpay Dashboard → Webhooks
 
@@ -167,9 +215,13 @@ Manual checklist:
 
 ## Backups
 
+Supabase provides daily backups in **Project → Database → Backups**.
+
+Optional manual dump from the VM:
+
 ```bash
 ./infra/backup-db.sh
-# Cron: 0 3 * * * /home/ubuntu/GobioGo/infra/backup-db.sh
+# Cron: 0 3 * * * /home/opc/GobioGo/infra/backup-db.sh
 ```
 
 ---
@@ -179,6 +231,6 @@ Manual checklist:
 | Issue | Fix |
 |-------|-----|
 | OCI storage fails in container | Ensure `~/.oci` mounted; `OCI_CONFIG_PATH=/root/.oci/config` |
-| Migrations fail | Set `RUN_MIGRATIONS=true`, check `POSTGRES_PASSWORD` matches db service |
+| Migrations fail | `RUN_MIGRATIONS=true`; verify Supabase `DATABASE_URL` uses port **5432** + `?ssl=require` |
 | 502 from Nginx | `docker compose ... logs api`; confirm API on :8080 |
 | OAuth redirect mismatch | Google Console URI must exactly match `FRONTEND_URL/auth/google/callback` |

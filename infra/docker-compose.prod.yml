@@ -1,25 +1,10 @@
-# Production stack for Oracle Cloud VM (A1 Flex).
+# Production stack for Oracle Cloud VM — API only (database: Supabase).
 # Usage: docker compose -f infra/docker-compose.prod.yml up -d
 #
-# First deploy: set RUN_MIGRATIONS=true in .env, then after success set false and redeploy.
+# Set DATABASE_URL in .env to your Supabase direct connection (port 5432).
+# First deploy: RUN_MIGRATIONS=true in .env, then ./infra/deploy-oracle.sh --migrate
 
 services:
-  db:
-    image: postgres:16
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: twerz
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-      POSTGRES_DB: twerz_prod
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U twerz -d twerz_prod"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-
   api:
     build:
       context: ..
@@ -29,18 +14,11 @@ services:
       - ../.env
     ports:
       - "8080:8080"
-    depends_on:
-      db:
-        condition: service_healthy
     volumes:
       # Mount host OCI API key config (generated on VM via `oci setup config`)
       - ${OCI_CONFIG_DIR:-${HOME}/.oci}:/root/.oci:ro
     environment:
-      DATABASE_URL: postgresql+asyncpg://twerz:${POSTGRES_PASSWORD}@db:5432/twerz_prod
       OCI_CONFIG_PATH: /root/.oci/config
       LATEX_BIN_PATH: /usr/bin
       PORT: "8080"
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-false}
-
-volumes:
-  pgdata:

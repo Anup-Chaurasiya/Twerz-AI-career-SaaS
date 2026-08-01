@@ -37,11 +37,13 @@ client.interceptors.response.use(
   async (error: AxiosError<APIError>) => {
     const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
     const isAuthRefreshCall = originalRequest.url?.includes('/auth/refresh');
+    const isAuthLogoutCall = originalRequest.url?.includes('/auth/logout');
     if (
       error.response?.status === 401 &&
       error.response?.data?.detail === 'token_expired' &&
       !originalRequest._retry &&
-      !isAuthRefreshCall
+      !isAuthRefreshCall &&
+      !isAuthLogoutCall
     ) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
@@ -53,9 +55,12 @@ client.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
       try {
-        const response = await client.post('/auth/refresh');
+        const response = await client.post('/auth/refresh', undefined, { withCredentials: true });
         const { access_token } = response.data;
         localStorage.setItem('token', access_token);
+        if (originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${access_token}`;
+        }
         processQueue();
         return client(originalRequest);
       } catch (refreshError) {

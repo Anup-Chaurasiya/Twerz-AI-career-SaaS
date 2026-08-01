@@ -42,6 +42,6 @@ jobs:
             APP="${{ secrets.ORACLE_APP_PATH }}"
             cd "$APP"
             git pull origin main
-            chmod +x infra/deploy-oracle.sh infra/backup-db.sh infra/setup-nginx-ssl.sh
+            chmod +x infra/deploy-oracle.sh infra/backup-db.sh infra/setup-nginx-ssl.sh infra/setup-caddy-ssl.sh
             ./infra/deploy-oracle.sh
             curl -sf "http://127.0.0.1:8080/health"

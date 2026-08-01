@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Deploy Twerz API + Postgres on Oracle Cloud VM.
+# Deploy Twerz API on Oracle Cloud VM (database: Supabase — no local Postgres).
 #
 # Prerequisites on VM:
 #   - Docker + compose plugin
-#   - .env in repo root (copy from infra/.env.production.example)
+#   - .env in repo root with DATABASE_URL → Supabase (see infra/.env.production.example)
 #   - ~/.oci/config for STORAGE_BACKEND=oci
 #
 # Usage:
 #   ./infra/deploy-oracle.sh              # build + up
-#   ./infra/deploy-oracle.sh --migrate    # first deploy (runs alembic)
+#   ./infra/deploy-oracle.sh --migrate    # first deploy / schema change (runs alembic)
 #   ./infra/deploy-oracle.sh --preflight  # run checks inside api container
 
 set -euo pipefail
@@ -40,6 +40,24 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
+# shellcheck disable=SC1091
+set -a && source "${ROOT}/.env" && set +a
+
+if [[ -z "${DATABASE_URL:-}" ]]; then
+  echo "DATABASE_URL is required in .env (Supabase connection string)." >&2
+  exit 1
+fi
+
+if [[ "${DATABASE_URL}" == *"@db:5432"* ]] || [[ "${DATABASE_URL}" == *"@localhost:5432"* ]]; then
+  echo "ERROR: DATABASE_URL still points at local Docker Postgres." >&2
+  echo "  Set Supabase URI from Project Settings → Database → Direct connection (port 5432)." >&2
+  exit 1
+fi
+
+if [[ "${DATABASE_URL}" != *"+asyncpg"* ]]; then
+  echo "WARNING: DATABASE_URL should use postgresql+asyncpg:// for this app." >&2
+fi
+
 if [[ ! -d "${OCI_CONFIG_DIR:-$HOME/.oci}" ]]; then
   echo "Warning: OCI config dir not found. Set OCI_CONFIG_DIR or run 'oci setup config'." >&2
 fi
@@ -49,8 +67,8 @@ export RUN_MIGRATIONS=$([[ "$MIGRATE" == true ]] && echo true || echo false)
 echo "==> Building images..."
 $COMPOSE build
 
-echo "==> Starting stack (RUN_MIGRATIONS=${RUN_MIGRATIONS})..."
-$COMPOSE up -d
+echo "==> Starting API (RUN_MIGRATIONS=${RUN_MIGRATIONS})..."
+$COMPOSE up -d --remove-orphans
 
 echo "==> Waiting for health..."
 for i in $(seq 1 30); do
@@ -75,7 +93,7 @@ fi
 
 if [[ "$MIGRATE" == true ]]; then
   echo ""
-  echo "First deploy complete. Set RUN_MIGRATIONS=false in .env and redeploy:"
+  echo "Migrations complete. Set RUN_MIGRATIONS=false in .env for normal deploys:"
   echo "  sed -i 's/RUN_MIGRATIONS=true/RUN_MIGRATIONS=false/' .env"
   echo "  $0"
 fi

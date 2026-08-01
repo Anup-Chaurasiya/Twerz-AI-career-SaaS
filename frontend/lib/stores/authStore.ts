@@ -30,7 +30,6 @@ function scheduleFetchMeRetry(force = true, delayMs = 2500) {
 }
 
 async function refreshStoredToken(): Promise<boolean> {
-  if (!hasStoredToken()) return false;
   try {
     const res = await authApi.refresh();
     localStorage.setItem('token', res.data.access_token);
@@ -48,8 +47,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (fetchMeInFlight && !opts?.force) return fetchMeInFlight;
 
     if (!hasStoredToken()) {
-      set({ user: null, isLoggedIn: false, isLoading: false });
-      return;
+      const refreshed = await refreshStoredToken();
+      if (!refreshed) {
+        set({ user: null, isLoggedIn: false, isLoading: false });
+        return;
+      }
     }
 
     fetchMeInFlight = (async () => {
@@ -85,8 +87,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           set({ user: null, isLoggedIn: false, isLoading: false });
           return;
         }
-
-        // Network/timeout/server errors — keep token and stay logged in optimistically.
         const prev = get();
         set({
           user: prev.user,
@@ -110,6 +110,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       clearTimeout(fetchMeRetryTimer);
       fetchMeRetryTimer = null;
     }
+    void authApi.logout().catch(() => undefined);
     localStorage.removeItem('token');
     set({ user: null, isLoggedIn: false, isLoading: false });
     window.location.href = '/login';

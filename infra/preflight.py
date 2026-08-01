@@ -32,7 +32,7 @@ EXPECTED_TABLES = {
     "credit_packs", "time_pass_tiers", "user_credits", "user_time_passes",
     "credit_transactions", "promo_codes", "promo_redemptions",
     "llm_requests", "sessions", "events",
-    "alembic_version",
+    "alembic_version", "refresh_tokens",
 }
 
 results: list[tuple[str, bool, str, float]] = []
@@ -53,7 +53,9 @@ async def check_database():
 
     t0 = time.monotonic()
     try:
-        engine = create_async_engine(get_settings().DATABASE_URL)
+        url = get_settings().DATABASE_URL
+        connect_args = {"ssl": True} if "supabase.co" in url.lower() else {}
+        engine = create_async_engine(url, connect_args=connect_args)
         async with engine.connect() as conn:
             # Basic connectivity
             row = await conn.execute(text("SELECT version()"))

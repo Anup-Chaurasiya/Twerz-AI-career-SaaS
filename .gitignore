@@ -81,3 +81,4 @@ scrapped-data/
 
 # Sales data
 sales/
+.env.production

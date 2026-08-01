@@ -20,6 +20,7 @@ from app.models.referral_payout_review import ReferralPayoutReview, ReferralPayo
 from app.models.public_request_log import PublicRequestLog
 from app.models.data_request_log import DataRequestLog
 from app.models.golden_matrix_run import GoldenMatrixRun
+from app.models.refresh_token import RefreshToken
 
 __all__ = [
     "Base", "TimestampMixin", "User", "Profile", "Job",
@@ -30,5 +31,5 @@ __all__ = [
     "TransactionType", "PromoType",
     "ScoreCalibration",
     "AdminAuditLog", "ReferralFlag", "ReferralPayoutReview", "ReferralPayoutStatus", "PublicRequestLog",
-    "DataRequestLog", "GoldenMatrixRun",
+    "DataRequestLog", "GoldenMatrixRun", "RefreshToken",
 ]

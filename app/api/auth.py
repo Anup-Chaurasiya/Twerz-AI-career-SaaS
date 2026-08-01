@@ -1,5 +1,5 @@
 from datetime import datetime, date, timezone
-from fastapi import APIRouter, Depends, Request, Header, Query, Response
+from fastapi import APIRouter, Depends, Request, Query, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -13,7 +13,14 @@ from app.services.auth import google_oauth
 from app.services.auth.google_oauth import OAUTH_CSRF_COOKIE
 from app.services.auth.referral import ensure_user_referral_code, generate_unique_referral_code
 from typing import Optional
-from app.services.auth.jwt_handler import create_access_token, decode_expired_token, verify_guest_token
+from app.services.auth.jwt_handler import create_access_token, verify_guest_token
+from app.services.auth.cookies import set_refresh_token_cookie, clear_refresh_token_cookie
+from app.services.auth.refresh_tokens import (
+    REFRESH_TOKEN_COOKIE,
+    create_refresh_token,
+    rotate_refresh_token,
+    revoke_refresh_token,
+)
 from app.dependencies import get_current_user
 from app.exceptions import AuthenticationError, ProfileNotFoundError, ConflictError
 from app.services.profile.service import ProfileService
@@ -201,6 +208,13 @@ async def google_callback(
         await db.commit()
 
     jwt_token = create_access_token(user.id, user.email)
+    refresh_raw = await create_refresh_token(
+        db,
+        user.id,
+        user_agent=request.headers.get("user-agent"),
+        ip_address=_client_ip(request),
+    )
+    await db.commit()
 
     guest_token = (state_data.get("guest") or "").strip()
     claimed_profile_id: int | None = None
@@ -224,24 +238,48 @@ async def google_callback(
         redirect_url += f"&claim_error={claim_error}"
     redirect = RedirectResponse(url=redirect_url)
     redirect.delete_cookie(OAUTH_CSRF_COOKIE, path="/")
+    set_refresh_token_cookie(redirect, refresh_raw)
     return redirect
 
 
 @router.post("/refresh")
 async def refresh_token(
-    authorization: Optional[str] = Header(default=None),
+    request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
-    """Issue a fresh JWT. Accepts expired tokens (signature must still be valid)."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise AuthenticationError("token_invalid")
-    token = authorization[7:]
-    payload = decode_expired_token(token)
-    user = await db.get(User, payload["sub"])
-    if not user:
-        raise AuthenticationError("token_invalid")
-    new_token = create_access_token(user.id, user.email)
-    return {"access_token": new_token}
+    """Issue a new access token using the HttpOnly refresh-token cookie."""
+    raw = request.cookies.get(REFRESH_TOKEN_COOKIE)
+    if not raw:
+        clear_refresh_token_cookie(response)
+        raise AuthenticationError("refresh_token_invalid")
+
+    try:
+        new_raw, user = await rotate_refresh_token(db, raw)
+        await db.commit()
+    except AuthenticationError:
+        await db.rollback()
+        clear_refresh_token_cookie(response)
+        raise
+
+    access_token = create_access_token(user.id, user.email)
+    set_refresh_token_cookie(response, new_raw)
+    return {"access_token": access_token}
+
+
+@router.post("/logout")
+async def logout(
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    """Revoke refresh session and clear cookie."""
+    raw = request.cookies.get(REFRESH_TOKEN_COOKIE)
+    if raw:
+        await revoke_refresh_token(db, raw)
+        await db.commit()
+    clear_refresh_token_cookie(response)
+    return {"success": True}
 
 
 @router.get("/me")
