@@ -45,7 +45,7 @@ export default function ShareAnalyticsPage() {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+      <div className="dash-grid-2">
         <div className="widget-card">
           <div className="section-label">Top platforms</div>
           <ul style={{ marginTop: 12, paddingLeft: 18, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.8 }}>

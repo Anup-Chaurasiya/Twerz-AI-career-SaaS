@@ -39,14 +39,13 @@ credit_service = CreditService()
 
 
 def _get_redirect_uri() -> str:
-    """OAuth callback on the API host so the browser sends CSRF cookies directly."""
+    """OAuth callback on the frontend origin (must match Google Console).
+
+    Google redirects to FRONTEND_URL/auth/google/callback; the Next.js route
+    forwards the code to this API where CSRF validation runs.
+    """
     settings = get_settings()
-    api_base = (settings.API_BASE_URL or "").strip().rstrip("/")
-    if api_base:
-        return f"{api_base}/auth/google/callback"
-    if settings.ENVIRONMENT.upper() == "DEV":
-        return f"{settings.FRONTEND_URL.rstrip('/')}/auth/google/callback"
-    return "https://api.twerz.com/auth/google/callback"
+    return f"{settings.FRONTEND_URL.rstrip('/')}/auth/google/callback"
 
 
 async def _resolve_referrer_id(db: AsyncSession, ref: str | None) -> str | None:

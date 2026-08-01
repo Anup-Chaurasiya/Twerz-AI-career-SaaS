@@ -49,7 +49,7 @@ export default function DashboardPage() {
       </div>
 
       {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 32 }}>
+      <div className="dashboard-kpi-grid">
         {kpis.map((kpi, i) => (
           <Link key={kpi.label} href={kpi.href} className={`widget-card kpi-card ${kpi.accent} fade-slide-in stagger-${i + 1}`} style={{ textDecoration: 'none', display: 'block' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -79,7 +79,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+      <div className="dashboard-two-col-grid">
         {/* Recent Profiles */}
         <div className="widget-card fade-slide-in stagger-3">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>

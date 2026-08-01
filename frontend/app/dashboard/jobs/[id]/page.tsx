@@ -75,7 +75,7 @@ export default function JobDetailPage() {
       return () => mq.removeEventListener('change', cb);
     },
     () => window.matchMedia('(min-width: 769px)').matches,
-    () => true,
+    () => false,
   );
 
   // Direct JSON editing state

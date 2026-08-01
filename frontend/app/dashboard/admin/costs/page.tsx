@@ -42,7 +42,7 @@ export default function AdminCostsPage() {
             <div className="widget-card"><div className="section-label">Enhance Today</div><div style={{ fontSize: 28, fontWeight: 700 }}>{freeTier.profiles_with_enhance_today ?? 0}</div></div>
             <div className="widget-card"><div className="section-label">Public ATS (7d)</div><div style={{ fontSize: 28, fontWeight: 700 }}>{freeTier.public_ats_checks_7d ?? 0}</div></div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+          <div className="dash-grid-2">
             <div className="widget-card" style={{ height: 320 }}>
               <div className="section-label">Cost by Feature</div>
               <ResponsiveContainer width="100%" height="85%">

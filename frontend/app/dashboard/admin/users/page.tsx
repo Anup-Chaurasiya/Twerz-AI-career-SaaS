@@ -53,9 +53,9 @@ export default function AdminUsersPage() {
 
   return (
     <div className="fade-slide-in">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+      <div className="dash-page-toolbar">
         <h2 style={{ fontSize: 20, fontWeight: 700 }}>Users Management</h2>
-        <input type="text" className="input-field" placeholder="Search by name or email..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: 300 }} />
+        <input type="text" className="input-field" placeholder="Search by name or email..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
       <div className="widget-card" style={{ padding: 0, overflow: 'hidden' }}>

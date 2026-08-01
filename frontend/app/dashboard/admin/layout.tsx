@@ -15,7 +15,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   }, [isLoading, isLoggedIn, user, router]);
 
-  if (isLoading || !user?.is_super_admin) return null;
+  if (isLoading || !user?.is_super_admin) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48 }}>
+        <div style={{ textAlign: 'center' }}>
+          <div className="spinner spinner-lg" style={{ margin: '0 auto 16px' }} />
+          <p style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--text-dim)' }}>Loading admin...</p>
+        </div>
+      </div>
+    );
+  }
 
   const tabs = [
     { name: 'Overview', href: '/dashboard/admin' },
@@ -35,7 +44,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-      <div style={{ padding: '24px 24px 0', borderBottom: '1px solid rgba(1,169,219,0.08)' }}>
+      <div style={{ padding: '16px 16px 0', borderBottom: '1px solid rgba(1,169,219,0.08)' }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 28 }}>🛡️</span> Admin Console
         </h1>
@@ -47,7 +56,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           ))}
         </div>
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+      <div className="admin-content-scroll">
         {children}
       </div>
     </div>

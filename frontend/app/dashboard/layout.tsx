@@ -158,7 +158,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="app-canvas dashboard-shell" style={{ display: 'flex', height: '100dvh', overflow: 'hidden', background: 'var(--deep)', position: 'relative' }}>
       <div className={`sidebar-backdrop ${sidebarOpen ? 'visible' : ''}`} onClick={() => setSidebarOpen(false)} />
 
-      <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`} style={{ position: 'relative', zIndex: 60 }}>
+      <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
         <div className="sidebar-brand">
           <BrandLogo onClick={() => setSidebarOpen(false)} />
         </div>
@@ -211,19 +211,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', zIndex: 2 }}>
+      <div className="dashboard-content-column">
         <header className="top-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="top-header-start">
             <button className="hamburger-btn" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Toggle menu">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
-            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--text-dim)', letterSpacing: '0.5px' }}>
+            <div className="top-header-breadcrumb">
               {pathname.split('/').filter(Boolean).map((p, i, arr) => (
                 <span key={i}>{i > 0 && ' / '}<span style={{ color: i === arr.length - 1 ? 'var(--text-primary)' : 'var(--text-dim)', textTransform: 'capitalize' }}>{formatBreadcrumbSegment(p, i, arr)}</span></span>
               ))}
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="top-header-actions">
             <div ref={notifRef} style={{ position: 'relative' }}>
               <button
                 className="btn-ghost"
@@ -247,10 +247,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 )}
               </button>
               {notifOpen && (
-                <div className="notif-dropdown animate-fade-in" style={{
-                  position: 'absolute', right: 0, top: '100%', marginTop: 8, width: 320, maxHeight: 360,
-                  overflowY: 'auto', zIndex: 100,
-                }}>
+                <div className="notif-dropdown animate-fade-in">
                   <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--card-border)', fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>
                     NOTIFICATIONS
                   </div>
@@ -285,7 +282,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(251,65,0,0.15)', border: '1px solid rgba(251,65,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'JetBrains Mono', fontWeight: 700, fontSize: 11, color: 'var(--orange)' }}>
                 {user?.name?.charAt(0).toUpperCase()}
               </div>
-              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{user?.name?.split(' ')[0]}</span>
+              <span className="top-header-user-name" style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{user?.name?.split(' ')[0]}</span>
             </div>
           </div>
         </header>

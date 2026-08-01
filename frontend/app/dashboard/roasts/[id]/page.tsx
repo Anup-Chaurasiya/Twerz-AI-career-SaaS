@@ -81,7 +81,7 @@ export default function RoastDetailPage() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
+      <div className="dash-grid-2" style={{ marginBottom: 24 }}>
         <div className="widget-card fade-slide-in stagger-1">
           <div className="section-label" style={{ color: 'var(--orange)' }}>The Roast 🔥</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 16 }}>

@@ -52,7 +52,7 @@ export default function AdminOverviewPage() {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
+      <div className="dash-grid-2" style={{ marginBottom: 24 }}>
         <div className="widget-card">
           <div className="section-label">System Health (24h)</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>

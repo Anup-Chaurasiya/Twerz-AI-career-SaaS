@@ -98,7 +98,7 @@ export default function NewJobPage() {
               </select>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+            <div className="dash-grid-2" style={{ gap: 20 }}>
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8, fontFamily: 'JetBrains Mono', textTransform: 'uppercase', letterSpacing: 1 }}>Company Name *</label>
                 <input type="text" className="input-field" placeholder="e.g. Stripe" value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} required />

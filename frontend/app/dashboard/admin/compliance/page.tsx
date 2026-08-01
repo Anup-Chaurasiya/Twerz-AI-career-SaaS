@@ -41,7 +41,7 @@ export default function AdminCompliancePage() {
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+      <div className="dash-grid-2">
         <div className="widget-card">
           <div className="section-label">IP Collisions (24h)</div>
           {(flagged.ip_collisions || []).length === 0 ? <p style={{ fontSize: 13, color: 'var(--text-dim)', marginTop: 12 }}>None detected.</p> : (
