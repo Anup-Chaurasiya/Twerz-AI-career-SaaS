@@ -39,10 +39,14 @@ credit_service = CreditService()
 
 
 def _get_redirect_uri() -> str:
-    """OAuth callback on the frontend origin; Vercel route forwards to this API."""
+    """OAuth callback on the API host so the browser sends CSRF cookies directly."""
     settings = get_settings()
-    base = settings.FRONTEND_URL.rstrip("/")
-    return f"{base}/auth/google/callback"
+    api_base = (settings.API_BASE_URL or "").strip().rstrip("/")
+    if api_base:
+        return f"{api_base}/auth/google/callback"
+    if settings.ENVIRONMENT.upper() == "DEV":
+        return f"{settings.FRONTEND_URL.rstrip('/')}/auth/google/callback"
+    return "https://api.twerz.com/auth/google/callback"
 
 
 async def _resolve_referrer_id(db: AsyncSession, ref: str | None) -> str | None:

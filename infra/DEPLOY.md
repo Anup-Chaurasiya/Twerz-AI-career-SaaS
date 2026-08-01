@@ -156,7 +156,7 @@ Keep localhost entries for dev. Add production:
 | Setting | Value |
 |---------|-------|
 | Authorized JavaScript origins | `https://twerz.com` |
-| Authorized redirect URIs | `https://www.twerz.com/auth/google/callback` (Vercel forwards to API) |
+| Authorized redirect URIs | `https://api.twerz.com/auth/google/callback` (required). Optional legacy: `https://www.twerz.com/auth/google/callback` |
 
 VM `.env`: `FRONTEND_URL=https://www.twerz.com`
 
@@ -233,4 +233,4 @@ Optional manual dump from the VM:
 | OCI storage fails in container | Ensure `~/.oci` mounted; `OCI_CONFIG_PATH=/root/.oci/config` |
 | Migrations fail | `RUN_MIGRATIONS=true`; verify Supabase `DATABASE_URL` uses port **5432** + `?ssl=require` |
 | 502 from Nginx | `docker compose ... logs api`; confirm API on :8080 |
-| OAuth redirect mismatch | Google Console URI must exactly match `FRONTEND_URL/auth/google/callback` |
+| OAuth redirect mismatch | Google Console must include `API_BASE_URL/auth/google/callback` (e.g. `https://api.twerz.com/auth/google/callback`) |
