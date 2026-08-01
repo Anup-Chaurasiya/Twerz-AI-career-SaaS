@@ -13,7 +13,6 @@ These tests do NOT call live LLMs. They validate:
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -48,11 +47,10 @@ from app.services.job.tailor_pipeline import (
     structural_ats_score,
     write_mode_block,
 )
+from app.services.golden.loader import FIXTURES
 from app.services.latex.builder import build_resume
 from app.services.latex.docx_builder import build_docx_bytes
 from app.services.latex.sanitizer import sanitize_special_chars
-
-FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def _load(name: str) -> dict:

@@ -94,16 +94,24 @@ cd ~/GobioGo
 
 ### From GitHub Actions (CI/CD)
 
-Push to `main` triggers [.github/workflows/deploy-oracle.yml](../.github/workflows/deploy-oracle.yml) via SSH secrets:
+Push to `main` triggers [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) via SSH secrets:
 
 | GitHub secret | Value |
 |---------------|-------|
-| `ORACLE_HOST` | VM public IP |
-| `ORACLE_USER` | `ubuntu` |
-| `ORACLE_SSH_KEY` | Private key (full PEM) |
-| `ORACLE_APP_PATH` | `/home/ubuntu/GobioGo` |
+| `ORACLE_HOST` | VM public IP (e.g. `137.23.49.85`) |
+| `ORACLE_USER` | `opc` |
+| `ORACLE_SSH_KEY` | Private key (full PEM contents of `~/.ssh/id_ed25519`) |
+| `ORACLE_APP_PATH` | `/home/opc/GobioGo` |
 
-Manual trigger: GitHub → **Actions → Deploy Oracle VM → Run workflow**.
+**First-time setup:** GitHub → repo **Settings → Secrets and variables → Actions → New repository secret** for each row above.
+
+Verify SSH from your Mac before relying on Actions:
+
+```bash
+ssh -i ~/.ssh/id_ed25519 opc@137.23.49.85 "cd ~/GobioGo && git status"
+```
+
+Manual trigger: GitHub → **Actions → Deploy → Run workflow**.
 
 ---
 
@@ -355,6 +363,29 @@ htop                            # interactive (install: sudo apt install htop)
 
 ---
 
+## Latency audit
+
+Measure endpoint response times before and after deploys:
+
+```bash
+# From your laptop (external)
+./infra/latency-audit.sh https://api.twerz.com
+
+# From the VM (localhost, no TLS hop)
+./infra/latency-audit.sh http://127.0.0.1:8080
+
+# Custom threshold (default 300ms)
+THRESHOLD_MS=500 ./infra/latency-audit.sh
+```
+
+Deep readiness (DB + storage):
+
+```bash
+curl -s http://127.0.0.1:8080/health/ready | jq .
+```
+
+---
+
 ## Troubleshooting cheat sheet
 
 | Symptom | Likely cause | Fix |
@@ -364,7 +395,10 @@ htop                            # interactive (install: sudo apt install htop)
 | Google **redirect_uri_mismatch** | URI ≠ `FRONTEND_URL/auth/google/callback` | Align Google Console, `.env` `FRONTEND_URL`, and Vercel domain (www vs non-www) |
 | **Invalid OAuth state** | CSRF cookie lost (domain mismatch) | Use one canonical frontend URL (`https://www.twerz.com` or `https://twerz.com`) everywhere |
 | Migrations fail | Check Supabase `DATABASE_URL` (port 5432, `?ssl=require`); `RUN_MIGRATIONS=true` |
-| OCI storage errors | Missing `~/.oci` mount | Run `oci setup config` on VM; verify `OCI_CONFIG_DIR` in `.env` |
+| OCI storage errors | Missing `~/.oci` mount or relative `key_file` | Run `oci setup config`; set `key_file=/root/.oci/oci_api_key.pem` in `~/.oci/config` |
+| Resume generation 429 | Gemini free-tier quota | Set `LLM_FLASH_MODEL=openai/gpt-4o-mini`, `LLM_PRO_MODEL=openai/gpt-4o` in `.env` |
+| Slow `/credits/packs` or `/public/stats` | Cold DB aggregates | Warm cache (60–300s TTL); run `./infra/latency-audit.sh` before/after deploy |
+| Notification 401 spam | Invalid token polling | Ensure refresh cookie domain `.twerz.com`; redeploy frontend with direct API |
 | Certbot fails | Port 443 blocked or DNS wrong | OCI ingress rule for 443; `dig +short api.twerz.com` |
 | Out of memory | A1 Flex limits | `$COMPOSE restart api`; check `docker stats`; reduce concurrent jobs |
 
