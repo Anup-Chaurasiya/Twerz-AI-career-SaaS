@@ -7,6 +7,9 @@ from functools import lru_cache
 class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/custom_resume_dev"
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 5
+    DB_POOL_RECYCLE: int = 1800  # recycle stale connections after 30 min
 
     # AI — Gemini (ADK chat + LiteLLM gemini/* models)
     GEMINI_API_KEY: str = ""
@@ -68,6 +71,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "DEV"  # DEV, staging, or production
     FRONTEND_URL: str = "http://localhost:3000"
     API_BASE_URL: str = ""
+    COOKIE_DOMAIN: str = ""  # e.g. .twerz.com for cross-subdomain refresh cookies
     TRUST_PROXY_HEADERS: bool = False  # set True in production behind Cloud Run / LB
     DEV_AUTH_BYPASS: bool = False
     SENTRY_DSN: str = ""

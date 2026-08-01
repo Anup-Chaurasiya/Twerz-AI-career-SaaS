@@ -1,21 +1,27 @@
 'use client';
 import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
+import dynamic from 'next/dynamic';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { jobsApi } from '@/lib/api/endpoints';
+import { getApiBase } from '@/lib/api/baseUrl';
 import { Job, ChatMessage } from '@/types';
 import { getStatusColor, getStatusLabel, toDateInputValue, formatResumeGenerationCost } from '@/lib/utils';
 import DatePicker from '@/components/DatePicker';
 import { MarkdownInline } from '@/components/MarkdownInline';
 import { useProgressSSE, ProgressEvent } from '@/lib/hooks/useProgressSSE';
 import { useCreditStore } from '@/lib/stores/creditStore';
-import JobDetailTabs from '@/components/JobDetailTabs';
-import TemplatePicker from '@/components/TemplatePicker';
-import ChatMessageBubble from '@/components/ChatMessageBubble';
-import ChatComposer, { ChatComposerHandle } from '@/components/ChatComposer';
 import { useResizablePanel } from '@/lib/hooks/useResizablePanel';
+import type { ChatComposerHandle } from '@/components/ChatComposer';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+const JobDetailTabs = dynamic(() => import('@/components/JobDetailTabs'), {
+  loading: () => <div className="spinner" style={{ margin: '16px auto' }} />,
+});
+const TemplatePicker = dynamic(() => import('@/components/TemplatePicker'));
+const ChatMessageBubble = dynamic(() => import('@/components/ChatMessageBubble'));
+const ChatComposer = dynamic(() => import('@/components/ChatComposer'));
+
+const API_BASE = getApiBase();
 
 type Notice = { type: 'success' | 'warning' | 'error'; message: string } | null;
 

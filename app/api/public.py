@@ -31,10 +31,13 @@ from app.services.storage import get_storage
 from app.utils.client_ip import client_ip
 from sqlalchemy import select, func
 
+from app.utils.ttl_cache import TTLCache
+
 logger = getLogger(__name__)
 
 router = APIRouter(prefix="/public", tags=["public"])
 profile_service = ProfileService()
+_stats_cache = TTLCache(ttl_seconds=120)
 
 
 def _validate_public_resume(file: UploadFile, file_bytes: bytes) -> None:
@@ -197,29 +200,33 @@ async def public_success_wall_stats(
     db: AsyncSession = Depends(get_db),
 ):
     """Anonymized aggregate counts for the landing page success wall."""
-    total_tailored = (
-        await db.execute(select(func.count(Job.id)).where(Job.status == JobStatus.READY))
-    ).scalar() or 0
 
-    total_roasts = (
-        await db.execute(select(func.count(Roast.id)).where(Roast.status == RoastStatus.READY))
-    ).scalar() or 0
+    async def _compute():
+        total_tailored = (
+            await db.execute(select(func.count(Job.id)).where(Job.status == JobStatus.READY))
+        ).scalar() or 0
 
-    avg_imp = (
-        await db.execute(
-            select(func.avg(Job.ats_score_after - Job.ats_score_before)).where(
-                Job.ats_score_after.isnot(None),
-                Job.ats_score_before.isnot(None),
-                Job.status == JobStatus.READY,
+        total_roasts = (
+            await db.execute(select(func.count(Roast.id)).where(Roast.status == RoastStatus.READY))
+        ).scalar() or 0
+
+        avg_imp = (
+            await db.execute(
+                select(func.avg(Job.ats_score_after - Job.ats_score_before)).where(
+                    Job.ats_score_after.isnot(None),
+                    Job.ats_score_before.isnot(None),
+                    Job.status == JobStatus.READY,
+                )
             )
-        )
-    ).scalar()
+        ).scalar()
 
-    avg_improvement = round(float(avg_imp), 1) if avg_imp is not None else None
+        avg_improvement = round(float(avg_imp), 1) if avg_imp is not None else None
 
-    return {
-        "total_resumes_tailored": total_tailored,
-        "total_roasts_completed": total_roasts,
-        "avg_ats_score_improvement": avg_improvement,
-        "has_improvement_data": avg_imp is not None,
-    }
+        return {
+            "total_resumes_tailored": total_tailored,
+            "total_roasts_completed": total_roasts,
+            "avg_ats_score_improvement": avg_improvement,
+            "has_improvement_data": avg_imp is not None,
+        }
+
+    return await _stats_cache.get_or_set(_compute)

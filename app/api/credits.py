@@ -8,42 +8,48 @@ from app.models.credit import CreditPack, TimePassTier
 from app.dependencies import get_current_user
 from app.services.credit.service import CreditService
 from app.schemas.credit import RedeemPromoRequest, CreditBalanceResponse
+from app.utils.ttl_cache import TTLCache
 
 router = APIRouter(prefix="/credits", tags=["credits"])
 credit_service = CreditService()
+_packs_cache = TTLCache(ttl_seconds=300)
 
 
 @router.get("/packs")
 async def list_packs(db: AsyncSession = Depends(get_db)):
     """Public: list active credit packs and time passes."""
-    packs_result = await db.execute(
-        select(CreditPack)
-        .where(CreditPack.is_active == True)
-        .order_by(CreditPack.sort_order, CreditPack.price_paise)
-    )
-    tiers_result = await db.execute(
-        select(TimePassTier)
-        .where(TimePassTier.is_active == True)
-        .order_by(TimePassTier.sort_order, TimePassTier.price_paise)
-    )
-    packs = packs_result.scalars().all()
-    tiers = tiers_result.scalars().all()
-    return {
-        "credit_packs": [
-            {
-                "id": p.id, "name": p.name, "credits": p.credits,
-                "price_paise": p.price_paise, "sort_order": p.sort_order,
-            }
-            for p in packs
-        ],
-        "time_passes": [
-            {
-                "id": t.id, "name": t.name, "duration_days": t.duration_days,
-                "price_paise": t.price_paise, "sort_order": t.sort_order,
-            }
-            for t in tiers
-        ],
-    }
+
+    async def _fetch():
+        packs_result = await db.execute(
+            select(CreditPack)
+            .where(CreditPack.is_active == True)
+            .order_by(CreditPack.sort_order, CreditPack.price_paise)
+        )
+        tiers_result = await db.execute(
+            select(TimePassTier)
+            .where(TimePassTier.is_active == True)
+            .order_by(TimePassTier.sort_order, TimePassTier.price_paise)
+        )
+        packs = packs_result.scalars().all()
+        tiers = tiers_result.scalars().all()
+        return {
+            "credit_packs": [
+                {
+                    "id": p.id, "name": p.name, "credits": p.credits,
+                    "price_paise": p.price_paise, "sort_order": p.sort_order,
+                }
+                for p in packs
+            ],
+            "time_passes": [
+                {
+                    "id": t.id, "name": t.name, "duration_days": t.duration_days,
+                    "price_paise": t.price_paise, "sort_order": t.sort_order,
+                }
+                for t in tiers
+            ],
+        }
+
+    return await _packs_cache.get_or_set(_fetch)
 
 
 @router.get("/me")

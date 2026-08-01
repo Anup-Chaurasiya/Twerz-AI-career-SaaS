@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { authApi } from '@/lib/api/endpoints';
+import { getApiBase } from '@/lib/api/baseUrl';
 
 declare global {
   interface Window {
@@ -44,8 +45,7 @@ export default function ExtensionConnectPage() {
     async function run() {
       const params = new URLSearchParams(window.location.search);
       const extensionId = params.get('extension_id');
-      const apiBase =
-        process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || 'http://localhost:8000';
+      const apiBase = getApiBase() || 'http://localhost:8000';
       const appBase = window.location.origin;
 
       if (!localStorage.getItem('token')) {

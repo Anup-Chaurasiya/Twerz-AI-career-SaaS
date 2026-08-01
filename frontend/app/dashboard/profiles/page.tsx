@@ -1,18 +1,15 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { profilesApi } from '@/lib/api/endpoints';
 import { Profile } from '@/types';
-import { formatDate, getStatusColor, getStatusLabel, getProfileDisplayName } from '@/lib/utils';
+import { formatDate, getStatusColor, getProfileDisplayName } from '@/lib/utils';
 import { useCreditStore } from '@/lib/stores/creditStore';
+import { handleApiError } from '@/lib/apiError';
 
 export default function ProfilesListPage() {
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState('');
@@ -20,42 +17,18 @@ export default function ProfilesListPage() {
   const router = useRouter();
   const fetchBalance = useCreditStore((s) => s.fetchBalance);
 
-  const fetchProfiles = async (p = 1) => {
-    setLoading(true);
-    try {
-      const res = await profilesApi.list(p, 10);
-      setProfiles(res.data.items);
-      setTotalPages(res.data.pages);
-      setPage(res.data.page);
-    } catch {
-      setError('Failed to load profiles');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data, isLoading, isFetching, error: queryError } = useQuery({
+    queryKey: ['profiles', 'list', page],
+    queryFn: async () => {
+      const res = await profilesApi.list(page, 10);
+      return res.data;
+    },
+  });
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await profilesApi.list(page, 10);
-        if (cancelled) return;
-        setProfiles(res.data.items);
-        setTotalPages(res.data.pages);
-        setPage(res.data.page);
-      } catch {
-        if (!cancelled) setError('Failed to load profiles');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [page]);
-
-  const changePage = (next: number | ((prev: number) => number)) => {
-    setLoading(true);
-    setPage(next);
-  };
+  const profiles: Profile[] = data?.items ?? [];
+  const totalPages = data?.pages ?? 1;
+  const loading = isLoading || isFetching;
+  const listError = queryError ? handleApiError(queryError).message : '';
 
   const handleFile = async (file: File) => {
     if (!file) return;
@@ -73,12 +46,9 @@ export default function ProfilesListPage() {
       const res = await profilesApi.upload(file);
       await fetchBalance();
       router.push(`/dashboard/profiles/${res.data.profile_id}`);
-    } catch (err: any) {
-      if (err.response?.status === 429) {
-        setError('Not enough credits. Please upgrade your plan.');
-      } else {
-        setError(err.response?.data?.detail || 'Failed to upload resume.');
-      }
+    } catch (err: unknown) {
+      const apiErr = handleApiError(err);
+      setError(apiErr.message);
       setUploading(false);
     }
   };
@@ -98,9 +68,9 @@ export default function ProfilesListPage() {
       </div>
 
       <div className="widget-card fade-slide-in stagger-1" style={{ marginBottom: 32 }}>
-        {error && (
+        {(error || listError) && (
           <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', padding: '12px 16px', borderRadius: 6, marginBottom: 20, color: 'var(--red)', fontSize: 13 }}>
-            {error}
+            {error || listError}
           </div>
         )}
         <div
@@ -172,8 +142,8 @@ export default function ProfilesListPage() {
               <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(1,169,219,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>Page {page} of {totalPages}</div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn-ghost" disabled={page === 1} onClick={() => changePage(p => p - 1)}>Prev</button>
-                  <button className="btn-ghost" disabled={page === totalPages} onClick={() => changePage(p => p + 1)}>Next</button>
+                  <button className="btn-ghost" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Prev</button>
+                  <button className="btn-ghost" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>Next</button>
                 </div>
               </div>
             )}

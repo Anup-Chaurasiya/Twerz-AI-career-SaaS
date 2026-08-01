@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { getApiBase } from '@/lib/api/baseUrl';
 
 export interface ProgressEvent {
   status: string;
@@ -52,7 +53,7 @@ export function useProgressSSE({
   const completedRef = useRef(false);
   
   const MAX_RETRIES = 5;
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+  const API_BASE = getApiBase();
 
   useEffect(() => {
     onUpdateRef.current = onUpdate;
@@ -119,6 +120,7 @@ export function useProgressSSE({
             setTimeout(connect, backoffDelay);
           } else {
             setError('SSE connection failed, using fallback polling');
+            startPollingFallback();
           }
         };
       } catch (err) {
@@ -156,7 +158,6 @@ export function useProgressSSE({
     };
 
     connect();
-    startPollingFallback();
 
     return () => {
       if (eventSourceRef.current) {

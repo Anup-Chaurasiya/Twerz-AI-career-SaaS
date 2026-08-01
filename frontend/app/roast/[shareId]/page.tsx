@@ -2,9 +2,10 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { RoastShareView } from './RoastShareView';
 import { RoastResult } from '@/types';
+import { getApiBase } from '@/lib/api/baseUrl';
 
 async function fetchSharedRoast(shareId: string) {
-  const api = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const api = getApiBase() || 'http://localhost:8000';
   const res = await fetch(`${api}/roasts/shared/${shareId}`, { next: { revalidate: 60 } });
   if (!res.ok) return null;
   return res.json() as Promise<{ share_id: string; roast_data: RoastResult; created_at: string }>;

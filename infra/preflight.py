@@ -53,8 +53,10 @@ async def check_database():
 
     t0 = time.monotonic()
     try:
+        from app.database.session import _asyncpg_connect_args
+
         url = get_settings().DATABASE_URL
-        connect_args = {"ssl": True} if "supabase.co" in url.lower() else {}
+        connect_args = _asyncpg_connect_args(url)
         engine = create_async_engine(url, connect_args=connect_args)
         async with engine.connect() as conn:
             # Basic connectivity
@@ -234,11 +236,65 @@ async def check_jwt_secret():
         )
 
 
+async def check_openai_key():
+    """Verify OpenAI API key when generation models use openai/*."""
+    from app.config import get_settings, _is_real_key
+
+    settings = get_settings()
+    uses_openai = any(
+        m.startswith("openai/")
+        for m in (settings.LLM_FLASH_MODEL, settings.LLM_PRO_MODEL)
+    )
+    t0 = time.monotonic()
+    if not uses_openai:
+        report("OpenAI API key", True, "Not required (no openai/* LLM models)", (time.monotonic() - t0) * 1000)
+        return
+    if not _is_real_key(settings.OPENAI_API_KEY):
+        report("OpenAI API key", False, "OPENAI_API_KEY missing but LLM models use openai/*", (time.monotonic() - t0) * 1000)
+        return
+    report("OpenAI API key", True, "Configured for openai/* models", (time.monotonic() - t0) * 1000)
+
+
+async def check_oci_config():
+    """Verify OCI config path resolves when STORAGE_BACKEND=oci."""
+    from app.config import get_settings
+
+    settings = get_settings()
+    t0 = time.monotonic()
+    if settings.STORAGE_BACKEND.lower() != "oci":
+        report("OCI config", True, f"Skipped (STORAGE_BACKEND={settings.STORAGE_BACKEND})", (time.monotonic() - t0) * 1000)
+        return
+    config_path = (settings.OCI_CONFIG_PATH or "").strip()
+    if not config_path:
+        report("OCI config", True, "Using Instance Principals (no config file)", (time.monotonic() - t0) * 1000)
+        return
+    import os
+
+    if not os.path.isfile(config_path):
+        report("OCI config", False, f"Config not found: {config_path}", (time.monotonic() - t0) * 1000)
+        return
+    try:
+        import oci
+        from app.services.storage.oci import _resolve_key_file
+
+        config = oci.config.from_file(config_path)
+        config = _resolve_key_file(config, config_path)
+        key_file = config.get("key_file", "")
+        if key_file and not os.path.isfile(key_file):
+            report("OCI config", False, f"key_file not found: {key_file}", (time.monotonic() - t0) * 1000)
+            return
+        report("OCI config", True, f"key_file={key_file or 'n/a'}", (time.monotonic() - t0) * 1000)
+    except Exception as e:
+        report("OCI config", False, str(e)[:80], (time.monotonic() - t0) * 1000)
+
+
 async def main():
     print(f"\n{BOLD}Twerz — Pre-flight Check{RESET}\n")
 
     await check_database()
     await check_jwt_secret()
+    await check_openai_key()
+    await check_oci_config()
     # Run LLM checks in parallel
     await asyncio.gather(check_llm_flash(), check_llm_pro())
     await check_latex()

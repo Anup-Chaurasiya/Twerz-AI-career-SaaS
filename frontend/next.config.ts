@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
     ],
   },
   async rewrites() {
+    // Production: browser calls api.twerz.com directly (no Vercel proxy hop).
+    if (process.env.NODE_ENV !== 'development') {
+      return [];
+    }
     const api = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     return [
       { source: '/profiles/:path*', destination: `${api}/profiles/:path*` },

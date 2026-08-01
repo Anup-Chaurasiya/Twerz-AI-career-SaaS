@@ -393,7 +393,7 @@ curl -s http://127.0.0.1:8080/health/ready | jq .
 | Vercel login: **502** on `/auth/google/login` | API not reachable over HTTPS | Run `curl https://api.twerz.com/health`; run `setup-nginx-ssl.sh` if HTTP-only |
 | **502** from Nginx | API container down | `$COMPOSE ps`; `$COMPOSE logs api`; `./infra/deploy-oracle.sh` |
 | Google **redirect_uri_mismatch** | URI ≠ `FRONTEND_URL/auth/google/callback` | Align Google Console, `.env` `FRONTEND_URL`, and Vercel domain (www vs non-www) |
-| **Invalid OAuth state** | CSRF cookie lost (domain mismatch) | Use one canonical frontend URL (`https://www.twerz.com` or `https://twerz.com`) everywhere |
+| **Invalid OAuth state** | CSRF cookie lost (domain mismatch) or missing Vercel callback route | Set `COOKIE_DOMAIN=.twerz.com` in VM `.env`; ensure `frontend/app/auth/google/callback/route.ts` is deployed on Vercel |
 | Migrations fail | Check Supabase `DATABASE_URL` (port 5432, `?ssl=require`); `RUN_MIGRATIONS=true` |
 | OCI storage errors | Missing `~/.oci` mount or relative `key_file` | Run `oci setup config`; set `key_file=/root/.oci/oci_api_key.pem` in `~/.oci/config` |
 | Resume generation 429 | Gemini free-tier quota | Set `LLM_FLASH_MODEL=openai/gpt-4o-mini`, `LLM_PRO_MODEL=openai/gpt-4o` in `.env` |

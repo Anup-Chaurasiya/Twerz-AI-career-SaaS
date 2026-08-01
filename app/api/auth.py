@@ -14,7 +14,12 @@ from app.services.auth.google_oauth import OAUTH_CSRF_COOKIE
 from app.services.auth.referral import ensure_user_referral_code, generate_unique_referral_code
 from typing import Optional
 from app.services.auth.jwt_handler import create_access_token, verify_guest_token
-from app.services.auth.cookies import set_refresh_token_cookie, clear_refresh_token_cookie
+from app.services.auth.cookies import (
+    set_refresh_token_cookie,
+    clear_refresh_token_cookie,
+    set_oauth_csrf_cookie,
+    clear_oauth_csrf_cookie,
+)
 from app.services.auth.refresh_tokens import (
     REFRESH_TOKEN_COOKIE,
     create_refresh_token,
@@ -34,7 +39,7 @@ credit_service = CreditService()
 
 
 def _get_redirect_uri() -> str:
-    """OAuth callback on the frontend origin (CSRF cookie is set there via /auth proxy)."""
+    """OAuth callback on the frontend origin; Vercel route forwards to this API."""
     settings = get_settings()
     base = settings.FRONTEND_URL.rstrip("/")
     return f"{base}/auth/google/callback"
@@ -80,19 +85,10 @@ async def google_login(
     guest_token: Optional[str] = Query(default=None, max_length=512),
 ):
     """Return Google OAuth URL. Optional `ref` referral code and `guest_token` embedded in OAuth state."""
-    settings = get_settings()
     csrf = google_oauth.new_oauth_csrf_token()
     state = google_oauth.encode_oauth_state(ref=ref, csrf=csrf, guest_token=guest_token)
     url = google_oauth.get_login_url(_get_redirect_uri(), state=state)
-    response.set_cookie(
-        key=OAUTH_CSRF_COOKIE,
-        value=csrf,
-        httponly=True,
-        secure=settings.ENVIRONMENT.upper() != "DEV",
-        samesite="lax",
-        max_age=600,
-        path="/",
-    )
+    set_oauth_csrf_cookie(response, csrf)
     return {"url": url}
 
 
@@ -237,7 +233,7 @@ async def google_callback(
     elif claim_error:
         redirect_url += f"&claim_error={claim_error}"
     redirect = RedirectResponse(url=redirect_url)
-    redirect.delete_cookie(OAUTH_CSRF_COOKIE, path="/")
+    clear_oauth_csrf_cookie(redirect)
     set_refresh_token_cookie(redirect, refresh_raw)
     return redirect
 

@@ -1,6 +1,7 @@
 import asyncio
 import html as html_mod
 import logging
+import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.exceptions import StarletteHTTPException
@@ -197,7 +198,24 @@ def create_app() -> FastAPI:
         title="Twerz API",
         version="0.1.0",
         lifespan=lifespan,
+        redirect_slashes=False,
     )
+
+    @app.middleware("http")
+    async def log_request_timing(request: Request, call_next):
+        start = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - start) * 1000
+        path = request.url.path
+        if path not in ("/health", "/health/ready"):
+            logger.info(
+                '{"method":"%s","path":"%s","status":%d,"duration_ms":%.1f}',
+                request.method,
+                path,
+                response.status_code,
+                duration_ms,
+            )
+        return response
 
     @app.middleware("http")
     async def reject_graphql_probes(request: Request, call_next):
@@ -381,6 +399,37 @@ body{{background:#0a0f1e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height
     @app.get("/health")
     async def health():
         return {"status": "ok"}
+
+    @app.get("/health/ready")
+    async def health_ready():
+        """Deep readiness probe: DB ping + storage config."""
+        from sqlalchemy import text
+        from app.database.session import async_session_factory
+        from app.services.storage import get_storage
+
+        checks: dict[str, str] = {}
+        try:
+            async with async_session_factory() as db:
+                await db.execute(text("SELECT 1"))
+            checks["database"] = "ok"
+        except Exception as exc:
+            checks["database"] = f"error: {str(exc)[:80]}"
+
+        if settings.STORAGE_BACKEND == "local":
+            checks["storage"] = "local"
+        else:
+            try:
+                storage = get_storage()
+                checks["storage"] = f"ok ({storage.backend_name})"
+            except Exception as exc:
+                checks["storage"] = f"error: {str(exc)[:80]}"
+
+        healthy = all(
+            v == "ok" or v == "local" or v.startswith("ok (")
+            for v in checks.values()
+        )
+        payload = {"status": "ready" if healthy else "degraded", "checks": checks}
+        return JSONResponse(status_code=200 if healthy else 503, content=payload)
 
     # Sentry verification — always in DEV; opt-in elsewhere via SENTRY_DEBUG=true
     env = settings.ENVIRONMENT.upper()

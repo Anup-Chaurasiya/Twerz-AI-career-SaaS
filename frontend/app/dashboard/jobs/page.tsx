@@ -1,55 +1,29 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { jobsApi } from '@/lib/api/endpoints';
 import { Job } from '@/types';
 import { formatDate, getStatusColor, getStatusLabel, truncate } from '@/lib/utils';
+import { handleApiError } from '@/lib/apiError';
 
 export default function JobListPage() {
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [error, setError] = useState('');
   const router = useRouter();
 
-  const fetchJobs = async (p = 1) => {
-    setLoading(true); setError('');
-    try {
-      const res = await jobsApi.list(p, 10);
-      setJobs(res.data.items);
-      setTotalPages(res.data.pages);
-      setPage(res.data.page);
-    } catch {
-      setError('Failed to load jobs');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data, isLoading, isFetching, error: queryError } = useQuery({
+    queryKey: ['jobs', 'list', page],
+    queryFn: async () => {
+      const res = await jobsApi.list(page, 10);
+      return res.data;
+    },
+  });
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await jobsApi.list(page, 10);
-        if (cancelled) return;
-        setJobs(res.data.items);
-        setTotalPages(res.data.pages);
-        setPage(res.data.page);
-      } catch {
-        if (!cancelled) setError('Failed to load jobs');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [page]);
-
-  const changePage = (next: number | ((prev: number) => number)) => {
-    setLoading(true);
-    setPage(next);
-  };
+  const jobs: Job[] = data?.items ?? [];
+  const totalPages = data?.pages ?? 1;
+  const loading = isLoading || isFetching;
+  const error = queryError ? handleApiError(queryError).message : '';
 
   return (
     <div className="page-scroll">
@@ -153,8 +127,8 @@ export default function JobListPage() {
               <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(1,169,219,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>Page {page} of {totalPages}</div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn-ghost" disabled={page === 1} onClick={() => changePage(p => p - 1)}>Prev</button>
-                  <button className="btn-ghost" disabled={page === totalPages} onClick={() => changePage(p => p + 1)}>Next</button>
+                  <button className="btn-ghost" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Prev</button>
+                  <button className="btn-ghost" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>Next</button>
                 </div>
               </div>
             )}

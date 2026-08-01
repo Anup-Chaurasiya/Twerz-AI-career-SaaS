@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import os
 import uuid
 from logging import getLogger
 
@@ -8,6 +9,18 @@ from app.config import get_settings
 from app.services.storage.base import StorageProvider, resolve_content_type
 
 logger = getLogger(__name__)
+
+
+def _resolve_key_file(config: dict, config_path: str) -> dict:
+    """Resolve relative key_file paths against the OCI config directory."""
+    key_file = config.get("key_file")
+    if not key_file or os.path.isabs(key_file):
+        return config
+    config_dir = os.path.dirname(os.path.abspath(config_path))
+    resolved = os.path.normpath(os.path.join(config_dir, key_file))
+    config = dict(config)
+    config["key_file"] = resolved
+    return config
 
 
 class OCIStorage(StorageProvider):
@@ -21,8 +34,15 @@ class OCIStorage(StorageProvider):
 
         if self._config_path:
             config = oci.config.from_file(self._config_path)
+            config = _resolve_key_file(config, self._config_path)
+            logger.info(
+                "OCI auth: API key from %s (key_file=%s)",
+                self._config_path,
+                config.get("key_file"),
+            )
             self._client = oci.object_storage.ObjectStorageClient(config)
         else:
+            logger.info("OCI auth: Instance Principals")
             signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
             self._client = oci.object_storage.ObjectStorageClient(config={}, signer=signer)
 

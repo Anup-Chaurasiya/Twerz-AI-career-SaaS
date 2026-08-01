@@ -23,7 +23,8 @@ notify_service = NotificationService()
 from app.utils.client_ip import client_ip as _client_ip
 
 
-@router.get("/notifications")
+@router.get("/notifications", include_in_schema=False)
+@router.get("/notifications/")
 async def list_notifications(
     unread_only: bool = False,
     db: AsyncSession = Depends(get_db),

@@ -1,5 +1,6 @@
 import axios, { AxiosError, AxiosRequestConfig } from 'axios';
 import { APIError } from '@/types';
+import { getApiBase } from './baseUrl';
 
 /** Default for quick CRUD; LLM-heavy routes override per request. */
 export const DEFAULT_API_TIMEOUT = 15_000;
@@ -7,9 +8,10 @@ export const DEFAULT_API_TIMEOUT = 15_000;
 export const LLM_SYNC_TIMEOUT = 180_000;
 
 const client = axios.create({
-  baseURL: '',
+  baseURL: getApiBase(),
   timeout: DEFAULT_API_TIMEOUT,
   headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,
 });
 
 let isRefreshing = false;

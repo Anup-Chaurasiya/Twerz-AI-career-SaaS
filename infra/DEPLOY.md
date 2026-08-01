@@ -156,7 +156,7 @@ Keep localhost entries for dev. Add production:
 | Setting | Value |
 |---------|-------|
 | Authorized JavaScript origins | `https://twerz.com` |
-| Authorized redirect URIs | `https://www.twerz.com/auth/google/callback` |
+| Authorized redirect URIs | `https://www.twerz.com/auth/google/callback` (Vercel forwards to API) |
 
 VM `.env`: `FRONTEND_URL=https://www.twerz.com`
 
@@ -187,10 +187,10 @@ Add repository secrets:
 
 | Secret | Example |
 |--------|---------|
-| `ORACLE_HOST` | VM public IP |
-| `ORACLE_USER` | `ubuntu` |
-| `ORACLE_SSH_KEY` | private key contents |
-| `ORACLE_APP_PATH` | `/home/ubuntu/GobioGo` |
+| `ORACLE_HOST` | `137.23.49.85` |
+| `ORACLE_USER` | `opc` (Oracle Linux) or `ubuntu` (Ubuntu image) |
+| `ORACLE_SSH_KEY` | Full private key PEM from your laptop (`cat ~/.ssh/id_ed25519`) |
+| `ORACLE_APP_PATH` | `/home/opc/GobioGo` (this VM) or `/home/ubuntu/GobioGo` (Ubuntu) |
 
 Push to `main` triggers [.github/workflows/deploy-oracle.yml](../.github/workflows/deploy-oracle.yml).
 

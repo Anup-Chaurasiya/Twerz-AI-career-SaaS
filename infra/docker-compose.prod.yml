@@ -3,6 +3,8 @@
 #
 # Set DATABASE_URL in .env to your Supabase direct connection (port 5432).
 # First deploy: RUN_MIGRATIONS=true in .env, then ./infra/deploy-oracle.sh --migrate
+#
+# Optional Redis (multi-instance rate limiting): set REDIS_URL=redis://redis:6379/0 in .env
 
 services:
   api:
@@ -22,3 +24,12 @@ services:
       LATEX_BIN_PATH: /usr/bin
       PORT: "8080"
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-false}
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    profiles:
+      - redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: redis-server --save "" --appendonly no

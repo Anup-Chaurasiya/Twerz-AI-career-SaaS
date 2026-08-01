@@ -58,6 +58,10 @@ if [[ "${DATABASE_URL}" != *"+asyncpg"* ]]; then
   echo "WARNING: DATABASE_URL should use postgresql+asyncpg:// for this app." >&2
 fi
 
+if [[ "${SENTRY_DEBUG:-false}" == "true" ]]; then
+  echo "WARNING: SENTRY_DEBUG=true in .env — set to false after Sentry verification." >&2
+fi
+
 if [[ ! -d "${OCI_CONFIG_DIR:-$HOME/.oci}" ]]; then
   echo "Warning: OCI config dir not found. Set OCI_CONFIG_DIR or run 'oci setup config'." >&2
 fi
@@ -72,9 +76,9 @@ $COMPOSE up -d --remove-orphans
 
 echo "==> Waiting for health..."
 for i in $(seq 1 30); do
-  if curl -sf "http://127.0.0.1:8080/health" >/dev/null 2>&1; then
+  if curl -sf "http://127.0.0.1:8080/health/ready" >/dev/null 2>&1; then
     echo "==> Health OK"
-    curl -s "http://127.0.0.1:8080/health"
+    curl -s "http://127.0.0.1:8080/health/ready"
     echo ""
     break
   fi

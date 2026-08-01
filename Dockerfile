@@ -2,6 +2,7 @@ FROM python:3.12-slim
 
 # System deps: TeX Live for PDF generation, poppler for pdf2image
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     texlive-latex-base \
     texlive-latex-recommended \
     texlive-latex-extra \

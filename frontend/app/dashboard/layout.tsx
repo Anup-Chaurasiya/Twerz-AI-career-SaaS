@@ -1,7 +1,8 @@
 'use client';
-import { useEffect, useSyncExternalStore, useState, useRef } from 'react';
+import { useEffect, useSyncExternalStore, useState, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
+import axios from 'axios';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useCreditStore } from '@/lib/stores/creditStore';
 import { notificationsApi } from '@/lib/api/endpoints';
@@ -52,13 +53,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const notifsLoadedRef = useRef(false);
+  const notifPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mounted = useSyncExternalStore(() => () => {}, () => true, () => false);
 
   const unreadCount = notifs.filter((n) => !n.is_read).length;
 
-  const loadNotifs = () => {
-    notificationsApi.list(false).then((res) => setNotifs(res.data.items || [])).catch(() => {});
-  };
+  const stopNotifPoll = useCallback(() => {
+    if (notifPollRef.current) {
+      clearInterval(notifPollRef.current);
+      notifPollRef.current = null;
+    }
+  }, []);
+
+  const loadNotifs = useCallback(() => {
+    if (!isLoggedIn || !user) return;
+    notificationsApi.list(false)
+      .then((res) => setNotifs(res.data.items || []))
+      .catch((err) => {
+        if (axios.isAxiosError(err) && err.response?.status === 401) {
+          stopNotifPoll();
+        }
+      });
+  }, [isLoggedIn, user, stopNotifPoll]);
 
   useEffect(() => {
     if (!mounted || isLoading) return;
@@ -67,8 +83,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [mounted, isLoading, isLoggedIn, router]);
 
   useEffect(() => {
-    if (!isLoggedIn) {
+    if (!isLoggedIn || !user) {
       notifsLoadedRef.current = false;
+      stopNotifPoll();
       return;
     }
     fetchBalance();
@@ -76,9 +93,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       notifsLoadedRef.current = true;
       loadNotifs();
     }
-    const t = setInterval(loadNotifs, 60_000);
-    return () => clearInterval(t);
-  }, [isLoggedIn, fetchBalance]);
+    stopNotifPoll();
+    notifPollRef.current = setInterval(loadNotifs, 60_000);
+    return () => stopNotifPoll();
+  }, [isLoggedIn, user, fetchBalance, loadNotifs, stopNotifPoll]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
