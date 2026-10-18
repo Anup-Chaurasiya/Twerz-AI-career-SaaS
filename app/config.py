@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # Auth
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
-    JWT_SECRET: str = "change-this-secret"
+    JWT_SECRET: str = "change-this-secret-to-a-32-byte-secret-key-now"
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_EXPIRY_MINUTES: int = 15
     JWT_REFRESH_EXPIRY_DAYS: int = 30
@@ -116,6 +116,7 @@ def get_settings() -> Settings:
 _JWT_SECRET_PLACEHOLDERS = frozenset({
     "",
     "change-this-secret",
+    "change-this-secret-to-a-32-byte-secret-key-now",
     "change_me",
     "your-jwt-secret",
 })

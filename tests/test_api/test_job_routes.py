@@ -85,7 +85,7 @@ async def test_generate_resume_mismatch_requires_confirm(client, db_session, tes
     job = await _seed_job(db_session, test_user, fit_label="MISMATCH", fit_score=0)
     deduct = AsyncMock(return_value="purchased")
     with patch("app.api.jobs.credit_service.check_and_deduct", deduct):
-        with patch("app.api.jobs.create_tracked_task"):
+        with patch("app.api.jobs.create_tracked_task", side_effect=lambda c: c.close()):
             res = await client.post(f"/jobs/{job.id}/generate-resume", json={})
     assert res.status_code == 400
     assert "confirm_low_fit" in res.json()["detail"]
@@ -97,7 +97,7 @@ async def test_generate_resume_mismatch_with_confirm_deducts(client, db_session,
     job = await _seed_job(db_session, test_user, fit_label="MISMATCH", fit_score=0)
     deduct = AsyncMock(return_value="daily_free")
     with patch("app.api.jobs.credit_service.check_and_deduct", deduct):
-        with patch("app.api.jobs.create_tracked_task"):
+        with patch("app.api.jobs.create_tracked_task", side_effect=lambda c: c.close()):
             res = await client.post(
                 f"/jobs/{job.id}/generate-resume",
                 json={"confirm_low_fit": True},
@@ -112,7 +112,7 @@ async def test_generate_resume_strong_without_confirm(client, db_session, test_u
     job = await _seed_job(db_session, test_user, fit_label="STRONG", fit_score=88)
     deduct = AsyncMock(return_value="daily_free")
     with patch("app.api.jobs.credit_service.check_and_deduct", deduct):
-        with patch("app.api.jobs.create_tracked_task"):
+        with patch("app.api.jobs.create_tracked_task", side_effect=lambda c: c.close()):
             res = await client.post(f"/jobs/{job.id}/generate-resume", json={})
     assert res.status_code == 202
     deduct.assert_awaited_once()
@@ -123,7 +123,7 @@ async def test_generate_resume_stretch_requires_confirm(client, db_session, test
     job = await _seed_job(db_session, test_user, fit_label="STRETCH", fit_score=55)
     deduct = AsyncMock(return_value="purchased")
     with patch("app.api.jobs.credit_service.check_and_deduct", deduct):
-        with patch("app.api.jobs.create_tracked_task"):
+        with patch("app.api.jobs.create_tracked_task", side_effect=lambda c: c.close()):
             res = await client.post(f"/jobs/{job.id}/generate-resume", json={"confirm_low_fit": False})
     assert res.status_code == 400
     deduct.assert_not_awaited()

@@ -59,7 +59,7 @@ async def test_credit_pack_purchase_then_tailor_flow(client, async_engine, test_
         assert uc.balance == 500
 
     with patch("app.api.jobs.credit_service.check_and_deduct", AsyncMock(return_value="purchased")) as deduct:
-        with patch("app.api.jobs.create_tracked_task"):
+        with patch("app.api.jobs.create_tracked_task", side_effect=lambda c: c.close()):
             async with session_factory() as db:
                 job = await db.get(Job, job_id)
                 job.fit_label = "STRONG"
@@ -79,7 +79,7 @@ async def test_credit_pack_purchase_then_tailor_flow(client, async_engine, test_
         job.status = JobStatus.RESUME_GENERATED
         job.custom_resume_data = {"name": "T"}
         await db.commit()
-    with patch("app.api.jobs.create_tracked_task"):
+    with patch("app.api.jobs.create_tracked_task", side_effect=lambda c: c.close()):
         res = await client.post(f"/jobs/{job_id}/generate-pdf")
     assert res.status_code == 202
 

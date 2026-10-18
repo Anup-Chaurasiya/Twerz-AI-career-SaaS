@@ -24,10 +24,8 @@ async def test_refresh_issues_new_access_token(async_engine, test_user):
         await session.commit()
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        res = await client.post(
-            "/auth/refresh",
-            cookies={REFRESH_TOKEN_COOKIE: refresh_raw},
-        )
+        client.cookies.set(REFRESH_TOKEN_COOKIE, refresh_raw)
+        res = await client.post("/auth/refresh")
         assert res.status_code == 200
         body = res.json()
         assert "access_token" in body
@@ -68,17 +66,13 @@ async def test_logout_clears_refresh_session(async_engine, test_user):
         await session.commit()
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        res = await client.post(
-            "/auth/logout",
-            cookies={REFRESH_TOKEN_COOKIE: refresh_raw},
-        )
+        client.cookies.set(REFRESH_TOKEN_COOKIE, refresh_raw)
+        res = await client.post("/auth/logout")
         assert res.status_code == 200
         assert res.json()["success"] is True
 
-        res2 = await client.post(
-            "/auth/refresh",
-            cookies={REFRESH_TOKEN_COOKIE: refresh_raw},
-        )
+        client.cookies.set(REFRESH_TOKEN_COOKIE, refresh_raw)
+        res2 = await client.post("/auth/refresh")
         assert res2.status_code == 401
 
 

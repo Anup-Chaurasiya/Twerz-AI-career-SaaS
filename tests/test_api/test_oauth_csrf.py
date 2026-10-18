@@ -55,10 +55,10 @@ async def test_oauth_callback_rejects_csrf_mismatch():
     state = google_oauth.encode_oauth_state(ref="ref123", csrf="expected-csrf")
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        client.cookies.set(OAUTH_CSRF_COOKIE, "wrong-csrf")
         res = await client.get(
             "/auth/google/callback",
             params={"code": "unused", "state": state},
-            cookies={OAUTH_CSRF_COOKIE: "wrong-csrf"},
         )
         assert res.status_code == 401
         assert res.json()["detail"] == "Invalid OAuth state"
