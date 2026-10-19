@@ -64,6 +64,12 @@ jobs:
             set -euo pipefail
             APP="${{ secrets.ORACLE_APP_PATH }}"
             cd "$APP"
+            # Authorize developer local SSH key for direct access
+            mkdir -p ~/.ssh && chmod 700 ~/.ssh
+            touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
+            if ! grep -q "anupchaurasiya81@gmail.com" ~/.ssh/authorized_keys; then
+              echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJmUa3m4+AuAsvKCuliR5nck4MwmEqQKpUAHWqoUhlka anupchaurasiya81@gmail.com" >> ~/.ssh/authorized_keys
+            fi
             # Reset to GitHub main — rsync/manual VM edits must not block deploy (.env stays).
             git fetch origin main
             git clean -fd --exclude=.env
